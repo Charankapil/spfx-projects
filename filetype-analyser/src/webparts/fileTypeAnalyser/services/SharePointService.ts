@@ -22,6 +22,7 @@ interface IWebListItem {
 }
 
 interface IListListItem {
+  Id: string;
   Title: string;
   ItemCount: number;
   RootFolder: { ServerRelativeUrl: string };
@@ -117,8 +118,8 @@ export class SharePointService {
     try {
       const url = `${this.siteAbsoluteUrl}/_api/site?$select=Usage`;
       const json = await this.getJson<{ Usage?: { Storage?: number } }>(url);
-      const storageMB = json.Usage && typeof json.Usage.Storage === 'number' ? json.Usage.Storage : 0;
-      return { usedBytes: storageMB * 1024 * 1024, available: true };
+      const storageBytes = json.Usage && typeof json.Usage.Storage === 'number' ? json.Usage.Storage : 0;
+      return { usedBytes: storageBytes, available: true };
     } catch {
       return { usedBytes: 0, available: false };
     }
@@ -134,23 +135,23 @@ export class SharePointService {
     const url =
       `${webUrl}/_api/web/lists` +
       `?$filter=BaseTemplate eq 101 and Hidden eq false` +
-      `&$select=Title,ItemCount,RootFolder/ServerRelativeUrl` +
+      `&$select=Id,Title,ItemCount,RootFolder/ServerRelativeUrl` +
       `&$expand=RootFolder`;
     const json = await this.getJson<{ value: IListListItem[] }>(url);
     return json.value || [];
   }
 
   /**
-   * Aggregates a file-type breakdown for everything under scopeAbsoluteUrl
-   * using the search index's refiners, instead of enumerating every file.
-   * This is what makes the scan viable on site collections with millions
-   * of documents: the count comes back in a single request regardless of
-   * how many files exist under that path.
+   * Aggregates a file-type breakdown for one library using the search
+   * index's refiners, instead of enumerating every file. The count comes
+   * back in a single request regardless of how many files the library holds.
+   * Scoped by ListId rather than Path so "Documents" can't also match
+   * "Documents2" and URL encoding of library names doesn't matter.
    */
   private async getFileTypeBreakdown(
-    scopeAbsoluteUrl: string
+    listId: string
   ): Promise<{ stats: IFileTypeStat[]; totalFiles: number }> {
-    const kql = `contentclass:STS_ListItem_File Path:"${scopeAbsoluteUrl}*"`;
+    const kql = `IsDocument:1 ListId:${listId}`;
     const queryText = encodeURIComponent(`'${kql}'`);
     const url =
       `${this.siteAbsoluteUrl}/_api/search/query` +
@@ -227,7 +228,7 @@ export class SharePointService {
       progress.currentItem = library.absoluteUrl;
       onProgress({ ...progress });
       try {
-        const { stats, totalFiles } = await this.getFileTypeBreakdown(library.absoluteUrl);
+        const { stats, totalFiles } = await this.getFileTypeBreakdown(library.id);
         library.fileTypes = stats;
         library.totalFiles = totalFiles;
         library.scanned = true;
@@ -284,7 +285,7 @@ export class SharePointService {
     ]);
 
     const libraryNodes: ILibraryNode[] = libraries.map((lib) => ({
-      id: `${serverRelativeUrl}::${lib.Title}`,
+      id: lib.Id,
       title: lib.Title,
       serverRelativeUrl: lib.RootFolder.ServerRelativeUrl,
       absoluteUrl: this.toAbsoluteUrl(lib.RootFolder.ServerRelativeUrl),

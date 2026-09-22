@@ -63,6 +63,8 @@ const LibraryRow: React.FC<{ library: ILibraryNode; depth: number }> = ({ librar
         {library.scanned && !library.error && (
           <Text variant="small" className={styles.countLabel}>
             {library.totalFiles.toLocaleString()} files
+            {library.totalFiles === 0 && library.itemCount > 0 &&
+              ` (${library.itemCount.toLocaleString()} items not in search index)`}
           </Text>
         )}
         {library.error && (
