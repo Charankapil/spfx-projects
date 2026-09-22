@@ -3,7 +3,7 @@
   "solution": {
     "name": "filetype-analyser-client-side-solution",
     "id": "b4c2d9f0-2a3f-4d6e-9a1c-6f8e5a2b7c10",
-    "version": "1.0.2.0",
+    "version": "1.0.3.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -28,7 +28,7 @@
         "title": "filetype-analyser Feature",
         "description": "The feature that activates elements of the filetype-analyser solution.",
         "id": "d1e9a3c4-5b6f-4a7e-8c9d-0e1f2a3b4c5d",
-        "version": "1.0.2.0"
+        "version": "1.0.3.0"
       }
     ]
   },

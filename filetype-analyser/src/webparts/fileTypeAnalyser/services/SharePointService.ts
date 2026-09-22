@@ -153,11 +153,14 @@ export class SharePointService {
   ): Promise<{ stats: IFileTypeStat[]; totalFiles: number }> {
     const kql = `IsDocument:1 ListId:{${listId}}`;
     const queryText = encodeURIComponent(`'${kql}'`);
+    // filter=3/0/* asks for all refinement values, alphabetically - without
+    // it the search API silently caps FileType to its 10 most common values,
+    // so a library with more than 10 distinct extensions would lose the rest.
     const url =
       `${this.siteAbsoluteUrl}/_api/search/query` +
       `?querytext=${queryText}` +
       `&rowlimit=1` +
-      `&refiners='FileType'` +
+      `&refiners='FileType(filter=3/0/*)'` +
       `&trimduplicates=false` +
       `&clienttype='ContentSearchRegular'`;
 
