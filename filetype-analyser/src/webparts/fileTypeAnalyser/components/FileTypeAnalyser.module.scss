@@ -1,0 +1,142 @@
+@import '~@fluentui/react/dist/sass/References.scss';
+
+.fileTypeAnalyser {
+  font-family: $ms-font-family-fallbacks;
+  padding: 16px 20px 24px;
+}
+
+.header {
+  margin-bottom: 12px;
+}
+
+.progressWrap {
+  margin: 8px 0 16px;
+}
+
+.currentItem {
+  color: $ms-color-neutralSecondary;
+  word-break: break-all;
+}
+
+.summaryRow {
+  margin: 8px 0 20px;
+}
+
+.summaryCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  min-width: 160px;
+  border: 1px solid $ms-color-neutralLighter;
+  border-radius: 4px;
+  background: $ms-color-neutralLighterAlt;
+}
+
+.summaryCardIcon {
+  font-size: 22px;
+  color: $ms-color-themePrimary;
+}
+
+.summaryCardLabel {
+  color: $ms-color-neutralSecondary;
+}
+
+.sectionTitle {
+  margin: 8px 0;
+}
+
+.typeBreakdown {
+  margin-bottom: 20px;
+}
+
+.typeChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: $ms-color-neutralLighter;
+  font-size: 12px;
+}
+
+.typeChipExt {
+  font-weight: 600;
+}
+
+.typeChipCount {
+  color: $ms-color-neutralSecondary;
+}
+
+.treeWrap {
+  border: 1px solid $ms-color-neutralLighter;
+  border-radius: 4px;
+  padding: 8px 4px;
+}
+
+.treeNode {
+  margin: 2px 0;
+}
+
+.treeNodeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+
+  &:hover {
+    background: $ms-color-neutralLighter;
+  }
+}
+
+.treeChevron {
+  font-size: 11px;
+  width: 14px;
+}
+
+.treeChevronSpacer {
+  display: inline-block;
+  width: 14px;
+}
+
+.treeIcon {
+  color: $ms-color-themePrimary;
+  font-size: 15px;
+}
+
+.pendingLabel {
+  color: $ms-color-neutralTertiary;
+  font-style: italic;
+}
+
+.countLabel {
+  color: $ms-color-neutralSecondary;
+  margin-left: auto;
+}
+
+.errorLabel {
+  color: $ms-color-error;
+}
+
+.fileTypeList {
+  border-left: 1px dashed $ms-color-neutralLighter;
+}
+
+.fileTypeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+}
+
+.emptyState {
+  padding: 40px 0;
+}
+
+.emptyIcon {
+  font-size: 40px;
+  color: $ms-color-neutralTertiary;
+  margin-bottom: 8px;
+}

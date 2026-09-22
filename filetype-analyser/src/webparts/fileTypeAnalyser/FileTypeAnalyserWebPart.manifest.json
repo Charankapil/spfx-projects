@@ -1,0 +1,22 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "c7e4a1b2-3d5f-4e6a-8b9c-1a2b3c4d5e6f",
+  "alias": "FileTypeAnalyserWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "TeamsPersonalApp", "TeamsTab", "SharePointFullPage"],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "Other" },
+      "title": { "default": "File Type Analyser" },
+      "description": { "default": "Scans a SharePoint site collection and shows a tree-based overview of file types, using only SharePoint REST/Search APIs." },
+      "officeFabricIconFontName": "FabricFolderSearch",
+      "properties": {
+        "description": "File Type Analyser"
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/core-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "file-type-analyser-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/fileTypeAnalyser/FileTypeAnalyserWebPart.js",
+          "manifest": "./src/webparts/fileTypeAnalyser/FileTypeAnalyserWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "FileTypeAnalyserWebPartStrings": "lib/webparts/fileTypeAnalyser/loc/{locale}.js"
+  }
+}

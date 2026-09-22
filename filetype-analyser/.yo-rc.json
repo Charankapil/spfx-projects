@@ -1,0 +1,21 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "18.17.1",
+    "sdksVersions": {
+      "@microsoft/microsoft-graph-client": "3.0.2",
+      "@microsoft/teams-js": "2.19.0"
+    },
+    "version": "1.18.2",
+    "libraryName": "filetype-analyser",
+    "libraryId": "b4c2d9f0-2a3f-4d6e-9a1c-6f8e5a2b7c10",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "filetype-analyser",
+    "solutionShortDescription": "File Type Analyser - tree-based file type overview for SharePoint site collections",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}
