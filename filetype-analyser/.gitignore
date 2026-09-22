@@ -33,3 +33,6 @@ coverage
 # SPFx
 .yo-rc.json.bak
 *.sppkg
+
+# Published release build (intentionally checked in)
+!releases/*.sppkg
