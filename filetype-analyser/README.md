@@ -21,9 +21,11 @@ of throttled REST calls. This solution avoids that entirely:
    content those libraries hold.
 2. **File-type counts come from the search index, not file enumeration.**
    For each library, one call to `_api/search/query` with
-   `querytext='IsDocument:1 ListId:<library GUID>'` and
+   `querytext='IsDocument:1 ListId:{<library GUID>}'` and
    `refiners='FileType'` asks the already-built search index for an
-   aggregated count per extension in that library. Whether the
+   aggregated count per extension in that library (the curly braces are
+   required — `ListId` is a GUID-typed managed property and a bare
+   hyphenated GUID gets mis-tokenized by the KQL parser). Whether the
    library holds 10 files or 10 million, this is a single request with a
    near-constant response size — the aggregation work happens server-side
    in the index, not in the browser.

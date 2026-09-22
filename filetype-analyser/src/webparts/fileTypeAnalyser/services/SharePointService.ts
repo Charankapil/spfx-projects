@@ -151,7 +151,7 @@ export class SharePointService {
   private async getFileTypeBreakdown(
     listId: string
   ): Promise<{ stats: IFileTypeStat[]; totalFiles: number }> {
-    const kql = `IsDocument:1 ListId:${listId}`;
+    const kql = `IsDocument:1 ListId:{${listId}}`;
     const queryText = encodeURIComponent(`'${kql}'`);
     const url =
       `${this.siteAbsoluteUrl}/_api/search/query` +
