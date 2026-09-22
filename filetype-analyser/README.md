@@ -21,14 +21,25 @@ of throttled REST calls. This solution avoids that entirely:
    content those libraries hold.
 2. **File-type counts come from the search index, not file enumeration.**
    For each library, one call to `_api/search/query` with
-   `querytext='IsDocument:1 ListId:{<library GUID>}'` and
+   `querytext='IsDocument:1 Path:"<library URL>/*"'` and
    `refiners='FileType'` asks the already-built search index for an
-   aggregated count per extension in that library (the curly braces are
-   required — `ListId` is a GUID-typed managed property and a bare
-   hyphenated GUID gets mis-tokenized by the KQL parser). Whether the
-   library holds 10 files or 10 million, this is a single request with a
+   aggregated count per extension in that library. Whether the library
+   holds 10 files or 10 million, this is a single request with a
    near-constant response size — the aggregation work happens server-side
    in the index, not in the browser.
+
+   Scoping by `Path` rather than a `ListId:{guid}` restriction is a
+   deliberate choice: a `ListId`-scoped query, with or without curly
+   braces around the GUID, reliably returned HTTP 500 in testing, while
+   this `Path`-based shape returns HTTP 200. The trailing `/*` stops a
+   library like `Documents` from also matching `Documents2`.
+
+   Known limitation: `refiners='FileType'` without extra parameters caps
+   the result at the 10 most common extensions per library. A library
+   with more than 10 distinct file types will show its top 10 with the
+   rest folded out of the per-library breakdown (the site-wide "Files
+   indexed" total is unaffected — that comes from the query's total row
+   count, not the refiner list).
 3. **Storage numbers come from SharePoint's own tracked usage.** The
    overall "storage used" figure shown in the summary comes from
    `_api/site?$select=Usage`, which SharePoint already maintains — no

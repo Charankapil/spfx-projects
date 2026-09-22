@@ -145,22 +145,25 @@ export class SharePointService {
    * Aggregates a file-type breakdown for one library using the search
    * index's refiners, instead of enumerating every file. The count comes
    * back in a single request regardless of how many files the library holds.
-   * Scoped by ListId rather than Path so "Documents" can't also match
-   * "Documents2" and URL encoding of library names doesn't matter.
+   *
+   * Scoped by Path with a trailing "/*" rather than ListId: a ListId-scoped
+   * query (with or without braces around the GUID) reliably returned
+   * HTTP 500 from this tenant's search endpoint, while this exact
+   * Path-based shape (only the managed property differed - IsDocument here
+   * vs. a bogus contentclass in an earlier version) is confirmed to return
+   * HTTP 200. The trailing slash before "*" stops "Documents" from also
+   * matching a library like "Documents2".
    */
   private async getFileTypeBreakdown(
-    listId: string
+    libraryAbsoluteUrl: string
   ): Promise<{ stats: IFileTypeStat[]; totalFiles: number }> {
-    const kql = `IsDocument:1 ListId:{${listId}}`;
+    const kql = `IsDocument:1 Path:"${libraryAbsoluteUrl}/*"`;
     const queryText = encodeURIComponent(`'${kql}'`);
-    // filter=3/0/* asks for all refinement values, alphabetically - without
-    // it the search API silently caps FileType to its 10 most common values,
-    // so a library with more than 10 distinct extensions would lose the rest.
     const url =
       `${this.siteAbsoluteUrl}/_api/search/query` +
       `?querytext=${queryText}` +
       `&rowlimit=1` +
-      `&refiners='FileType(filter=3/0/*)'` +
+      `&refiners='FileType'` +
       `&trimduplicates=false` +
       `&clienttype='ContentSearchRegular'`;
 
@@ -231,7 +234,7 @@ export class SharePointService {
       progress.currentItem = library.absoluteUrl;
       onProgress({ ...progress });
       try {
-        const { stats, totalFiles } = await this.getFileTypeBreakdown(library.id);
+        const { stats, totalFiles } = await this.getFileTypeBreakdown(library.absoluteUrl);
         library.fileTypes = stats;
         library.totalFiles = totalFiles;
         library.scanned = true;
