@@ -1,4 +1,9 @@
-import { SPHttpClient, SPHttpClientResponse } from '@microsoft/sp-http';
+import {
+  ODataVersion,
+  SPHttpClient,
+  SPHttpClientConfiguration,
+  SPHttpClientResponse
+} from '@microsoft/sp-http';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 
 import { IFileTypeStat } from '../models/IFileTypeStat';
@@ -33,28 +38,56 @@ interface ISearchRefinerEntry {
   RefinementCount: string;
 }
 
+/**
+ * OData 3 ("verbose") wraps every collection in a { results: [] } envelope
+ * while OData 4 / nometadata returns a bare array, and which one comes back
+ * depends on the negotiated Accept header. Both shapes are accepted so the
+ * parsing does not silently yield zero file types if the format changes.
+ */
+type ODataCollection<T> = T[] | { results?: T[] } | undefined;
+
 interface ISearchRefiner {
   Name: string;
-  Entries: ISearchRefinerEntry[];
+  Entries: ODataCollection<ISearchRefinerEntry>;
+}
+
+interface IPrimaryQueryResult {
+  RelevantResults?: { TotalRows?: number };
+  RefinementResults?: { Refiners?: ODataCollection<ISearchRefiner> };
 }
 
 interface ISearchQueryResponse {
-  PrimaryQueryResult?: {
-    RelevantResults?: { TotalRows?: number };
-    RefinementResults?: { Refiners?: ISearchRefiner[] };
-  };
+  PrimaryQueryResult?: IPrimaryQueryResult;
   d?: {
-    query?: {
-      PrimaryQueryResult?: {
-        RelevantResults?: { TotalRows?: number };
-        RefinementResults?: { Refiners?: ISearchRefiner[] };
-      };
-    };
+    query?: { PrimaryQueryResult?: IPrimaryQueryResult };
+    PrimaryQueryResult?: IPrimaryQueryResult;
   };
+}
+
+function toArray<T>(collection: ODataCollection<T>): T[] {
+  if (!collection) {
+    return [];
+  }
+  if (Array.isArray(collection)) {
+    return collection;
+  }
+  return collection.results || [];
 }
 
 const REQUEST_GAP_MS = 120;
 const MAX_RETRIES = 3;
+
+/**
+ * SPHttpClient.configurations.v1 sends "OData-Version: 4.0", but the search
+ * REST endpoint only speaks OData 3.0 and answers a v4 request with HTTP 500
+ * as soon as it has actual rows or refiners to serialize (an empty result set
+ * happens to survive, which makes this look like a query problem when it is
+ * really a protocol-version one). The _api/web and _api/site calls are fine
+ * on v4, so only search is downgraded.
+ */
+const SEARCH_CONFIG: SPHttpClientConfiguration = SPHttpClient.configurations.v1.overrideWith({
+  defaultODataVersion: ODataVersion.v3
+});
 
 export class ScanCancelledError extends Error {}
 
@@ -85,25 +118,59 @@ export class SharePointService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private async getJson<T>(url: string, attempt = 0): Promise<T> {
+  /**
+   * SharePoint puts the useful part of a failure in the response body, so read
+   * it rather than reporting a bare status code - "Request failed (500)" says
+   * nothing, while the body names the actual managed property or syntax it
+   * choked on.
+   */
+  private async describeError(response: SPHttpClientResponse): Promise<string> {
+    try {
+      const body = await response.text();
+      if (!body) {
+        return response.statusText || 'no error details returned';
+      }
+      try {
+        const parsed = JSON.parse(body);
+        const message = parsed?.error?.message;
+        if (typeof message === 'string') {
+          return message;
+        }
+        if (message && typeof message.value === 'string') {
+          return message.value;
+        }
+      } catch {
+        // Body was not JSON - fall through and surface the raw text instead.
+      }
+      return body.substring(0, 300);
+    } catch {
+      return response.statusText || 'no error details returned';
+    }
+  }
+
+  private async getJson<T>(
+    url: string,
+    configuration: SPHttpClientConfiguration = SPHttpClient.configurations.v1,
+    attempt = 0
+  ): Promise<T> {
     this.throwIfCancelled();
-    const response: SPHttpClientResponse = await this.context.spHttpClient.get(
-      url,
-      SPHttpClient.configurations.v1
-    );
+    const response: SPHttpClientResponse = await this.context.spHttpClient.get(url, configuration);
 
     if (response.status === 429 || response.status === 503) {
       if (attempt >= MAX_RETRIES) {
-        throw new Error(`SharePoint throttled the request too many times: ${url}`);
+        throw new Error('SharePoint throttled this request too many times.');
       }
       const retryAfterHeader = response.headers.get('Retry-After');
       const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 2 * (attempt + 1);
       await this.delay((isNaN(retryAfterSec) ? 2 : retryAfterSec) * 1000);
-      return this.getJson<T>(url, attempt + 1);
+      return this.getJson<T>(url, configuration, attempt + 1);
     }
 
     if (!response.ok) {
-      throw new Error(`Request failed (${response.status}) for ${url}`);
+      const detail = await this.describeError(response);
+      // The URL is long enough to swamp the tree UI, so keep it to the console.
+      console.error(`[File Type Analyser] ${response.status} from ${url}: ${detail}`);
+      throw new Error(`${response.status}: ${detail}`);
     }
 
     await this.delay(REQUEST_GAP_MS);
@@ -167,14 +234,15 @@ export class SharePointService {
       `&trimduplicates=false` +
       `&clienttype='ContentSearchRegular'`;
 
-    const json = await this.getJson<ISearchQueryResponse>(url);
-    const primary = json.PrimaryQueryResult || json.d?.query?.PrimaryQueryResult;
+    const json = await this.getJson<ISearchQueryResponse>(url, SEARCH_CONFIG);
+    const primary =
+      json.PrimaryQueryResult || json.d?.query?.PrimaryQueryResult || json.d?.PrimaryQueryResult;
     const totalRowsRaw = primary?.RelevantResults?.TotalRows;
     const totalFiles = typeof totalRowsRaw === 'number' ? totalRowsRaw : parseInt(String(totalRowsRaw), 10) || 0;
 
-    const refiners = primary?.RefinementResults?.Refiners || [];
+    const refiners = toArray(primary?.RefinementResults?.Refiners);
     const fileTypeRefiner = refiners.filter((r) => r.Name === 'FileType')[0];
-    const entries = fileTypeRefiner?.Entries || [];
+    const entries = toArray(fileTypeRefiner?.Entries);
 
     const stats: IFileTypeStat[] = entries.map((entry) => {
       const rawCount = String(entry.RefinementCount ?? '0').replace(/[^\d]/g, '');

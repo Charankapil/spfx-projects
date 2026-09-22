@@ -28,11 +28,21 @@ of throttled REST calls. This solution avoids that entirely:
    near-constant response size — the aggregation work happens server-side
    in the index, not in the browser.
 
-   Scoping by `Path` rather than a `ListId:{guid}` restriction is a
-   deliberate choice: a `ListId`-scoped query, with or without curly
-   braces around the GUID, reliably returned HTTP 500 in testing, while
-   this `Path`-based shape returns HTTP 200. The trailing `/*` stops a
-   library like `Documents` from also matching `Documents2`.
+   The trailing `/*` stops a library like `Documents` from also matching
+   `Documents2`.
+
+   **The search call must be made with OData 3.0.**
+   `SPHttpClient.configurations.v1` sends an `OData-Version: 4.0` header,
+   and the search REST endpoint only speaks OData 3.0 — it answers a v4
+   request with HTTP 500 the moment it has real rows or refiners to
+   serialize. An empty result set happens to serialize fine either way,
+   which makes the failure look like a bad query (only libraries *with
+   content* fail) when it is really a protocol-version mismatch. The
+   service therefore calls search through
+   `SPHttpClient.configurations.v1.overrideWith({ defaultODataVersion: ODataVersion.v3 })`;
+   the `_api/web` and `_api/site` calls are fine on v4 and are left alone.
+   Because OData 3 may wrap collections in a `{ results: [] }` envelope,
+   the response parsing accepts both that and a bare array.
 
    Known limitation: `refiners='FileType'` without extra parameters caps
    the result at the 10 most common extensions per library. A library
