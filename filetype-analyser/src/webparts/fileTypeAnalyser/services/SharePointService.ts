@@ -22,8 +22,8 @@ import { IWebNode } from '../models/IWebNode';
 
 interface IWebListItem {
   Title: string;
-  Url: string;
   ServerRelativeUrl: string;
+  WebTemplate: string;
 }
 
 interface IListListItem {
@@ -74,7 +74,7 @@ function toArray<T>(collection: ODataCollection<T>): T[] {
   return collection.results || [];
 }
 
-const REQUEST_GAP_MS = 120;
+const REQUEST_GAP_MS = 250;
 const MAX_RETRIES = 3;
 
 /**
@@ -192,10 +192,38 @@ export class SharePointService {
     }
   }
 
+  /**
+   * The scan starts at the site collection root, which is not necessarily the
+   * web hosting the page, so its title has to be looked up rather than taken
+   * from pageContext.web.
+   */
+  private async getRootWebTitle(): Promise<string> {
+    if (this.context.pageContext.web.absoluteUrl === this.siteAbsoluteUrl) {
+      return this.context.pageContext.web.title;
+    }
+    try {
+      const json = await this.getJson<{ Title?: string }>(`${this.siteAbsoluteUrl}/_api/web?$select=Title`);
+      return json.Title || this.siteAbsoluteUrl;
+    } catch (err) {
+      if (err instanceof ScanCancelledError) {
+        throw err;
+      }
+      return this.siteAbsoluteUrl;
+    }
+  }
+
+  /**
+   * Uses getsubwebsfilteredforcurrentuser rather than /webs: /webs lists every
+   * subsite, including ones with broken inheritance the current user cannot
+   * open, and each of those then 403s when its libraries are requested. App
+   * webs (template "APP") live on a separate domain and are skipped.
+   */
   private async getSubwebs(webUrl: string): Promise<IWebListItem[]> {
-    const url = `${webUrl}/_api/web/webs?$select=Title,Url,ServerRelativeUrl`;
+    const url =
+      `${webUrl}/_api/web/getsubwebsfilteredforcurrentuser(nwebtemplatefilter=-1,nconfigurationfilter=0)` +
+      `?$select=Title,ServerRelativeUrl,WebTemplate`;
     const json = await this.getJson<{ value: IWebListItem[] }>(url);
-    return json.value || [];
+    return (json.value || []).filter((w) => w.WebTemplate !== 'APP');
   }
 
   private async getDocumentLibraries(webUrl: string): Promise<IListListItem[]> {
@@ -283,10 +311,11 @@ export class SharePointService {
     progress.phase = 'discovering-structure';
     onProgress({ ...progress });
 
+    const rootTitle = await this.getRootWebTitle();
     const rootWeb = await this.buildWebNode(
       this.siteAbsoluteUrl,
-      this.context.pageContext.web.serverRelativeUrl,
-      this.context.pageContext.web.title,
+      this.context.pageContext.site.serverRelativeUrl,
+      rootTitle,
       progress,
       onProgress
     );
@@ -329,7 +358,7 @@ export class SharePointService {
 
     return {
       siteUrl: this.siteAbsoluteUrl,
-      siteTitle: this.context.pageContext.web.title,
+      siteTitle: rootWeb.title,
       storage,
       rootWeb,
       totalFileTypeStats,
@@ -353,10 +382,27 @@ export class SharePointService {
     progress.websDiscovered++;
     onProgress({ ...progress });
 
-    const [libraries, subwebs] = await Promise.all([
-      this.getDocumentLibraries(webAbsoluteUrl),
-      this.getSubwebs(webAbsoluteUrl)
-    ]);
+    // One inaccessible subsite (unique permissions, a 403) must not abort the
+    // whole scan, so each call's failure is recorded on this node instead.
+    const errors: string[] = [];
+    let libraries: IListListItem[] = [];
+    let subwebs: IWebListItem[] = [];
+    try {
+      libraries = await this.getDocumentLibraries(webAbsoluteUrl);
+    } catch (err) {
+      if (err instanceof ScanCancelledError) {
+        throw err;
+      }
+      errors.push(`Libraries: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
+    try {
+      subwebs = await this.getSubwebs(webAbsoluteUrl);
+    } catch (err) {
+      if (err instanceof ScanCancelledError) {
+        throw err;
+      }
+      errors.push(`Subsites: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
 
     const libraryNodes: ILibraryNode[] = libraries.map((lib) => ({
       id: lib.Id,
@@ -377,13 +423,14 @@ export class SharePointService {
       url: webAbsoluteUrl,
       serverRelativeUrl,
       libraries: libraryNodes,
-      webs: []
+      webs: [],
+      error: errors.length > 0 ? errors.join(' | ') : undefined
     };
 
     for (const sub of subwebs) {
       this.throwIfCancelled();
       const childNode = await this.buildWebNode(
-        sub.Url,
+        this.toAbsoluteUrl(sub.ServerRelativeUrl),
         sub.ServerRelativeUrl,
         sub.Title,
         progress,

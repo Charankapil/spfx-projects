@@ -25,6 +25,11 @@ export const WebNodeTree: React.FC<IWebNodeTreeProps> = ({ node, depth }) => {
         )}
         <Icon iconName="SharepointLogo" className={styles.treeIcon} />
         <Text variant="mediumPlus">{node.title || node.serverRelativeUrl}</Text>
+        {node.error && (
+          <Text variant="small" className={styles.errorLabel}>
+            {node.error}
+          </Text>
+        )}
       </div>
 
       {expanded && (

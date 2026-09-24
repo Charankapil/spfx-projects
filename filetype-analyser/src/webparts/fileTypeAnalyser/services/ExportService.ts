@@ -9,6 +9,15 @@ function csvEscape(value: string): string {
   return value;
 }
 
+function collectWebErrors(web: IWebNode, out: IWebNode[]): void {
+  if (web.error) {
+    out.push(web);
+  }
+  for (const child of web.webs) {
+    collectWebErrors(child, out);
+  }
+}
+
 function flattenLibraries(web: IWebNode, out: { webTitle: string; webUrl: string; library: ILibraryNode }[]): void {
   for (const library of web.libraries) {
     out.push({ webTitle: web.title, webUrl: web.url, library });
@@ -62,6 +71,14 @@ export function exportOverviewToCsv(overview: ISiteCollectionOverview): void {
           .join(',')
       );
     }
+  }
+
+  const failedWebs: IWebNode[] = [];
+  collectWebErrors(overview.rootWeb, failedWebs);
+  for (const web of failedWebs) {
+    lines.push(
+      [overview.siteUrl, web.url, '', '', '', '', web.error || ''].map((v) => csvEscape(String(v))).join(',')
+    );
   }
 
   const csvContent = lines.join('\r\n');

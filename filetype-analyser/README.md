@@ -149,7 +149,10 @@ This produces `sharepoint/solution/filetype-analyser.sppkg`.
 ## Deploy
 
 1. Upload `filetype-analyser.sppkg` to your tenant or site collection
-   **App Catalog**.
+   **App Catalog**. When upgrading, upload a file with the **same file
+   name** and choose **Replace** — the catalog replaces entries by file
+   name, so a renamed file becomes a second entry for the same solution ID
+   and can leave the web part undeployed and missing from the toolbox.
 2. Deploy it when prompted ("Make this solution available to all sites in
    the organization" is optional — the solution has
    `skipFeatureDeployment: true`, so it can also be added site-by-site
@@ -165,9 +168,15 @@ with the permissions of whichever user opens the page.
 
 ## Notes on scope
 
-- The scan starts from the current site (the site the web part is added
-  to) and walks its subsites. To get a true site-collection-wide view,
-  add the web part to the root site of the site collection.
+- The scan always starts from the root of the site collection the page
+  belongs to and walks every subsite beneath it.
+- Everything runs as the signed-in user, so results are security-trimmed:
+  subsites the user cannot open are skipped (they are discovered with
+  `getsubwebsfilteredforcurrentuser`, not `/webs`), and libraries or files
+  they cannot see are not counted. Run it as a site collection
+  administrator for the complete picture. If a subsite or library still
+  fails (for example a 403 from unique permissions), the error is shown on
+  that node and in the CSV, and the rest of the scan carries on.
 - Document libraries only are scanned (SharePoint lists, e.g. calendars
   or custom lists, are intentionally excluded — this tool is about
   *files*).

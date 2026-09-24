@@ -7,4 +7,5 @@ export interface IWebNode {
   serverRelativeUrl: string;
   libraries: ILibraryNode[];
   webs: IWebNode[];
+  error?: string;
 }
