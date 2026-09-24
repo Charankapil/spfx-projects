@@ -4,6 +4,7 @@ import { Icon, Text } from '@fluentui/react';
 
 import { ILibraryNode } from '../models/ILibraryNode';
 import { IWebNode } from '../models/IWebNode';
+import { formatBytes } from '../services/formatBytes';
 import styles from './FileTypeAnalyser.module.scss';
 
 export interface IWebNodeTreeProps {
@@ -68,6 +69,7 @@ const LibraryRow: React.FC<{ library: ILibraryNode; depth: number }> = ({ librar
         {library.scanned && !library.error && (
           <Text variant="small" className={styles.countLabel}>
             {library.totalFiles.toLocaleString()} files
+            {typeof library.sizeBytes === 'number' && ` · ${formatBytes(library.sizeBytes)}`}
             {library.totalFiles === 0 && library.itemCount > 0 &&
               ` (${library.itemCount.toLocaleString()} items not in search index)`}
           </Text>

@@ -14,7 +14,8 @@ The obvious way to build this ("walk every folder, list every file") falls
 over on a site collection with millions of documents — it means millions
 of throttled REST calls. This solution avoids that entirely:
 
-1. **Structure discovery is cheap.** `_api/web/webs` and `_api/web/lists`
+1. **Structure discovery is cheap.**
+   `_api/web/getsubwebsfilteredforcurrentuser(...)` and `_api/web/lists`
    return metadata about subsites and document libraries only — never
    file listings. A site collection typically has dozens to low hundreds
    of libraries, not millions, so this step is fast regardless of how much
@@ -50,18 +51,21 @@ of throttled REST calls. This solution avoids that entirely:
    rest folded out of the per-library breakdown (the site-wide "Files
    indexed" total is unaffected — that comes from the query's total row
    count, not the refiner list).
-3. **Storage numbers come from SharePoint's own tracked usage.** The
-   overall "storage used" figure shown in the summary comes from
-   `_api/site?$select=Usage`, which SharePoint already maintains — no
-   scanning required for it.
+3. **Storage numbers come from SharePoint's own tracked metrics.** The
+   site-wide "storage used" figure comes from `_api/site?$select=Usage`,
+   and each library's size from its root folder's storage metrics
+   (`GetFolderByServerRelativeUrl('<library>')?$select=StorageMetrics&$expand=StorageMetrics`,
+   `TotalSize` in bytes, versions included — the same number the Storage
+   Metrics page shows). One request per library; no scanning of files. If
+   the size lookup fails, the dashboard falls back to sizing libraries by
+   file count and says so.
 
-This is a deliberate trade-off: you get an accurate **file-count**
-breakdown per type, per library, per site, essentially in real time, but
-not an exact **byte size** per file type (the search index does not expose
-a summable size property). If you need that, you would need a true deep
-scan of every file's `Length` property, which is the expensive operation
-this tool is explicitly designed to avoid. The site-wide storage figure in
-the summary gives you the overall size context instead.
+This is a deliberate trade-off: you get exact **storage per library** and
+an accurate **file count per type**, but not the **bytes per file type**
+(the search index does not expose a summable size property, and storage
+metrics are per folder, not per extension). Getting that would need a deep
+scan of every file's `Length`, which is the expensive operation this tool
+is explicitly designed to avoid. The dashboard labels which figure is which.
 
 ## No Azure, no client id
 
@@ -80,20 +84,48 @@ there.
 
 ## Features
 
-- **Start scan** button — kicks off an asynchronous scan; **Cancel**
-  stops it early (already-collected results are kept).
-- **Tree viewer** — site collection → subsites → document libraries →
-  file types, expandable/collapsible, rendered incrementally as each
-  library finishes so you don't stare at a blank screen on a big site
-  collection.
-- **Summary tiles** — site storage used, webs scanned, libraries scanned,
-  total files indexed, distinct file types.
-- **Site-wide file type chips** — aggregated totals across the whole
-  site collection.
-- **Export CSV** — one row per (web, library, file type, count),
-  generated entirely client-side from the last completed scan.
-- **Throttling-aware** — requests are gently paced and automatically
-  retry with backoff on SharePoint `429`/`503` responses.
+- **Saved results** — the last scan is saved to the site and shown to
+  everyone who opens the page, so nobody lands on an empty web part (see
+  *Saved results* below).
+- **Dashboard**
+  - Headline figures — site storage, files, libraries, sites, file types —
+    each with the change since the previous scan.
+  - **Storage treemap** (WinDirStat-style) — one tile per library sized by
+    its storage, subdivided by file-type category (Word & text, PowerPoint,
+    Excel & data, PDF, Images, Video & audio, Archives, Web & code, Other)
+    as shares of the library's file count. Hover for exact figures.
+  - **File types list** — the top 12 extensions with exact counts and
+    shares; the readable companion to the treemap.
+- **Scan controls** — only site owners / site collection admins see
+  **Start scan** / **Run new scan**; **Cancel** stops a scan and puts the
+  previous results back.
+- **Site tree** — site collection → subsites → libraries → file types, with
+  per-library file counts and sizes, rendered live during a scan.
+- **Export CSV** — one row per (web, library, file type) with counts and
+  library size; works from saved results too.
+- **Resilient** — an inaccessible subsite or failing library is marked in
+  place and the scan continues; SharePoint `429`/`503` throttling is retried
+  honouring `Retry-After`.
+
+## Saved results
+
+When a scan finishes, the web part writes it to
+`SiteAssets/file-type-analyser-scan.json` in the **root site** of the site
+collection (creating the Site Assets library if it does not exist), and
+every visitor loads that file when the page opens. The file also keeps the
+previous scan's headline figures, which is where the "since …" changes on
+the dashboard come from.
+
+- **Who can run a scan:** people with *Manage Web* permission on the site
+  or site collection admins. Saving needs write access to Site Assets on
+  the root site; if the save fails, the results are still shown to the
+  person who ran the scan and a warning explains why they weren't saved.
+- **Who can see the results:** anyone who can read the root site's Site
+  Assets. The saved scan reflects what *the person who ran it* could see —
+  run by an admin, it can list names and counts of libraries in subsites
+  that other readers cannot open. It never contains file names or
+  contents, only library names, counts and sizes.
+- The saved file itself is counted as one `.json` file in Site Assets.
 
 ## Project layout
 
@@ -102,13 +134,24 @@ src/webparts/fileTypeAnalyser/
   FileTypeAnalyserWebPart.ts        Web part entry point, property pane
   FileTypeAnalyserWebPart.manifest.json
   components/
-    FileTypeAnalyser.tsx            Main React component (scan controls, summary, tree)
+    FileTypeAnalyser.tsx            Main component: load saved scan, scan controls, save
     WebNodeTree.tsx                 Recursive tree renderer (webs, libraries, file types)
     IFileTypeAnalyserProps.ts
     FileTypeAnalyser.module.scss
+    dashboard/
+      Dashboard.tsx                 KPI row + treemap + file types panels
+      KpiRow.tsx                    Headline figures with change since previous scan
+      Treemap.tsx                   Storage treemap with hover tooltip
+      squarify.ts                   Squarified treemap layout (no chart library)
+      TopFileTypes.tsx              Labelled per-extension bar list
+      fileTypeCategories.ts         Extension -> category and validated colour palette
+      format.ts                     Number / date formatting
+      Dashboard.module.scss
   services/
     SharePointService.ts            All SharePoint REST/Search calls + scan orchestration
+    ResultsStore.ts                 Save / load the last scan in Site Assets
     ExportService.ts                CSV export
+    httpErrors.ts                   Reads SharePoint's error message from a failed response
     formatBytes.ts                  Byte formatting helper
   models/                           Shared TypeScript interfaces
   loc/                              Localized strings

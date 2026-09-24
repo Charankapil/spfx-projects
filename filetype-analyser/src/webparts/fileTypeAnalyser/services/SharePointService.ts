@@ -12,6 +12,7 @@ import { IScanProgress } from '../models/IScanProgress';
 import { ISiteCollectionOverview } from '../models/ISiteCollectionOverview';
 import { IStorageInfo } from '../models/IStorageInfo';
 import { IWebNode } from '../models/IWebNode';
+import { describeError } from './httpErrors';
 
 /**
  * All calls go through the ambient SPHttpClient, which reuses the current
@@ -118,36 +119,6 @@ export class SharePointService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  /**
-   * SharePoint puts the useful part of a failure in the response body, so read
-   * it rather than reporting a bare status code - "Request failed (500)" says
-   * nothing, while the body names the actual managed property or syntax it
-   * choked on.
-   */
-  private async describeError(response: SPHttpClientResponse): Promise<string> {
-    try {
-      const body = await response.text();
-      if (!body) {
-        return response.statusText || 'no error details returned';
-      }
-      try {
-        const parsed = JSON.parse(body);
-        const message = parsed?.error?.message;
-        if (typeof message === 'string') {
-          return message;
-        }
-        if (message && typeof message.value === 'string') {
-          return message.value;
-        }
-      } catch {
-        // Body was not JSON - fall through and surface the raw text instead.
-      }
-      return body.substring(0, 300);
-    } catch {
-      return response.statusText || 'no error details returned';
-    }
-  }
-
   private async getJson<T>(
     url: string,
     configuration: SPHttpClientConfiguration = SPHttpClient.configurations.v1,
@@ -167,7 +138,7 @@ export class SharePointService {
     }
 
     if (!response.ok) {
-      const detail = await this.describeError(response);
+      const detail = await describeError(response);
       // The URL is long enough to swamp the tree UI, so keep it to the console.
       console.error(`[File Type Analyser] ${response.status} from ${url}: ${detail}`);
       throw new Error(`${response.status}: ${detail}`);
@@ -240,13 +211,7 @@ export class SharePointService {
    * Aggregates a file-type breakdown for one library using the search
    * index's refiners, instead of enumerating every file. The count comes
    * back in a single request regardless of how many files the library holds.
-   *
-   * Scoped by Path with a trailing "/*" rather than ListId: a ListId-scoped
-   * query (with or without braces around the GUID) reliably returned
-   * HTTP 500 from this tenant's search endpoint, while this exact
-   * Path-based shape (only the managed property differed - IsDocument here
-   * vs. a bogus contentclass in an earlier version) is confirmed to return
-   * HTTP 200. The trailing slash before "*" stops "Documents" from also
+   * The trailing "/*" on the Path restriction stops "Documents" from also
    * matching a library like "Documents2".
    */
   private async getFileTypeBreakdown(
@@ -282,6 +247,22 @@ export class SharePointService {
 
     stats.sort((a, b) => b.count - a.count);
     return { stats, totalFiles };
+  }
+
+  /**
+   * Library storage from the folder's StorageMetrics - the same figure the
+   * Storage Metrics page shows, in bytes, including versions. One request per
+   * library, no file enumeration. Must be called on the library's own web,
+   * since GetFolderByServerRelativeUrl only resolves folders of that web.
+   */
+  private async getLibrarySize(webUrl: string, folderServerRelativeUrl: string): Promise<number | undefined> {
+    const path = encodeURIComponent(folderServerRelativeUrl.replace(/'/g, "''")).replace(/%2F/g, '/');
+    const url =
+      `${webUrl}/_api/web/GetFolderByServerRelativeUrl('${path}')` +
+      `?$select=StorageMetrics&$expand=StorageMetrics`;
+    const json = await this.getJson<{ StorageMetrics?: { TotalSize?: number | string } }>(url);
+    const size = Number(json.StorageMetrics?.TotalSize);
+    return isFinite(size) && size >= 0 ? size : undefined;
   }
 
   /**
@@ -342,6 +323,16 @@ export class SharePointService {
         library.error = err instanceof Error ? err.message : 'Unknown error';
         library.scanned = true;
       }
+      // Size is a separate, optional figure: if StorageMetrics is unavailable the
+      // dashboard falls back to sizing by file count, so its failure is not
+      // reported as a library error.
+      try {
+        library.sizeBytes = await this.getLibrarySize(library.webUrl, library.serverRelativeUrl);
+      } catch (err) {
+        if (err instanceof ScanCancelledError) {
+          throw err;
+        }
+      }
       progress.librariesScanned++;
       onProgress({ ...progress });
       if (onNodeUpdated) {
@@ -351,6 +342,8 @@ export class SharePointService {
 
     const totalFileTypeStats = this.aggregateFileTypes(allLibraries);
     const totalFiles = totalFileTypeStats.reduce((sum, s) => sum + s.count, 0);
+    const sized = allLibraries.filter((l) => typeof l.sizeBytes === 'number');
+    const totalLibraryBytes = sized.reduce((sum, l) => sum + (l.sizeBytes || 0), 0);
     const storage = await storagePromise;
 
     progress.phase = 'completed';
@@ -365,8 +358,11 @@ export class SharePointService {
       totalFiles,
       totalLibraries: allLibraries.length,
       totalWebs: progress.websDiscovered,
+      totalLibraryBytes,
+      sizesAvailable: sized.length > 0,
       scanStartedAt,
-      scanCompletedAt: new Date()
+      scanCompletedAt: new Date(),
+      scannedBy: this.context.pageContext.user.displayName
     };
   }
 
@@ -407,6 +403,7 @@ export class SharePointService {
     const libraryNodes: ILibraryNode[] = libraries.map((lib) => ({
       id: lib.Id,
       title: lib.Title,
+      webUrl: webAbsoluteUrl,
       serverRelativeUrl: lib.RootFolder.ServerRelativeUrl,
       absoluteUrl: this.toAbsoluteUrl(lib.RootFolder.ServerRelativeUrl),
       itemCount: lib.ItemCount,

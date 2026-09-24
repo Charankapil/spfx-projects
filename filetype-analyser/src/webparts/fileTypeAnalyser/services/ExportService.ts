@@ -3,10 +3,13 @@ import { ISiteCollectionOverview } from '../models/ISiteCollectionOverview';
 import { IWebNode } from '../models/IWebNode';
 
 function csvEscape(value: string): string {
-  if (/[",\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // Library titles now round-trip through a shared file in Site Assets, so a
+  // title starting with = + - @ would otherwise run as a formula in Excel.
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (/[",\n\r]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return value;
+  return safe;
 }
 
 function collectWebErrors(web: IWebNode, out: IWebNode[]): void {
@@ -36,39 +39,38 @@ export function exportOverviewToCsv(overview: ISiteCollectionOverview): void {
   const rows: { webTitle: string; webUrl: string; library: ILibraryNode }[] = [];
   flattenLibraries(overview.rootWeb, rows);
 
-  const header = ['Site', 'Web', 'Library', 'File Type', 'File Count', 'Library Item Count', 'Scan Error'];
+  const header = [
+    'Site',
+    'Web',
+    'Library',
+    'File Type',
+    'File Count',
+    'Library Item Count',
+    'Library Size (bytes)',
+    'Scan Error'
+  ];
   const lines: string[] = [header.map(csvEscape).join(',')];
+  const line = (values: string[]): string => values.map(csvEscape).join(',');
 
   for (const row of rows) {
-    if (row.library.fileTypes.length === 0) {
-      lines.push(
-        [
-          overview.siteUrl,
-          row.webUrl,
-          row.library.title,
-          '',
-          '0',
-          String(row.library.itemCount),
-          row.library.error || ''
-        ]
-          .map((v) => csvEscape(String(v)))
-          .join(',')
-      );
+    const lib = row.library;
+    const size = typeof lib.sizeBytes === 'number' ? String(lib.sizeBytes) : '';
+    if (lib.fileTypes.length === 0) {
+      lines.push(line([overview.siteUrl, row.webUrl, lib.title, '', '0', String(lib.itemCount), size, lib.error || '']));
       continue;
     }
-    for (const stat of row.library.fileTypes) {
+    for (const stat of lib.fileTypes) {
       lines.push(
-        [
+        line([
           overview.siteUrl,
           row.webUrl,
-          row.library.title,
+          lib.title,
           stat.extension,
           String(stat.count),
-          String(row.library.itemCount),
-          row.library.error || ''
-        ]
-          .map((v) => csvEscape(String(v)))
-          .join(',')
+          String(lib.itemCount),
+          size,
+          lib.error || ''
+        ])
       );
     }
   }
@@ -76,9 +78,7 @@ export function exportOverviewToCsv(overview: ISiteCollectionOverview): void {
   const failedWebs: IWebNode[] = [];
   collectWebErrors(overview.rootWeb, failedWebs);
   for (const web of failedWebs) {
-    lines.push(
-      [overview.siteUrl, web.url, '', '', '', '', web.error || ''].map((v) => csvEscape(String(v))).join(',')
-    );
+    lines.push(line([overview.siteUrl, web.url, '', '', '', '', '', web.error || '']));
   }
 
   const csvContent = lines.join('\r\n');

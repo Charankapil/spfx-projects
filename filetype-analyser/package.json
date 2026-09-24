@@ -1,6 +1,6 @@
 {
   "name": "filetype-analyser",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "engines": {
     "node": ">=16.13.0 <19.0.0"
@@ -14,16 +14,17 @@
     "package-solution": "gulp package-solution --ship"
   },
   "dependencies": {
+    "@fluentui/react": "^8.106.4",
     "@microsoft/sp-component-base": "1.18.2",
     "@microsoft/sp-core-library": "1.18.2",
     "@microsoft/sp-lodash-subset": "1.18.2",
     "@microsoft/sp-office-ui-fabric-core": "1.18.2",
+    "@microsoft/sp-page-context": "1.18.2",
     "@microsoft/sp-property-pane": "1.18.2",
     "@microsoft/sp-webpart-base": "1.18.2",
-    "@fluentui/react": "^8.106.4",
-    "tslib": "2.3.1",
     "react": "17.0.1",
-    "react-dom": "17.0.1"
+    "react-dom": "17.0.1",
+    "tslib": "2.3.1"
   },
   "devDependencies": {
     "@microsoft/eslint-config-spfx": "1.18.2",
