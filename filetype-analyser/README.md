@@ -1,12 +1,74 @@
 # File Type Analyser
 
-An SPFx web part that scans a SharePoint site collection and renders a
-dashboard and tree view of every document library and the file types stored
-in it — file counts per type, per library and per site, with CSV export. It is built
-to remain usable on very large site collections (10+ TB, millions of
-documents) and requires **no Azure AD app registration and no client
-id/secret** — it only talks to SharePoint's own REST and Search APIs
-using the current user's session.
+**See what a SharePoint site collection is made of, by file type, in minutes.**
+No Azure app registration, no file-by-file crawl, no extra licence. One
+`.sppkg` and a site owner.
+
+![File Type Analyser dashboard](docs/images/dashboard.png)
+<sub>Sample data from a fictional site collection.</sub>
+
+SharePoint Online tells you how much storage a site collection uses. It
+does not tell you what that storage is made of. There is no built-in view
+that breaks a site collection down by file type, so the usual options are a
+PowerShell script or a third-party migration or governance tool. Both read
+every file, which means the bigger the site, the longer you wait.
+
+File Type Analyser asks SharePoint's search index instead. The index
+already knows every file's type, so the web part gets a complete count for
+each library with a single query, whether that library holds ten files or
+ten million.
+
+## Highlights
+
+- **Fast at any size.** One search query per document library. Scan time
+  depends on how many libraries you have, not how many files are in them,
+  so a site collection with millions of documents and 10+ TB of storage
+  typically scans in minutes.
+- **Exact counts, not estimates.** Every figure is an aggregate from
+  SharePoint's own search index: up to 500 distinct file types per
+  library, with no sampling.
+- **Nothing to set up outside SharePoint.** No Azure AD / Entra ID app, no
+  client ID or secret, no Microsoft Graph permissions, no service account.
+  The web part runs as the signed-in user through SPFx's built-in
+  `SPHttpClient`.
+- **Saved for everyone.** A site owner runs the scan once. The results are
+  saved to the site's Site Assets library, and everyone who opens the page
+  sees the latest dashboard straight away, with the change since the
+  previous scan.
+- **A dashboard people read.** Headline figures, category cards, a
+  WinDirStat-style treemap of every file type, the full type list, a site
+  and library tree, and CSV export for Excel.
+- **Built for large tenants.** Requests are paced and retried on
+  throttling (honouring `Retry-After`). A subsite you can't open is
+  recorded and skipped instead of stopping the scan.
+- **Fits the site it lives on.** It picks up the site's theme colours and
+  respects reduced-motion settings.
+
+## How it compares
+
+|                                   | File-by-file inventory (script or tool) | File Type Analyser               |
+| --------------------------------- | --------------------------------------- | -------------------------------- |
+| Work per library                  | Reads every item                        | One search query                 |
+| Scan time grows with              | Number of files                         | Number of libraries              |
+| 5,000-item list view threshold    | Has to page around it                   | Not affected                     |
+| App registration or extra licence | Usually required                        | None                             |
+| Sharing the result                | Export a file and send it               | Saved on the page for everyone   |
+
+## Get started
+
+1. Download [`releases/file-type-analyser-webpart.sppkg`](releases/file-type-analyser-webpart.sppkg).
+2. Upload it to your tenant or site collection App Catalog and click
+   **Deploy**.
+3. Add **File Type Analyser** to a page on the site collection you want to
+   look at.
+4. As a site owner or site collection admin, click **Start scan**.
+
+Full deployment notes, including how to upgrade, are in [Deploy](#deploy).
+
+**What the numbers cover.** Counts come from the search index, so they
+include files that search has indexed and that the person running the scan
+can see. Files in libraries excluded from search, or uploaded minutes before
+the scan, are not counted until search picks them up.
 
 ## Why it scales
 
