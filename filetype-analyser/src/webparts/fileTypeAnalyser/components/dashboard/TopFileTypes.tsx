@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useState } from 'react';
+import { Icon } from '@fluentui/react';
 
 import { ISiteCollectionOverview } from '../../models/ISiteCollectionOverview';
 import styles from './Dashboard.module.scss';
@@ -37,7 +38,10 @@ export const TopFileTypes: React.FC<{ overview: ISiteCollectionOverview }> = ({ 
                   className={styles.typeRow}
                   title={`.${s.extension} — ${cat.label}: ${s.count.toLocaleString()} files (${formatPercent(s.count, total)})`}
                 >
-                  <span className={styles.typeName}>.{s.extension}</span>
+                  <span className={styles.typeName}>
+                    <Icon iconName={cat.icon} className={styles.typeIcon} style={{ color: cat.color }} />
+                    .{s.extension}
+                  </span>
                   <span className={styles.barTrack}>
                     <span
                       className={styles.bar}

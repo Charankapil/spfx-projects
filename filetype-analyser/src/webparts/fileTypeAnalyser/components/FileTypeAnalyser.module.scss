@@ -1,21 +1,173 @@
 @import '~@fluentui/react/dist/sass/References.scss';
 
+// SharePoint theme tokens: SPFx swaps these for the site's theme colours at runtime.
+$theme-primary: '[theme:themePrimary, default:#0078d4]';
+$theme-dark: '[theme:themeDark, default:#005a9e]';
+$theme-darker: '[theme:themeDarker, default:#004578]';
+$theme-lighter: '[theme:themeLighter, default:#deecf9]';
+$theme-lighter-alt: '[theme:themeLighterAlt, default:#eff6fc]';
+$border: rgba(11, 11, 11, 0.08);
+$wash: #f7f6f3;
+$card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(0, 0, 0, 0);
+  }
+}
+
 .fileTypeAnalyser {
   font-family: $ms-font-family-fallbacks;
-  padding: 16px 20px 24px;
+  padding: 8px 4px 24px;
+  color: $ms-color-neutralPrimary;
 }
 
-.header {
-  margin-bottom: 12px;
+// Hero band
+.hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  color: #ffffff;
+  background: linear-gradient(135deg, $theme-darker 0%, $theme-dark 45%, $theme-primary 100%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+
+  // Soft light circles for depth; purely decorative and behind the text.
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 70%);
+  }
+
+  &::before {
+    width: 360px;
+    height: 360px;
+    right: -80px;
+    top: -200px;
+  }
+
+  &::after {
+    width: 240px;
+    height: 240px;
+    right: 220px;
+    bottom: -170px;
+  }
 }
 
-.progressWrap {
-  margin: 8px 0 16px;
+.heroText {
+  position: relative;
+  min-width: 0;
+}
+
+.heroEyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.heroTitle {
+  margin: 6px 0 4px;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.heroMeta {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.heroActions {
+  position: relative;
 }
 
 // Fluent MessageBars sit flush against each other and the dashboard otherwise.
 .fileTypeAnalyser :global(.ms-MessageBar) {
   margin-bottom: 12px;
+  border-radius: 8px;
+}
+
+// Scan progress
+.progressCard {
+  background: #ffffff;
+  border: 1px solid $border;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  box-shadow: $card-shadow;
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: $ms-color-neutralSecondary;
+}
+
+.stepDot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  background: #ebeae6;
+  color: $ms-color-neutralSecondary;
+  flex-shrink: 0;
+}
+
+.stepLabel {
+  white-space: nowrap;
+}
+
+.pending {
+  opacity: 0.75;
+}
+
+.done .stepDot {
+  background: $theme-lighter;
+  color: $theme-darker;
+}
+
+.active {
+  color: $ms-color-neutralPrimary;
+  font-weight: 600;
+}
+
+.active .stepDot {
+  background: $theme-primary;
+  color: #ffffff;
+  animation: pulse 1.6s ease-in-out infinite;
 }
 
 .currentItem {
@@ -23,47 +175,47 @@
   word-break: break-all;
 }
 
-.subtle {
-  color: $ms-color-neutralSecondary;
-  margin-top: 2px;
-}
-
 .loading {
   padding: 40px 0;
 }
 
-.sectionTitle {
-  margin: 4px 6px 8px;
-}
-
+// Site tree
 .treeWrap {
   margin-top: 16px;
-  border: 1px solid rgba(11, 11, 11, 0.1);
-  border-radius: 8px;
-  padding: 12px 8px;
+  border: 1px solid $border;
+  border-radius: 12px;
+  padding: 16px 10px 12px;
   background: #ffffff;
+  box-shadow: $card-shadow;
+}
+
+.sectionTitle {
+  margin: 0 8px 10px;
+  font-weight: 600;
 }
 
 .treeNode {
-  margin: 2px 0;
+  margin: 1px 0;
 }
 
 .treeNodeRow {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
+  gap: 8px;
+  padding: 6px 8px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 6px;
+  transition: background 0.12s ease;
 
   &:hover {
-    background: $ms-color-neutralLighter;
+    background: $wash;
   }
 }
 
 .treeChevron {
-  font-size: 11px;
+  font-size: 10px;
   width: 14px;
+  color: $ms-color-neutralSecondary;
 }
 
 .treeChevronSpacer {
@@ -72,8 +224,29 @@
 }
 
 .treeIcon {
-  color: $ms-color-themePrimary;
+  color: $theme-primary;
   font-size: 15px;
+}
+
+.webIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: $theme-lighter-alt;
+  color: $theme-primary;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.webTitle {
+  font-weight: 600;
+}
+
+.spacer {
+  flex: 1;
 }
 
 .pendingLabel {
@@ -81,9 +254,33 @@
   font-style: italic;
 }
 
+// Mini composition bar: a library's files by category, same colours as the dashboard.
+.miniStrip {
+  display: flex;
+  gap: 1px;
+  width: 140px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #ebeae6;
+  flex-shrink: 0;
+
+  @media (max-width: 600px) {
+    display: none;
+  }
+}
+
+.miniSegment {
+  height: 8px;
+  min-width: 2px;
+}
+
 .countLabel {
   color: $ms-color-neutralSecondary;
-  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 80px;
+  text-align: right;
 }
 
 .errorLabel {
@@ -91,22 +288,60 @@
 }
 
 .fileTypeList {
-  border-left: 1px dashed $ms-color-neutralLighter;
+  border-left: 1px dashed $ms-color-neutralQuaternaryAlt;
+  margin: 2px 0 6px;
 }
 
 .fileTypeRow {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 6px;
+  gap: 8px;
+  padding: 3px 8px;
+  font-size: 12px;
 }
 
+.typeSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+// Empty state
 .emptyState {
-  padding: 40px 0;
+  padding: 48px 16px;
+  text-align: center;
 }
 
-.emptyIcon {
-  font-size: 40px;
-  color: $ms-color-neutralTertiary;
-  margin-bottom: 8px;
+.emptyBadge {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  background: $theme-lighter-alt;
+  color: $theme-primary;
+  margin-bottom: 14px;
+}
+
+.emptyTitle {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.emptyText {
+  color: $ms-color-neutralSecondary;
+  max-width: 460px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .active .stepDot {
+    animation: none;
+  }
+
+  .treeNodeRow {
+    transition: none;
+  }
 }

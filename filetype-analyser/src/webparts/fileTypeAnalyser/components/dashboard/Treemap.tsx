@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { IFileTypeStat } from '../../models/IFileTypeStat';
 import { ISiteCollectionOverview } from '../../models/ISiteCollectionOverview';
 import styles from './Dashboard.module.scss';
-import { categoryOf, IFileCategory, OTHER_CATEGORY, totalsByCategory } from './fileTypeCategories';
+import { categoryOf, IFileCategory, OTHER_CATEGORY } from './fileTypeCategories';
 import { formatPercent } from './format';
+import { useEntrance } from './motion';
 import { squarify } from './squarify';
 
 /** Past this many types the tail folds into one tile, like WinDirStat's long extension list. */
@@ -54,6 +55,7 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
   const width = useWidth(containerRef);
   const height = Math.round(Math.max(280, Math.min(460, width * 0.5)));
   const [hover, setHover] = useState<IHover | undefined>(undefined);
+  const entering = useEntrance(overview);
 
   const formatValue = (v: number): string => `${v.toLocaleString()} files`;
 
@@ -84,7 +86,6 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
     return squarify(items, { x: 0, y: 0, w: width, h: height });
   }, [entries, width, height]);
 
-  const legend = useMemo(() => totalsByCategory(overview.totalFileTypeStats), [overview]);
 
   const track = (e: React.MouseEvent, datum: TileDatum): void => {
     const box = containerRef.current ? containerRef.current.getBoundingClientRect() : undefined;
@@ -94,7 +95,7 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
     setHover({ x: e.clientX - box.left, y: e.clientY - box.top, datum });
   };
 
-  const caption = 'Tile area is the number of files of each type across the whole site collection.';
+  const caption = 'Tile area is the number of files of each type across the whole site collection. Hover a tile for exact figures.';
 
   const tooltip = (datum: TileDatum): JSX.Element => {
     if (datum.kind === 'more') {
@@ -135,7 +136,7 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
       >
         {entries.length === 0 && <div className={styles.empty}>No files found in the scanned libraries.</div>}
 
-        {cells.map((cell) => {
+        {cells.map((cell, index) => {
           const x = cell.rect.x + 1;
           const y = cell.rect.y + 1;
           const w = Math.max(0, cell.rect.w - 2);
@@ -148,12 +149,20 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
           return (
             <div
               key={datum.kind === 'type' ? datum.entry.stat.extension : '__more'}
-              className={styles.piece}
-              style={{ left: x, top: y, width: w, height: h, background: category.color, color: category.ink }}
+              className={entering ? `${styles.piece} ${styles.enter}` : styles.piece}
+              style={{
+                left: x,
+                top: y,
+                width: w,
+                height: h,
+                backgroundColor: category.color,
+                color: category.ink,
+                animationDelay: entering ? `${Math.min(index, 24) * 18}ms` : undefined
+              }}
               onMouseMove={(e) => track(e, datum)}
             >
-              {w >= 34 && h >= 18 && <div className={styles.typeTileName}>{label}</div>}
-              {w >= 64 && h >= 36 && <div className={styles.typeTileValue}>{formatValue(value)}</div>}
+              {w >= 48 && h >= 26 && <div className={styles.typeTileName}>{label}</div>}
+              {w >= 76 && h >= 44 && <div className={styles.typeTileValue}>{formatValue(value)}</div>}
             </div>
           );
         })}
@@ -171,14 +180,6 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
         )}
       </div>
 
-      <div className={styles.legend}>
-        {legend.map((t) => (
-          <span key={t.category.key} className={styles.legendItem}>
-            <span className={styles.swatch} style={{ background: t.category.color }} />
-            {t.category.label} {formatPercent(t.count, total)}
-          </span>
-        ))}
-      </div>
     </div>
   );
 };

@@ -2,6 +2,8 @@ import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DefaultButton,
+  getTheme,
+  IButtonStyles,
   Icon,
   MessageBar,
   MessageBarType,
@@ -33,6 +35,32 @@ const INITIAL_PROGRESS: IScanProgress = {
   librariesDiscovered: 0,
   librariesScanned: 0
 };
+
+/**
+ * Buttons sit on the theme-coloured hero band, so they are styled from the
+ * Fluent theme - which SPFx loads with the site's own theme colours.
+ */
+function heroButtonStyles(): { primary: IButtonStyles; secondary: IButtonStyles } {
+  const { palette } = getTheme();
+  const white = '#ffffff';
+  return {
+    primary: {
+      root: { background: white, color: palette.themeDarker, border: 'none', borderRadius: 6, fontWeight: 600 },
+      rootHovered: { background: palette.themeLighterAlt, color: palette.themeDarker },
+      rootPressed: { background: palette.themeLighter, color: palette.themeDarker },
+      rootDisabled: { background: 'rgba(255,255,255,0.55)', color: palette.themeDarker },
+      icon: { color: palette.themeDarker }
+    },
+    secondary: {
+      root: { background: 'rgba(255,255,255,0.08)', color: white, border: '1px solid rgba(255,255,255,0.55)', borderRadius: 6 },
+      rootHovered: { background: 'rgba(255,255,255,0.18)', color: white },
+      rootPressed: { background: 'rgba(255,255,255,0.26)', color: white },
+      rootDisabled: { background: 'transparent', color: 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.3)' },
+      icon: { color: white },
+      iconDisabled: { color: 'rgba(255,255,255,0.5)' }
+    }
+  };
+}
 
 interface INotice {
   type: MessageBarType;
@@ -68,6 +96,7 @@ export const FileTypeAnalyser: React.FC<IFileTypeAnalyserProps> = (props) => {
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<INotice | undefined>(undefined);
+  const heroButtons = useMemo(heroButtonStyles, []);
 
   useEffect(() => {
     let active = true;
@@ -194,38 +223,53 @@ export const FileTypeAnalyser: React.FC<IFileTypeAnalyserProps> = (props) => {
 
   const treeRoot = isScanning ? liveRootWeb : overview ? overview.rootWeb : liveRootWeb;
 
+  let activeStep = 0;
+  if (isSaving) {
+    activeStep = 2;
+  } else if (progress.phase === 'aggregating-file-types') {
+    activeStep = 1;
+  }
+  const scanSteps: { label: string; state: 'done' | 'active' | 'pending' }[] = [
+    'Find sites & libraries',
+    'Count file types',
+    'Save for everyone'
+  ].map((label, i) => ({ label, state: i < activeStep ? 'done' : i === activeStep ? 'active' : 'pending' }));
+
   return (
     <div className={styles.fileTypeAnalyser}>
-      <Stack horizontal horizontalAlign="space-between" verticalAlign="center" className={styles.header} wrap tokens={{ childrenGap: 8 }}>
-        <div>
-          <Text variant="xLarge" block>
-            {props.description || 'File Type Analyser'}
-          </Text>
-          {lastScanLine && (
-            <Text variant="small" block className={styles.subtle}>
-              {lastScanLine}
-              {isSaving && ' · saving…'}
-            </Text>
-          )}
+      <div className={styles.hero}>
+        <div className={styles.heroText}>
+          <div className={styles.heroEyebrow}>
+            <Icon iconName="FabricFolderSearch" /> File inventory
+          </div>
+          <h2 className={styles.heroTitle}>{props.description || 'File Type Analyser'}</h2>
+          <div className={styles.heroMeta}>
+            {lastScanLine || (isLoadingSaved ? 'Loading the last scan\u2026' : 'No scan yet')}
+            {isSaving && ' \u00b7 saving\u2026'}
+          </div>
         </div>
-        <Stack horizontal tokens={{ childrenGap: 8 }}>
+        <Stack horizontal wrap tokens={{ childrenGap: 8 }} className={styles.heroActions}>
           {canScan && !isScanning && (
             <PrimaryButton
               text={overview ? 'Run new scan' : 'Start scan'}
               iconProps={{ iconName: 'ScanView' }}
               onClick={startScan}
               disabled={isLoadingSaved || isSaving}
+              styles={heroButtons.primary}
             />
           )}
-          {isScanning && <DefaultButton text="Cancel" iconProps={{ iconName: 'Cancel' }} onClick={cancelScan} />}
+          {isScanning && (
+            <DefaultButton text="Cancel" iconProps={{ iconName: 'Cancel' }} onClick={cancelScan} styles={heroButtons.secondary} />
+          )}
           <DefaultButton
             text="Export CSV"
             iconProps={{ iconName: 'ExcelDocument' }}
             disabled={!overview || isScanning}
             onClick={handleExport}
+            styles={heroButtons.secondary}
           />
         </Stack>
-      </Stack>
+      </div>
 
       {errorMessage && (
         <MessageBar messageBarType={MessageBarType.error} onDismiss={() => setErrorMessage(undefined)}>
@@ -238,12 +282,24 @@ export const FileTypeAnalyser: React.FC<IFileTypeAnalyserProps> = (props) => {
         </MessageBar>
       )}
 
-      {isScanning && (
-        <div className={styles.progressWrap}>
-          <ProgressIndicator label={progressLabel} percentComplete={progressPercent} />
-          <Text variant="small" block className={styles.currentItem}>
-            {progress.currentItem}
-          </Text>
+      {(isScanning || isSaving) && (
+        <div className={styles.progressCard}>
+          <ol className={styles.steps}>
+            {scanSteps.map((step, i) => (
+              <li key={step.label} className={`${styles.step} ${styles[step.state]}`}>
+                <span className={styles.stepDot}>{step.state === 'done' ? <Icon iconName="CheckMark" /> : i + 1}</span>
+                <span className={styles.stepLabel}>{step.label}</span>
+              </li>
+            ))}
+          </ol>
+          {isScanning && (
+            <>
+              <ProgressIndicator label={progressLabel} percentComplete={progressPercent} />
+              <Text variant="small" block className={styles.currentItem}>
+                {progress.currentItem}
+              </Text>
+            </>
+          )}
         </div>
       )}
 
@@ -266,8 +322,13 @@ export const FileTypeAnalyser: React.FC<IFileTypeAnalyserProps> = (props) => {
 
       {!isLoadingSaved && !isScanning && !overview && !liveRootWeb && (
         <Stack horizontalAlign="center" className={styles.emptyState}>
-          <Icon iconName="FolderSearch" className={styles.emptyIcon} />
-          <Text variant="medium">
+          <span className={styles.emptyBadge}>
+            <Icon iconName="FabricFolderSearch" />
+          </span>
+          <Text variant="large" block className={styles.emptyTitle}>
+            Nothing scanned yet
+          </Text>
+          <Text variant="medium" className={styles.emptyText}>
             {canScan
               ? 'No scan has been run yet. Click “Start scan” to build a file type overview for this site collection.'
               : 'No scan results yet. A site owner needs to run the first scan.'}

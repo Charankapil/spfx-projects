@@ -6,6 +6,8 @@ export interface IFileCategory {
   color: string;
   /** Text colour for labels drawn on top of `color`. */
   ink: string;
+  /** Fluent UI icon name. */
+  icon: string;
 }
 
 const INK_DARK = '#0b0b0b';
@@ -27,8 +29,8 @@ function inkFor(fill: string): string {
   return onDark >= onLight ? INK_LIGHT : INK_DARK;
 }
 
-function category(key: string, label: string, color: string): IFileCategory {
-  return { key, label, color, ink: inkFor(color) };
+function category(key: string, label: string, color: string, icon: string): IFileCategory {
+  return { key, label, color, ink: inkFor(color), icon };
 }
 
 /*
@@ -38,17 +40,17 @@ function category(key: string, label: string, color: string): IFileCategory {
  * than eight fold into a grey "Other" rather than getting generated hues.
  */
 export const CATEGORIES: IFileCategory[] = [
-  category('word', 'Word & text', '#2a78d6'),
-  category('powerpoint', 'PowerPoint', '#eb6834'),
-  category('code', 'Web & code', '#1baf7a'),
-  category('archive', 'Archives', '#eda100'),
-  category('image', 'Images', '#e87ba4'),
-  category('excel', 'Excel & data', '#008300'),
-  category('media', 'Video & audio', '#4a3aa7'),
-  category('pdf', 'PDF', '#e34948')
+  category('word', 'Word & text', '#2a78d6', 'WordDocument'),
+  category('powerpoint', 'PowerPoint', '#eb6834', 'PowerPointDocument'),
+  category('code', 'Web & code', '#1baf7a', 'Code'),
+  category('archive', 'Archives', '#eda100', 'ZipFolder'),
+  category('image', 'Images', '#e87ba4', 'Photo2'),
+  category('excel', 'Excel & data', '#008300', 'ExcelDocument'),
+  category('media', 'Video & audio', '#4a3aa7', 'Video'),
+  category('pdf', 'PDF', '#e34948', 'PDF')
 ];
 
-export const OTHER_CATEGORY: IFileCategory = category('other', 'Other', '#c3c2b7');
+export const OTHER_CATEGORY: IFileCategory = category('other', 'Other', '#c3c2b7', 'Page');
 
 const EXTENSIONS: { [key: string]: string[] } = {
   word: ['doc', 'docx', 'docm', 'dot', 'dotx', 'dotm', 'odt', 'rtf', 'txt', 'md', 'one'],

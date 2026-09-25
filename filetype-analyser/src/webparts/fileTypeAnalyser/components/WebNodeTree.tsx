@@ -3,7 +3,10 @@ import { useState } from 'react';
 import { Icon, Text } from '@fluentui/react';
 
 import { ILibraryNode } from '../models/ILibraryNode';
-import { IWebNode } from '../models/IWebNode';import styles from './FileTypeAnalyser.module.scss';
+import { IWebNode } from '../models/IWebNode';
+import { categoryOf, totalsByCategory } from './dashboard/fileTypeCategories';
+import { formatPercent } from './dashboard/format';
+import styles from './FileTypeAnalyser.module.scss';
 
 export interface IWebNodeTreeProps {
   node: IWebNode;
@@ -22,8 +25,12 @@ export const WebNodeTree: React.FC<IWebNodeTreeProps> = ({ node, depth }) => {
         ) : (
           <span className={styles.treeChevronSpacer} />
         )}
-        <Icon iconName="SharepointLogo" className={styles.treeIcon} />
-        <Text variant="mediumPlus">{node.title || node.serverRelativeUrl}</Text>
+        <span className={styles.webIcon}>
+          <Icon iconName="SharepointLogo" />
+        </span>
+        <Text variant="mediumPlus" className={styles.webTitle}>
+          {node.title || node.serverRelativeUrl}
+        </Text>
         {node.error && (
           <Text variant="small" className={styles.errorLabel}>
             {node.error}
@@ -45,6 +52,29 @@ export const WebNodeTree: React.FC<IWebNodeTreeProps> = ({ node, depth }) => {
   );
 };
 
+/** A library's files by category as one thin stacked bar, in the dashboard's colours. */
+const MiniStrip: React.FC<{ library: ILibraryNode }> = ({ library }) => {
+  const totals = totalsByCategory(library.fileTypes);
+  const all = totals.reduce((sum, t) => sum + t.count, 0);
+  if (all === 0) {
+    return <span className={styles.miniStrip} />;
+  }
+  return (
+    <span
+      className={styles.miniStrip}
+      title={totals.map((t) => `${t.category.label} ${formatPercent(t.count, all)}`).join(' · ')}
+    >
+      {totals.map((t) => (
+        <span
+          key={t.category.key}
+          className={styles.miniSegment}
+          style={{ flexGrow: t.count, background: t.category.color }}
+        />
+      ))}
+    </span>
+  );
+};
+
 const LibraryRow: React.FC<{ library: ILibraryNode; depth: number }> = ({ library, depth }) => {
   const [expanded, setExpanded] = useState(false);
   const hasTypes = library.fileTypes.length > 0;
@@ -59,16 +89,22 @@ const LibraryRow: React.FC<{ library: ILibraryNode; depth: number }> = ({ librar
         )}
         <Icon iconName="DocLibrary" className={styles.treeIcon} />
         <Text variant="medium">{library.title}</Text>
+        <span className={styles.spacer} />
         {!library.scanned && (
           <Text variant="small" className={styles.pendingLabel}>
-            &nbsp;(pending scan)
+            pending scan
           </Text>
         )}
         {library.scanned && !library.error && (
-          <Text variant="small" className={styles.countLabel}>
-            {library.totalFiles.toLocaleString()} files            {library.totalFiles === 0 && library.itemCount > 0 &&
-              ` (${library.itemCount.toLocaleString()} items not in search index)`}
-          </Text>
+          <>
+            <MiniStrip library={library} />
+            <Text variant="small" className={styles.countLabel}>
+              {library.totalFiles.toLocaleString()} files
+              {library.totalFiles === 0 &&
+                library.itemCount > 0 &&
+                ` (${library.itemCount.toLocaleString()} items not in search index)`}
+            </Text>
+          </>
         )}
         {library.error && (
           <Text variant="small" className={styles.errorLabel}>
@@ -78,15 +114,19 @@ const LibraryRow: React.FC<{ library: ILibraryNode; depth: number }> = ({ librar
       </div>
       {expanded && hasTypes && (
         <div className={styles.fileTypeList} style={{ marginLeft: (depth + 1) * 16 }}>
-          {library.fileTypes.map((stat) => (
-            <div key={stat.extension} className={styles.fileTypeRow}>
-              <Icon iconName="Page" className={styles.treeIcon} />
-              <Text variant="small">.{stat.extension}</Text>
-              <Text variant="small" className={styles.countLabel}>
-                {stat.count.toLocaleString()}
-              </Text>
-            </div>
-          ))}
+          {library.fileTypes.map((stat) => {
+            const cat = categoryOf(stat.extension);
+            return (
+              <div key={stat.extension} className={styles.fileTypeRow}>
+                <span className={styles.typeSwatch} style={{ background: cat.color }} />
+                <Text variant="small">.{stat.extension}</Text>
+                <span className={styles.spacer} />
+                <Text variant="small" className={styles.countLabel}>
+                  {stat.count.toLocaleString()}
+                </Text>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

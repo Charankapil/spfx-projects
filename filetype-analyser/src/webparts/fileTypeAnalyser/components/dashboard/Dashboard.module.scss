@@ -2,12 +2,41 @@
 
 // Chart chrome follows the reference data-viz tokens; ink uses SharePoint's
 // neutrals so the dashboard sits naturally on a (light) SharePoint page.
+// Accents use SharePoint theme tokens, which SPFx replaces with the site's
+// own theme colours at runtime (defaults shown are the stock blue theme).
 $ink-primary: $ms-color-neutralPrimary;
 $ink-secondary: $ms-color-neutralSecondary;
 $ink-muted: #898781;
 $hairline: #e1e0d9;
-$border: rgba(11, 11, 11, 0.1);
+$border: rgba(11, 11, 11, 0.08);
 $surface: #ffffff;
+$wash: #f7f6f3;
+$theme-primary: '[theme:themePrimary, default:#0078d4]';
+$theme-lighter-alt: '[theme:themeLighterAlt, default:#eff6fc]';
+$card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+$card-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tileIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 .dashboard {
   display: flex;
@@ -19,28 +48,58 @@ $surface: #ffffff;
 // KPI row
 .kpiRow {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
 
 .kpi {
   background: $surface;
   border: 1px solid $border;
-  border-radius: 8px;
-  padding: 14px 16px;
+  border-radius: 12px;
+  padding: 14px 16px 16px;
   min-width: 0;
+  box-shadow: $card-shadow;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: $card-shadow-hover;
+  }
+}
+
+.kpiHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.kpiIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: $theme-lighter-alt;
+  color: $theme-primary;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .kpiLabel {
   font-size: 12px;
   color: $ink-secondary;
-  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .kpiValue {
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 600;
-  line-height: 1.15;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -49,7 +108,7 @@ $surface: #ffffff;
 .kpiDelta {
   font-size: 12px;
   color: $ink-muted;
-  margin-top: 4px;
+  margin-top: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -58,7 +117,7 @@ $surface: #ffffff;
 // Panels
 .panels {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
   gap: 16px;
 
   @media (max-width: 900px) {
@@ -69,9 +128,10 @@ $surface: #ffffff;
 .panel {
   background: $surface;
   border: 1px solid $border;
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 18px;
   min-width: 0;
+  box-shadow: $card-shadow;
 }
 
 .panelTitle {
@@ -83,7 +143,100 @@ $surface: #ffffff;
 .panelCaption {
   font-size: 12px;
   color: $ink-secondary;
-  margin: 0 0 12px;
+  margin: 0 0 14px;
+}
+
+// Entrance animations are applied only briefly (see useEntrance), never permanently.
+.kpi.enter,
+.categoryCard.enter {
+  animation: fadeUp 0.4s ease both;
+}
+
+.piece.enter {
+  animation: tileIn 0.35s ease both;
+}
+
+// Category cards
+.categoryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.categoryCard {
+  border: 1px solid $border;
+  border-radius: 10px;
+  padding: 12px;
+  background: $wash;
+  min-width: 0;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+
+  &:hover {
+    background: $surface;
+    transform: translateY(-2px);
+    box-shadow: $card-shadow-hover;
+  }
+}
+
+.categoryHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.categoryIcon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.categoryName {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.categoryCount {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 10px 0 8px;
+  white-space: nowrap;
+}
+
+.categoryShare {
+  font-size: 12px;
+  font-weight: 400;
+  color: $ink-secondary;
+  margin-left: 6px;
+}
+
+.categoryTrack {
+  height: 6px;
+  border-radius: 3px;
+  background: #ebeae6;
+  overflow: hidden;
+}
+
+.categoryFill {
+  height: 6px;
+  border-radius: 3px;
+}
+
+.categoryTypes {
+  font-size: 11px;
+  color: $ink-secondary;
+  margin-top: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 // Treemap
@@ -94,19 +247,25 @@ $surface: #ffffff;
   background: $surface;
 }
 
+// WinDirStat-style cushion: a soft highlight over the category colour. It
+// shades every tile identically, so it never changes what a colour means.
 .piece {
   position: absolute;
   box-sizing: border-box;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 11px;
   line-height: 15px;
-  padding: 4px 6px;
+  padding: 6px 8px;
   overflow: hidden;
   cursor: default;
+  background-image: radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0) 65%),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.1));
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
 
   &:hover {
-    outline: 2px solid $ink-primary;
-    outline-offset: -2px;
+    filter: brightness(1.06) saturate(1.05);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85), 0 4px 14px rgba(0, 0, 0, 0.18);
+    z-index: 1;
   }
 }
 
@@ -118,8 +277,8 @@ $surface: #ffffff;
 }
 
 .typeTileName {
-  font-weight: 600;
-  font-size: 12px;
+  font-weight: 700;
+  font-size: 13px;
 }
 
 .typeTileValue {
@@ -128,13 +287,13 @@ $surface: #ffffff;
 
 .tooltip {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   pointer-events: none;
   background: $surface;
   border: 1px solid $border;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  padding: 8px 10px;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+  padding: 10px 12px;
   font-size: 12px;
   line-height: 18px;
   max-width: 280px;
@@ -149,29 +308,6 @@ $surface: #ffffff;
   color: $ink-secondary;
 }
 
-// Legend
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  margin-top: 12px;
-  font-size: 12px;
-  color: $ink-secondary;
-}
-
-.legendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
 // Top file types
 .typeList {
   list-style: none;
@@ -181,15 +317,16 @@ $surface: #ffffff;
 
 .typeRow {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) auto;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 4px 4px;
-  border-radius: 4px;
+  padding: 5px 6px;
+  border-radius: 6px;
   font-size: 12px;
+  transition: background 0.12s ease;
 
   &:hover {
-    background: #f3f2ef;
+    background: $wash;
   }
 }
 
@@ -198,17 +335,27 @@ $surface: #ffffff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+.typeIcon {
+  font-size: 14px;
+  margin-right: 6px;
+  flex-shrink: 0;
 }
 
 .barTrack {
   height: 10px;
-  border-bottom: 1px solid $hairline;
+  border-radius: 5px;
+  background: #f0efec;
+  overflow: hidden;
 }
 
 .bar {
   height: 10px;
-  border-radius: 0 4px 4px 0;
-  min-width: 2px;
+  border-radius: 5px;
+  min-width: 3px;
 }
 
 .typeValue {
@@ -218,17 +365,18 @@ $surface: #ffffff;
 }
 
 .showAll {
-  margin-top: 8px;
-  padding: 4px;
-  border: 0;
-  background: none;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: $surface;
   font: inherit;
   font-size: 12px;
-  color: $ms-color-themePrimary;
+  color: $theme-primary;
   cursor: pointer;
 
   &:hover {
-    text-decoration: underline;
+    background: $theme-lighter-alt;
   }
 }
 
@@ -237,4 +385,19 @@ $surface: #ffffff;
   color: $ink-secondary;
   padding: 24px 0;
   text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kpi,
+  .categoryCard,
+  .piece,
+  .enter {
+    animation: none;
+    transition: none;
+  }
+
+  .kpi:hover,
+  .categoryCard:hover {
+    transform: none;
+  }
 }

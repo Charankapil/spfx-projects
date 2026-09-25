@@ -78,6 +78,11 @@ there.
 - **Saved results** — the last scan is saved to the site and shown to
   everyone who opens the page, so nobody lands on an empty web part (see
   *Saved results* below).
+- **Look and feel** — a hero band and accents in the site's own theme
+  colours (SharePoint theme tokens, so it follows the site theme without
+  configuration), category icons, WinDirStat-style cushioned treemap tiles
+  and short entrance / count-up animations that are switched off for
+  people who set their system to reduce motion.
 - **Dashboard**
   - Headline figures — site storage, files, libraries, sites, file types —
     each with the change since the previous scan.
@@ -86,13 +91,16 @@ there.
     and coloured by category (Word & text, PowerPoint, Excel & data, PDF,
     Images, Video & audio, Archives, Web & code, Other). Hover for the
     exact count and share.
+  - **What's in this site collection** — one card per category (icon,
+    file count, share, most common extensions); doubles as the colour key.
   - **File types list** — every extension with its exact count and share,
     top 12 first with **Show all** for the rest.
 - **Scan controls** — only site owners / site collection admins see
   **Start scan** / **Run new scan**; **Cancel** stops a scan and puts the
   previous results back.
 - **Site tree** — site collection → subsites → libraries → file types, with
-  per-library file counts, rendered live during a scan.
+  per-library file counts and a mini bar of each library's mix of file
+  categories, rendered live during a scan.
 - **Export CSV** — one row per (web, library, file type) with counts;
   works from saved results too.
 - **Resilient** — an inaccessible subsite or failing library is marked in
@@ -133,6 +141,8 @@ src/webparts/fileTypeAnalyser/
     dashboard/
       Dashboard.tsx                 KPI row + treemap + file types panels
       KpiRow.tsx                    Headline figures with change since previous scan
+      CategoryCards.tsx             Per-category cards (colour key for the treemap)
+      motion.ts                     Count-up and one-shot entrance animation hooks
       Treemap.tsx                   Files-by-file-type treemap with hover tooltip
       squarify.ts                   Squarified treemap layout (no chart library)
       TopFileTypes.tsx              Every extension with counts (show all)
