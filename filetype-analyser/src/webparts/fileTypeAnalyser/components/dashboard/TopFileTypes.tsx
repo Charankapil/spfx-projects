@@ -4,6 +4,7 @@ import { ISiteCollectionOverview } from '../../models/ISiteCollectionOverview';
 import styles from './Dashboard.module.scss';
 import { categoryOf, OTHER_CATEGORY } from './fileTypeCategories';
 import { formatPercent } from './format';
+import { formatBytes } from '../../services/formatBytes';
 
 const TOP_N = 12;
 
@@ -22,7 +23,8 @@ export const TopFileTypes: React.FC<{ overview: ISiteCollectionOverview }> = ({ 
 
   const rows: IRow[] = stats.slice(0, TOP_N).map((s) => {
     const cat = categoryOf(s.extension);
-    return { key: s.extension, label: `.${s.extension}`, count: s.count, color: cat.color, hint: cat.label };
+    const size = typeof s.estimatedBytes === 'number' ? `, ~${formatBytes(s.estimatedBytes)} estimated` : '';
+    return { key: s.extension, label: `.${s.extension}`, count: s.count, color: cat.color, hint: `${cat.label}${size}` };
   });
   const rest = stats.slice(TOP_N);
   if (rest.length > 0) {

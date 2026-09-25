@@ -13,6 +13,10 @@ import { ISiteCollectionOverview } from '../models/ISiteCollectionOverview';
 import { IStorageInfo } from '../models/IStorageInfo';
 import { IWebNode } from '../models/IWebNode';
 import { describeError } from './httpErrors';
+import { estimateFromBands, ISizeBandEntry, SIZE_THRESHOLDS } from './sizeEstimate';
+
+/** One search per file type; past this many types the rest are reported as not measured. */
+const MAX_TYPES_TO_ESTIMATE = 100;
 
 /**
  * All calls go through the ambient SPHttpClient, which reuses the current
@@ -37,6 +41,7 @@ interface IListListItem {
 interface ISearchRefinerEntry {
   RefinementName: string;
   RefinementCount: string;
+  RefinementToken?: string;
 }
 
 /**
@@ -250,6 +255,40 @@ export class SharePointService {
   }
 
   /**
+   * Estimated site-wide storage for one extension. Search cannot sum sizes,
+   * but it can count files per size band ("Size" refiner with manual
+   * thresholds); bytes are estimated as count x a typical size per band.
+   * Covers current file versions only - version history is not in the index.
+   * Returns undefined when the Size refiner comes back empty, so the caller
+   * can fall back to file counts instead of showing zero storage.
+   */
+  private async estimateTypeStorage(extension: string): Promise<number | undefined> {
+    const kql = `IsDocument:1 FileType:"${extension}" Path:"${this.siteAbsoluteUrl}/*"`;
+    const refiner = `Size(discretize=manual/${SIZE_THRESHOLDS.join('/')})`;
+    const url =
+      `${this.siteAbsoluteUrl}/_api/search/query` +
+      `?querytext=${encodeURIComponent(`'${kql}'`)}` +
+      `&rowlimit=1` +
+      `&refiners=${encodeURIComponent(`'${refiner}'`)}` +
+      `&trimduplicates=false` +
+      `&clienttype='ContentSearchRegular'`;
+
+    const json = await this.getJson<ISearchQueryResponse>(url, SEARCH_CONFIG);
+    const primary =
+      json.PrimaryQueryResult || json.d?.query?.PrimaryQueryResult || json.d?.PrimaryQueryResult;
+    const sizeRefiner = toArray(primary?.RefinementResults?.Refiners).filter(
+      (r) => (r.Name || '').toLowerCase() === 'size'
+    )[0];
+    const entries: ISizeBandEntry[] = toArray(sizeRefiner?.Entries);
+    const estimate = estimateFromBands(entries);
+    if (estimate.files === 0) {
+      return undefined;
+    }
+    // Bands whose range could not be read are costed at the average of the rest.
+    return Math.round(estimate.bytes * ((estimate.files + estimate.unparsedFiles) / estimate.files));
+  }
+
+  /**
    * Library storage from the folder's StorageMetrics - the same figure the
    * Storage Metrics page shows, in bytes, including versions. One request per
    * library, no file enumeration. Must be called on the library's own web,
@@ -342,6 +381,30 @@ export class SharePointService {
 
     const totalFileTypeStats = this.aggregateFileTypes(allLibraries);
     const totalFiles = totalFileTypeStats.reduce((sum, s) => sum + s.count, 0);
+
+    // Stats are sorted by count, so the cap drops the rarest types first.
+    const toEstimate = totalFileTypeStats.filter((s) => /^[a-z0-9_+-]+$/i.test(s.extension)).slice(0, MAX_TYPES_TO_ESTIMATE);
+    progress.phase = 'estimating-storage';
+    progress.typesToEstimate = toEstimate.length;
+    progress.typesEstimated = 0;
+    onProgress({ ...progress });
+    let typesDone = 0;
+    for (const stat of toEstimate) {
+      this.throwIfCancelled();
+      progress.currentItem = `.${stat.extension}`;
+      onProgress({ ...progress });
+      try {
+        stat.estimatedBytes = await this.estimateTypeStorage(stat.extension);
+      } catch (err) {
+        if (err instanceof ScanCancelledError) {
+          throw err;
+        }
+      }
+      progress.typesEstimated = ++typesDone;
+      onProgress({ ...progress });
+    }
+    const measured = totalFileTypeStats.filter((s) => typeof s.estimatedBytes === 'number');
+    const totalEstimatedBytes = measured.reduce((sum, s) => sum + (s.estimatedBytes || 0), 0);
     const sized = allLibraries.filter((l) => typeof l.sizeBytes === 'number');
     const totalLibraryBytes = sized.reduce((sum, l) => sum + (l.sizeBytes || 0), 0);
     const storage = await storagePromise;
@@ -360,6 +423,9 @@ export class SharePointService {
       totalWebs: progress.websDiscovered,
       totalLibraryBytes,
       sizesAvailable: sized.length > 0,
+      typeSizesEstimated: measured.length > 0,
+      totalEstimatedBytes,
+      unmeasuredTypes: totalFileTypeStats.length - measured.length,
       scanStartedAt,
       scanCompletedAt: new Date(),
       scannedBy: this.context.pageContext.user.displayName

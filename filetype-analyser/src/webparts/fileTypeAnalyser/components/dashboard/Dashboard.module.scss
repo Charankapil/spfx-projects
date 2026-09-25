@@ -94,52 +94,14 @@ $surface: #ffffff;
   background: $surface;
 }
 
-.tile {
-  position: absolute;
-  box-sizing: border-box;
-  background: #f3f2ef;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.tileHeader {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 22px;
-  padding: 0 6px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: $ink-primary;
-  white-space: nowrap;
-}
-
-.tileTitle {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.tileSize {
-  color: $ink-secondary;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
 .piece {
   position: absolute;
   box-sizing: border-box;
-  border-radius: 2px;
+  border-radius: 4px;
   font-size: 11px;
-  line-height: 14px;
-  padding: 3px 5px;
+  line-height: 15px;
+  padding: 4px 6px;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   cursor: default;
 
   &:hover {
@@ -148,14 +110,20 @@ $surface: #ffffff;
   }
 }
 
-.moreTile {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  color: $ink-secondary;
-  text-align: center;
-  padding: 4px;
+.typeTileName,
+.typeTileValue {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.typeTileName {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.typeTileValue {
+  opacity: 0.9;
 }
 
 .tooltip {

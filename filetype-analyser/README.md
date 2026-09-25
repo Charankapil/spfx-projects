@@ -56,16 +56,27 @@ of throttled REST calls. This solution avoids that entirely:
    and each library's size from its root folder's storage metrics
    (`GetFolderByServerRelativeUrl('<library>')?$select=StorageMetrics&$expand=StorageMetrics`,
    `TotalSize` in bytes, versions included — the same number the Storage
-   Metrics page shows). One request per library; no scanning of files. If
-   the size lookup fails, the dashboard falls back to sizing libraries by
-   file count and says so.
+   Metrics page shows). One request per library; no scanning of files.
+   These exact figures appear in the site tree and the CSV.
+4. **Storage per file type is estimated from search size bands.** Search
+   cannot add up file sizes, but it can count files per size band. For each
+   file type (up to 100, most common first) one site-wide query —
+   `IsDocument:1 FileType:"<ext>" Path:"<site>/*"` with
+   `refiners='Size(discretize=manual/10KB/50KB/…/10GB)'` — returns how many
+   files fall in each of 19 roughly log-spaced bands, and the estimate is
+   count × the band's geometric middle. Tested against synthetic lognormal
+   file sizes the estimate lands within about 3% of the true total; real
+   data can be further off if many files sit at one end of a band. This
+   is one request per file type, independent of how many files exist.
 
-This is a deliberate trade-off: you get exact **storage per library** and
-an accurate **file count per type**, but not the **bytes per file type**
-(the search index does not expose a summable size property, and storage
-metrics are per folder, not per extension). Getting that would need a deep
-scan of every file's `Length`, which is the expensive operation this tool
-is explicitly designed to avoid. The dashboard labels which figure is which.
+   Limits, which the dashboard states: it covers **current file versions
+   only** (version history is not in the search index), so the total is
+   lower than site storage, which also counts versions, the recycle bin
+   and metadata. If the tenant returns no size bands, the treemap falls
+   back to file counts and says so.
+
+The exact alternative — reading every file's size — would be a deep scan of
+every item, which this tool is explicitly designed to avoid.
 
 ## No Azure, no client id
 
@@ -90,12 +101,14 @@ there.
 - **Dashboard**
   - Headline figures — site storage, files, libraries, sites, file types —
     each with the change since the previous scan.
-  - **Storage treemap** (WinDirStat-style) — one tile per library sized by
-    its storage, subdivided by file-type category (Word & text, PowerPoint,
-    Excel & data, PDF, Images, Video & audio, Archives, Web & code, Other)
-    as shares of the library's file count. Hover for exact figures.
-  - **File types list** — the top 12 extensions with exact counts and
-    shares; the readable companion to the treemap.
+  - **Storage by file type** (WinDirStat's extension view) — one tile per
+    extension across the whole site collection, sized by estimated storage
+    and coloured by category (Word & text, PowerPoint, Excel & data, PDF,
+    Images, Video & audio, Archives, Web & code, Other). Hover for the
+    estimate, share, file count and average file size.
+  - **File types list** — the top 12 extensions by number of files, with
+    exact counts and shares; side by side with the treemap it shows which
+    types are numerous versus which take the space.
 - **Scan controls** — only site owners / site collection admins see
   **Start scan** / **Run new scan**; **Cancel** stops a scan and puts the
   previous results back.
@@ -141,7 +154,7 @@ src/webparts/fileTypeAnalyser/
     dashboard/
       Dashboard.tsx                 KPI row + treemap + file types panels
       KpiRow.tsx                    Headline figures with change since previous scan
-      Treemap.tsx                   Storage treemap with hover tooltip
+      Treemap.tsx                   Storage-by-file-type treemap with hover tooltip
       squarify.ts                   Squarified treemap layout (no chart library)
       TopFileTypes.tsx              Labelled per-extension bar list
       fileTypeCategories.ts         Extension -> category and validated colour palette
@@ -152,6 +165,7 @@ src/webparts/fileTypeAnalyser/
     ResultsStore.ts                 Save / load the last scan in Site Assets
     ExportService.ts                CSV export
     httpErrors.ts                   Reads SharePoint's error message from a failed response
+    sizeEstimate.ts                 Size-band parsing and per-type storage estimate
     formatBytes.ts                  Byte formatting helper
   models/                           Shared TypeScript interfaces
   loc/                              Localized strings

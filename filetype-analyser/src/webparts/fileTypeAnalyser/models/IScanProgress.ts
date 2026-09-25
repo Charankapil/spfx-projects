@@ -3,6 +3,7 @@ export type ScanPhase =
   | 'starting'
   | 'discovering-structure'
   | 'aggregating-file-types'
+  | 'estimating-storage'
   | 'completed'
   | 'cancelled'
   | 'error';
@@ -13,5 +14,7 @@ export interface IScanProgress {
   websDiscovered: number;
   librariesDiscovered: number;
   librariesScanned: number;
+  typesToEstimate?: number;
+  typesEstimated?: number;
   message?: string;
 }

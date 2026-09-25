@@ -1,41 +1,29 @@
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { ILibraryNode } from '../../models/ILibraryNode';
+import { IFileTypeStat } from '../../models/IFileTypeStat';
 import { ISiteCollectionOverview } from '../../models/ISiteCollectionOverview';
-import { IWebNode } from '../../models/IWebNode';
 import { formatBytes } from '../../services/formatBytes';
 import styles from './Dashboard.module.scss';
-import { ICategoryTotal, totalsByCategory } from './fileTypeCategories';
+import { categoryOf, IFileCategory, OTHER_CATEGORY, totalsByCategory } from './fileTypeCategories';
 import { formatPercent } from './format';
 import { squarify } from './squarify';
 
-/** Past this many libraries the tail folds into one tile, keeping the DOM small on huge sites. */
-const MAX_TILES = 150;
-const HEADER_HEIGHT = 22;
+/** Past this many types the tail folds into one tile, like WinDirStat's long extension list. */
+const MAX_TILES = 80;
 
-interface ILibraryLocation {
-  library: ILibraryNode;
-  webTitle: string;
-  inSubsite: boolean;
-}
-
-interface ILibraryEntry extends ILibraryLocation {
+interface ITypeEntry {
+  stat: IFileTypeStat;
+  category: IFileCategory;
   value: number;
 }
 
-type TileDatum = { kind: 'library'; entry: ILibraryEntry } | { kind: 'more'; count: number };
+type TileDatum = { kind: 'type'; entry: ITypeEntry } | { kind: 'more'; count: number; value: number };
 
 interface IHover {
   x: number;
   y: number;
-  entry: ILibraryEntry;
-  category?: ICategoryTotal;
-}
-
-function collect(web: IWebNode, out: ILibraryLocation[], inSubsite: boolean): void {
-  web.libraries.forEach((library) => out.push({ library, webTitle: web.title, inSubsite }));
-  web.webs.forEach((child) => collect(child, out, true));
+  datum: TileDatum;
 }
 
 function useWidth(ref: React.RefObject<HTMLDivElement>): number {
@@ -58,32 +46,29 @@ function useWidth(ref: React.RefObject<HTMLDivElement>): number {
   return width;
 }
 
+/**
+ * WinDirStat-style extension view: one tile per file type across the whole
+ * site collection, sized by estimated storage (or by file count when no
+ * estimate is available) and coloured by category.
+ */
 export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overview }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const width = useWidth(containerRef);
   const height = Math.round(Math.max(280, Math.min(460, width * 0.5)));
   const [hover, setHover] = useState<IHover | undefined>(undefined);
 
-  const bySize = overview.sizesAvailable;
+  const bySize = !!overview.typeSizesEstimated;
+  const measure = (s: IFileTypeStat): number => (bySize ? s.estimatedBytes || 0 : s.count);
+  const formatValue = (v: number): string => (bySize ? `~${formatBytes(v)}` : `${v.toLocaleString()} files`);
 
-  const { entries, unsized } = useMemo(() => {
-    const all: ILibraryLocation[] = [];
-    collect(overview.rootWeb, all, false);
-    const list: ILibraryEntry[] = [];
-    let missing = 0;
-    all.forEach((location) => {
-      const { library } = location;
-      if (bySize && typeof library.sizeBytes !== 'number') {
-        missing++;
-        return;
-      }
-      const value = bySize ? library.sizeBytes || 0 : library.totalFiles;
-      if (value > 0) {
-        list.push({ ...location, value });
-      }
-    });
+  const entries = useMemo(() => {
+    const list: ITypeEntry[] = overview.totalFileTypeStats
+      .filter((s) => (bySize ? typeof s.estimatedBytes === 'number' : true))
+      .map((stat) => ({ stat, category: categoryOf(stat.extension), value: measure(stat) }))
+      .filter((e) => e.value > 0);
     list.sort((a, b) => b.value - a.value);
-    return { entries: list, unsized: missing };
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overview, bySize]);
 
   const total = useMemo(() => entries.reduce((sum, e) => sum + e.value, 0), [entries]);
@@ -96,119 +81,108 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
     const rest = entries.slice(MAX_TILES);
     const items: { value: number; data: TileDatum }[] = shown.map((entry) => ({
       value: entry.value,
-      data: { kind: 'library', entry }
+      data: { kind: 'type', entry }
     }));
     if (rest.length > 0) {
-      items.push({
-        value: rest.reduce((sum, e) => sum + e.value, 0),
-        data: { kind: 'more', count: rest.length }
-      });
+      const restValue = rest.reduce((sum, e) => sum + e.value, 0);
+      items.push({ value: restValue, data: { kind: 'more', count: rest.length, value: restValue } });
     }
     return squarify(items, { x: 0, y: 0, w: width, h: height });
   }, [entries, width, height]);
 
-  const legend = useMemo(() => totalsByCategory(overview.totalFileTypeStats), [overview]);
-  const legendTotal = legend.reduce((sum, t) => sum + t.count, 0);
+  // Legend shares use the same measure as the tiles, so the two always agree.
+  const legend = useMemo(() => {
+    const measured = overview.totalFileTypeStats
+      .filter((s) => (bySize ? typeof s.estimatedBytes === 'number' : true))
+      .map((s) => ({ extension: s.extension, count: measure(s) }));
+    return totalsByCategory(measured);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overview, bySize]);
 
-  const track = (e: React.MouseEvent, entry: ILibraryEntry, category?: ICategoryTotal): void => {
+  const track = (e: React.MouseEvent, datum: TileDatum): void => {
     const box = containerRef.current ? containerRef.current.getBoundingClientRect() : undefined;
     if (!box) {
       return;
     }
-    setHover({ x: e.clientX - box.left, y: e.clientY - box.top, entry, category });
+    setHover({ x: e.clientX - box.left, y: e.clientY - box.top, datum });
   };
 
+  const unmeasured = overview.unmeasuredTypes || 0;
   const caption = bySize
-    ? 'Tile area is each library’s storage (including versions, from SharePoint storage metrics). ' +
-      'Colours inside a tile show that library’s files by type — as a share of file count, not bytes.'
-    : 'Storage figures were not available for this scan, so tile area is the number of files in each library. ' +
-      'Colours inside a tile show its files by type.';
+    ? `Tile area is the estimated storage of each file type across the site collection (~${formatBytes(total)} in total). ` +
+      'Estimated from search size bands for current file versions only, so it comes to less than site storage, ' +
+      'which also counts version history, the recycle bin and metadata.' +
+      (unmeasured > 0 ? ` ${unmeasured} rare ${unmeasured === 1 ? 'type was' : 'types were'} not measured and ${unmeasured === 1 ? 'is' : 'are'} not shown.` : '')
+    : overview.typeSizesEstimated === undefined
+    ? 'This scan was saved by an earlier version without storage estimates, so tile area is the number of files ' +
+      'of each type. Run a new scan to size tiles by storage.'
+    : 'Storage estimates were not available for this scan, so tile area is the number of files of each type.';
+
+  const tooltip = (datum: TileDatum): JSX.Element => {
+    if (datum.kind === 'more') {
+      return (
+        <>
+          <div className={styles.tooltipTitle}>{datum.count} smaller file types</div>
+          <div>
+            {formatValue(datum.value)} ({formatPercent(datum.value, total)})
+          </div>
+        </>
+      );
+    }
+    const { stat, category } = datum.entry;
+    const bytes = stat.estimatedBytes;
+    return (
+      <>
+        <div className={styles.tooltipTitle}>
+          .{stat.extension} <span className={styles.tooltipMuted}>{category.label}</span>
+        </div>
+        {bySize && typeof bytes === 'number' && (
+          <div>
+            Estimated storage: ~{formatBytes(bytes)} ({formatPercent(bytes, total)})
+          </div>
+        )}
+        <div>Files: {stat.count.toLocaleString()}</div>
+        {bySize && typeof bytes === 'number' && stat.count > 0 && (
+          <div className={styles.tooltipMuted}>Average ~{formatBytes(bytes / stat.count)} per file</div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className={styles.panel}>
-      <h3 className={styles.panelTitle}>{bySize ? 'Storage by library' : 'Files by library'}</h3>
-      <p className={styles.panelCaption}>
-        {caption}
-        {bySize && unsized > 0 && ` ${unsized} ${unsized === 1 ? 'library has' : 'libraries have'} no size and ${unsized === 1 ? 'is' : 'are'} not shown.`}
-      </p>
+      <h3 className={styles.panelTitle}>{bySize ? 'Storage by file type' : 'Files by file type'}</h3>
+      <p className={styles.panelCaption}>{caption}</p>
 
       <div
         ref={containerRef}
         className={styles.treemap}
         style={{ height }}
         role="img"
-        aria-label={`Treemap of ${entries.length} libraries sized by ${bySize ? 'storage' : 'file count'}. The file type list shows exact figures.`}
+        aria-label={`Treemap of ${entries.length} file types sized by ${bySize ? 'estimated storage' : 'file count'}. The file type list shows exact figures.`}
         onMouseLeave={() => setHover(undefined)}
       >
         {entries.length === 0 && <div className={styles.empty}>No files found in the scanned libraries.</div>}
 
-        {cells.map((cell, i) => {
+        {cells.map((cell) => {
           const x = cell.rect.x + 1;
           const y = cell.rect.y + 1;
           const w = Math.max(0, cell.rect.w - 2);
           const h = Math.max(0, cell.rect.h - 2);
           const datum = cell.data;
-
-          if (datum.kind === 'more') {
-            return (
-              <div key="more" className={`${styles.tile} ${styles.moreTile}`} style={{ left: x, top: y, width: w, height: h }}>
-                {w > 50 && h > 24 ? `+${datum.count} more libraries` : ''}
-              </div>
-            );
-          }
-
-          const { entry } = datum;
-          const showHeader = w >= 72 && h >= 48;
-          const bodyTop = showHeader ? HEADER_HEIGHT : 0;
-          const categories = totalsByCategory(entry.library.fileTypes);
-          const pieces = squarify(
-            categories.map((c) => ({ value: c.count, data: c })),
-            { x: 0, y: bodyTop, w, h: h - bodyTop }
-          );
+          const category = datum.kind === 'type' ? datum.entry.category : OTHER_CATEGORY;
+          const label = datum.kind === 'type' ? `.${datum.entry.stat.extension}` : `+${datum.count} more`;
+          const value = datum.kind === 'type' ? datum.entry.value : datum.value;
 
           return (
             <div
-              key={`${entry.library.id}-${i}`}
-              className={styles.tile}
-              style={{ left: x, top: y, width: w, height: h }}
-              onMouseMove={(e) => track(e, entry)}
+              key={datum.kind === 'type' ? datum.entry.stat.extension : '__more'}
+              className={styles.piece}
+              style={{ left: x, top: y, width: w, height: h, background: category.color, color: category.ink }}
+              onMouseMove={(e) => track(e, datum)}
             >
-              {showHeader && (
-                <div className={styles.tileHeader}>
-                  <span className={styles.tileTitle}>
-                    {/* Every subsite has its own "Documents"; the site name tells them apart. */}
-                    {entry.inSubsite ? `${entry.library.title} · ${entry.webTitle}` : entry.library.title}
-                  </span>
-                  <span className={styles.tileSize}>
-                    {bySize ? formatBytes(entry.value) : `${entry.value.toLocaleString()} files`}
-                  </span>
-                </div>
-              )}
-              {pieces.map((p) => {
-                const pw = Math.max(0, p.rect.w - 2);
-                const ph = Math.max(0, p.rect.h - 2);
-                const cat = p.data.category;
-                return (
-                  <div
-                    key={cat.key}
-                    className={styles.piece}
-                    style={{
-                      left: p.rect.x + 1,
-                      top: p.rect.y + 1,
-                      width: pw,
-                      height: ph,
-                      background: cat.color,
-                      color: cat.ink
-                    }}
-                    onMouseMove={(e) => {
-                      e.stopPropagation();
-                      track(e, entry, p.data);
-                    }}
-                  >
-                    {pw >= 48 && ph >= 20 ? cat.label : ''}
-                  </div>
-                );
-              })}
+              {w >= 34 && h >= 18 && <div className={styles.typeTileName}>{label}</div>}
+              {w >= 64 && h >= 36 && <div className={styles.typeTileValue}>{formatValue(value)}</div>}
             </div>
           );
         })}
@@ -218,29 +192,10 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
             className={styles.tooltip}
             style={{
               left: Math.min(hover.x + 14, Math.max(0, width - 290)),
-              top: hover.y + 14 > height - 110 ? Math.max(0, hover.y - 120) : hover.y + 14
+              top: hover.y + 14 > height - 100 ? Math.max(0, hover.y - 110) : hover.y + 14
             }}
           >
-            <div className={styles.tooltipTitle}>{hover.entry.library.title}</div>
-            <div className={styles.tooltipMuted}>{hover.entry.webTitle}</div>
-            {bySize && (
-              <div>
-                Storage: {formatBytes(hover.entry.value)} ({formatPercent(hover.entry.value, total)} of shown)
-              </div>
-            )}
-            <div>Files: {hover.entry.library.totalFiles.toLocaleString()}</div>
-            {hover.category && (
-              <div>
-                {hover.category.category.label}: {hover.category.count.toLocaleString()} files (
-                {formatPercent(hover.category.count, hover.entry.library.totalFiles)} of this library)
-                <div className={styles.tooltipMuted}>
-                  {hover.category.extensions
-                    .slice(0, 4)
-                    .map((ext) => `.${ext.extension} ${ext.count.toLocaleString()}`)
-                    .join(' · ')}
-                </div>
-              </div>
-            )}
+            {tooltip(hover.datum)}
           </div>
         )}
       </div>
@@ -249,7 +204,7 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
         {legend.map((t) => (
           <span key={t.category.key} className={styles.legendItem}>
             <span className={styles.swatch} style={{ background: t.category.color }} />
-            {t.category.label} {formatPercent(t.count, legendTotal)}
+            {t.category.label} {formatPercent(t.count, total)}
           </span>
         ))}
       </div>
