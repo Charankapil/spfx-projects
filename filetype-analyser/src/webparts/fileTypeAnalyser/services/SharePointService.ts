@@ -13,10 +13,6 @@ import { ISiteCollectionOverview } from '../models/ISiteCollectionOverview';
 import { IStorageInfo } from '../models/IStorageInfo';
 import { IWebNode } from '../models/IWebNode';
 import { describeError } from './httpErrors';
-import { estimateFromBands, ISizeBandEntry, SIZE_THRESHOLDS } from './sizeEstimate';
-
-/** One search per file type; past this many types the rest are reported as not measured. */
-const MAX_TYPES_TO_ESTIMATE = 100;
 
 /**
  * All calls go through the ambient SPHttpClient, which reuses the current
@@ -99,6 +95,7 @@ export class ScanCancelledError extends Error {}
 
 export class SharePointService {
   private cancelled = false;
+  private refinerOptionRejected = false;
 
   constructor(private context: WebPartContext) {}
 
@@ -221,14 +218,36 @@ export class SharePointService {
    */
   private async getFileTypeBreakdown(
     libraryAbsoluteUrl: string
-  ): Promise<{ stats: IFileTypeStat[]; totalFiles: number }> {
+  ): Promise<{ stats: IFileTypeStat[]; totalFiles: number; capped: boolean }> {
     const kql = `IsDocument:1 Path:"${libraryAbsoluteUrl}/*"`;
-    const queryText = encodeURIComponent(`'${kql}'`);
+    // Without options the FileType refiner returns only a library's 10 most
+    // common types; filter=<bins>/<min frequency>/<prefix> raises that to 500.
+    // If a tenant rejects the option, the plain refiner still gives the top 10,
+    // and the option is not tried again for the rest of the scan.
+    if (!this.refinerOptionRejected) {
+      try {
+        const result = await this.runFileTypeQuery(kql, 'FileType(filter=500/0/*)');
+        return { ...result, capped: false };
+      } catch (err) {
+        if (err instanceof ScanCancelledError) {
+          throw err;
+        }
+        this.refinerOptionRejected = true;
+      }
+    }
+    const result = await this.runFileTypeQuery(kql, 'FileType');
+    return { ...result, capped: result.stats.length >= 10 };
+  }
+
+  private async runFileTypeQuery(
+    kql: string,
+    refiner: string
+  ): Promise<{ stats: IFileTypeStat[]; totalFiles: number }> {
     const url =
       `${this.siteAbsoluteUrl}/_api/search/query` +
-      `?querytext=${queryText}` +
+      `?querytext=${encodeURIComponent(`'${kql}'`)}` +
       `&rowlimit=1` +
-      `&refiners='FileType'` +
+      `&refiners=${encodeURIComponent(`'${refiner}'`)}` +
       `&trimduplicates=false` +
       `&clienttype='ContentSearchRegular'`;
 
@@ -255,56 +274,6 @@ export class SharePointService {
   }
 
   /**
-   * Estimated site-wide storage for one extension. Search cannot sum sizes,
-   * but it can count files per size band ("Size" refiner with manual
-   * thresholds); bytes are estimated as count x a typical size per band.
-   * Covers current file versions only - version history is not in the index.
-   * Returns undefined when the Size refiner comes back empty, so the caller
-   * can fall back to file counts instead of showing zero storage.
-   */
-  private async estimateTypeStorage(extension: string): Promise<number | undefined> {
-    const kql = `IsDocument:1 FileType:"${extension}" Path:"${this.siteAbsoluteUrl}/*"`;
-    const refiner = `Size(discretize=manual/${SIZE_THRESHOLDS.join('/')})`;
-    const url =
-      `${this.siteAbsoluteUrl}/_api/search/query` +
-      `?querytext=${encodeURIComponent(`'${kql}'`)}` +
-      `&rowlimit=1` +
-      `&refiners=${encodeURIComponent(`'${refiner}'`)}` +
-      `&trimduplicates=false` +
-      `&clienttype='ContentSearchRegular'`;
-
-    const json = await this.getJson<ISearchQueryResponse>(url, SEARCH_CONFIG);
-    const primary =
-      json.PrimaryQueryResult || json.d?.query?.PrimaryQueryResult || json.d?.PrimaryQueryResult;
-    const sizeRefiner = toArray(primary?.RefinementResults?.Refiners).filter(
-      (r) => (r.Name || '').toLowerCase() === 'size'
-    )[0];
-    const entries: ISizeBandEntry[] = toArray(sizeRefiner?.Entries);
-    const estimate = estimateFromBands(entries);
-    if (estimate.files === 0) {
-      return undefined;
-    }
-    // Bands whose range could not be read are costed at the average of the rest.
-    return Math.round(estimate.bytes * ((estimate.files + estimate.unparsedFiles) / estimate.files));
-  }
-
-  /**
-   * Library storage from the folder's StorageMetrics - the same figure the
-   * Storage Metrics page shows, in bytes, including versions. One request per
-   * library, no file enumeration. Must be called on the library's own web,
-   * since GetFolderByServerRelativeUrl only resolves folders of that web.
-   */
-  private async getLibrarySize(webUrl: string, folderServerRelativeUrl: string): Promise<number | undefined> {
-    const path = encodeURIComponent(folderServerRelativeUrl.replace(/'/g, "''")).replace(/%2F/g, '/');
-    const url =
-      `${webUrl}/_api/web/GetFolderByServerRelativeUrl('${path}')` +
-      `?$select=StorageMetrics&$expand=StorageMetrics`;
-    const json = await this.getJson<{ StorageMetrics?: { TotalSize?: number | string } }>(url);
-    const size = Number(json.StorageMetrics?.TotalSize);
-    return isFinite(size) && size >= 0 ? size : undefined;
-  }
-
-  /**
    * Walks the web/library structure (cheap metadata calls, not file
    * enumeration) and attaches a file-type breakdown to every library via
    * the search index. Reports progress as it goes so the UI can render a
@@ -315,6 +284,7 @@ export class SharePointService {
     onNodeUpdated?: (rootWeb: IWebNode) => void
   ): Promise<ISiteCollectionOverview> {
     this.resetCancellation();
+    this.refinerOptionRejected = false;
     const scanStartedAt = new Date();
 
     const progress: IScanProgress = {
@@ -351,9 +321,10 @@ export class SharePointService {
       progress.currentItem = library.absoluteUrl;
       onProgress({ ...progress });
       try {
-        const { stats, totalFiles } = await this.getFileTypeBreakdown(library.absoluteUrl);
+        const { stats, totalFiles, capped } = await this.getFileTypeBreakdown(library.absoluteUrl);
         library.fileTypes = stats;
         library.totalFiles = totalFiles;
+        library.typeListCapped = capped || undefined;
         library.scanned = true;
       } catch (err) {
         if (err instanceof ScanCancelledError) {
@@ -361,16 +332,6 @@ export class SharePointService {
         }
         library.error = err instanceof Error ? err.message : 'Unknown error';
         library.scanned = true;
-      }
-      // Size is a separate, optional figure: if StorageMetrics is unavailable the
-      // dashboard falls back to sizing by file count, so its failure is not
-      // reported as a library error.
-      try {
-        library.sizeBytes = await this.getLibrarySize(library.webUrl, library.serverRelativeUrl);
-      } catch (err) {
-        if (err instanceof ScanCancelledError) {
-          throw err;
-        }
       }
       progress.librariesScanned++;
       onProgress({ ...progress });
@@ -381,32 +342,6 @@ export class SharePointService {
 
     const totalFileTypeStats = this.aggregateFileTypes(allLibraries);
     const totalFiles = totalFileTypeStats.reduce((sum, s) => sum + s.count, 0);
-
-    // Stats are sorted by count, so the cap drops the rarest types first.
-    const toEstimate = totalFileTypeStats.filter((s) => /^[a-z0-9_+-]+$/i.test(s.extension)).slice(0, MAX_TYPES_TO_ESTIMATE);
-    progress.phase = 'estimating-storage';
-    progress.typesToEstimate = toEstimate.length;
-    progress.typesEstimated = 0;
-    onProgress({ ...progress });
-    let typesDone = 0;
-    for (const stat of toEstimate) {
-      this.throwIfCancelled();
-      progress.currentItem = `.${stat.extension}`;
-      onProgress({ ...progress });
-      try {
-        stat.estimatedBytes = await this.estimateTypeStorage(stat.extension);
-      } catch (err) {
-        if (err instanceof ScanCancelledError) {
-          throw err;
-        }
-      }
-      progress.typesEstimated = ++typesDone;
-      onProgress({ ...progress });
-    }
-    const measured = totalFileTypeStats.filter((s) => typeof s.estimatedBytes === 'number');
-    const totalEstimatedBytes = measured.reduce((sum, s) => sum + (s.estimatedBytes || 0), 0);
-    const sized = allLibraries.filter((l) => typeof l.sizeBytes === 'number');
-    const totalLibraryBytes = sized.reduce((sum, l) => sum + (l.sizeBytes || 0), 0);
     const storage = await storagePromise;
 
     progress.phase = 'completed';
@@ -421,11 +356,7 @@ export class SharePointService {
       totalFiles,
       totalLibraries: allLibraries.length,
       totalWebs: progress.websDiscovered,
-      totalLibraryBytes,
-      sizesAvailable: sized.length > 0,
-      typeSizesEstimated: measured.length > 0,
-      totalEstimatedBytes,
-      unmeasuredTypes: totalFileTypeStats.length - measured.length,
+      typeListCapped: allLibraries.some((l) => l.typeListCapped) || undefined,
       scanStartedAt,
       scanCompletedAt: new Date(),
       scannedBy: this.context.pageContext.user.displayName
@@ -469,7 +400,6 @@ export class SharePointService {
     const libraryNodes: ILibraryNode[] = libraries.map((lib) => ({
       id: lib.Id,
       title: lib.Title,
-      webUrl: webAbsoluteUrl,
       serverRelativeUrl: lib.RootFolder.ServerRelativeUrl,
       absoluteUrl: this.toAbsoluteUrl(lib.RootFolder.ServerRelativeUrl),
       itemCount: lib.ItemCount,

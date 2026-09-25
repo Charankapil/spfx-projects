@@ -174,22 +174,17 @@ export const FileTypeAnalyser: React.FC<IFileTypeAnalyserProps> = (props) => {
       case 'discovering-structure':
         return `Discovering sites and libraries… (${progress.websDiscovered} sites, ${progress.librariesDiscovered} libraries found)`;
       case 'aggregating-file-types':
-        return `Counting file types and storage… (${progress.librariesScanned}/${progress.librariesDiscovered} libraries)`;
-      case 'estimating-storage':
-        return `Estimating storage per file type… (${progress.typesEstimated || 0}/${progress.typesToEstimate || 0} types)`;
-      case 'starting':
+        return `Counting file types… (${progress.librariesScanned}/${progress.librariesDiscovered} libraries)`;      case 'starting':
         return 'Starting scan…';
       default:
         return '';
     }
   }, [progress]);
 
-  let progressPercent: number | undefined;
-  if (progress.phase === 'aggregating-file-types' && progress.librariesDiscovered > 0) {
-    progressPercent = progress.librariesScanned / progress.librariesDiscovered;
-  } else if (progress.phase === 'estimating-storage' && progress.typesToEstimate) {
-    progressPercent = (progress.typesEstimated || 0) / progress.typesToEstimate;
-  }
+  const progressPercent =
+    progress.phase === 'aggregating-file-types' && progress.librariesDiscovered > 0
+      ? progress.librariesScanned / progress.librariesDiscovered
+      : undefined;
 
   const lastScanLine = overview && overview.scanCompletedAt
     ? `Last scanned ${formatDate(overview.scanCompletedAt)}` +

@@ -217,6 +217,21 @@ $surface: #ffffff;
   white-space: nowrap;
 }
 
+.showAll {
+  margin-top: 8px;
+  padding: 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: $ms-color-themePrimary;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 .empty {
   font-size: 13px;
   color: $ink-secondary;

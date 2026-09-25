@@ -1,8 +1,8 @@
 # File Type Analyser
 
 An SPFx web part that scans a SharePoint site collection and renders a
-tree-view overview of every document library and the file types stored in
-it — with counts, a site-wide storage summary and CSV export. It is built
+dashboard and tree view of every document library and the file types stored
+in it — file counts per type, per library and per site, with CSV export. It is built
 to remain usable on very large site collections (10+ TB, millions of
 documents) and requires **no Azure AD app registration and no client
 id/secret** — it only talks to SharePoint's own REST and Search APIs
@@ -23,7 +23,7 @@ of throttled REST calls. This solution avoids that entirely:
 2. **File-type counts come from the search index, not file enumeration.**
    For each library, one call to `_api/search/query` with
    `querytext='IsDocument:1 Path:"<library URL>/*"'` and
-   `refiners='FileType'` asks the already-built search index for an
+   `refiners='FileType(filter=500/0/*)'` asks the already-built search index for an
    aggregated count per extension in that library. Whether the library
    holds 10 files or 10 million, this is a single request with a
    near-constant response size — the aggregation work happens server-side
@@ -45,38 +45,18 @@ of throttled REST calls. This solution avoids that entirely:
    Because OData 3 may wrap collections in a `{ results: [] }` envelope,
    the response parsing accepts both that and a bare array.
 
-   Known limitation: `refiners='FileType'` without extra parameters caps
-   the result at the 10 most common extensions per library. A library
-   with more than 10 distinct file types will show its top 10 with the
-   rest folded out of the per-library breakdown (the site-wide "Files
-   indexed" total is unaffected — that comes from the query's total row
-   count, not the refiner list).
-3. **Storage numbers come from SharePoint's own tracked metrics.** The
-   site-wide "storage used" figure comes from `_api/site?$select=Usage`,
-   and each library's size from its root folder's storage metrics
-   (`GetFolderByServerRelativeUrl('<library>')?$select=StorageMetrics&$expand=StorageMetrics`,
-   `TotalSize` in bytes, versions included — the same number the Storage
-   Metrics page shows). One request per library; no scanning of files.
-   These exact figures appear in the site tree and the CSV.
-4. **Storage per file type is estimated from search size bands.** Search
-   cannot add up file sizes, but it can count files per size band. For each
-   file type (up to 100, most common first) one site-wide query —
-   `IsDocument:1 FileType:"<ext>" Path:"<site>/*"` with
-   `refiners='Size(discretize=manual/10KB/50KB/…/10GB)'` — returns how many
-   files fall in each of 19 roughly log-spaced bands, and the estimate is
-   count × the band's geometric middle. Tested against synthetic lognormal
-   file sizes the estimate lands within about 3% of the true total; real
-   data can be further off if many files sit at one end of a band. This
-   is one request per file type, independent of how many files exist.
-
-   Limits, which the dashboard states: it covers **current file versions
-   only** (version history is not in the search index), so the total is
-   lower than site storage, which also counts versions, the recycle bin
-   and metadata. If the tenant returns no size bands, the treemap falls
-   back to file counts and says so.
-
-The exact alternative — reading every file's size — would be a deep scan of
-every item, which this tool is explicitly designed to avoid.
+   **Up to 500 types per library.** Without options the `FileType`
+   refiner returns only a library's 10 most common extensions, silently
+   dropping rarer ones. `filter=500/0/*` (max bins / minimum frequency /
+   name prefix) lifts that to 500. If a tenant rejects the option, the scan
+   falls back to the plain refiner for the rest of that scan and the
+   dashboard notes that some libraries only reported their top 10 types.
+3. **Site storage is SharePoint's own figure.** The "Site storage used"
+   headline comes from `_api/site?$select=Usage` — reported by SharePoint,
+   not calculated. The web part does not attempt storage per file type:
+   search only knows current file versions, while site storage is often
+   dominated by version history (Excel autosave, for example), so any
+   per-type storage figure built from search would be misleading.
 
 ## No Azure, no client id
 
@@ -101,21 +81,20 @@ there.
 - **Dashboard**
   - Headline figures — site storage, files, libraries, sites, file types —
     each with the change since the previous scan.
-  - **Storage by file type** (WinDirStat's extension view) — one tile per
-    extension across the whole site collection, sized by estimated storage
+  - **Files by file type** (WinDirStat's extension view) — one tile per
+    extension across the whole site collection, sized by number of files
     and coloured by category (Word & text, PowerPoint, Excel & data, PDF,
     Images, Video & audio, Archives, Web & code, Other). Hover for the
-    estimate, share, file count and average file size.
-  - **File types list** — the top 12 extensions by number of files, with
-    exact counts and shares; side by side with the treemap it shows which
-    types are numerous versus which take the space.
+    exact count and share.
+  - **File types list** — every extension with its exact count and share,
+    top 12 first with **Show all** for the rest.
 - **Scan controls** — only site owners / site collection admins see
   **Start scan** / **Run new scan**; **Cancel** stops a scan and puts the
   previous results back.
 - **Site tree** — site collection → subsites → libraries → file types, with
-  per-library file counts and sizes, rendered live during a scan.
-- **Export CSV** — one row per (web, library, file type) with counts and
-  library size; works from saved results too.
+  per-library file counts, rendered live during a scan.
+- **Export CSV** — one row per (web, library, file type) with counts;
+  works from saved results too.
 - **Resilient** — an inaccessible subsite or failing library is marked in
   place and the scan continues; SharePoint `429`/`503` throttling is retried
   honouring `Retry-After`.
@@ -137,7 +116,7 @@ the dashboard come from.
   Assets. The saved scan reflects what *the person who ran it* could see —
   run by an admin, it can list names and counts of libraries in subsites
   that other readers cannot open. It never contains file names or
-  contents, only library names, counts and sizes.
+  contents, only library names and counts.
 - The saved file itself is counted as one `.json` file in Site Assets.
 
 ## Project layout
@@ -154,9 +133,9 @@ src/webparts/fileTypeAnalyser/
     dashboard/
       Dashboard.tsx                 KPI row + treemap + file types panels
       KpiRow.tsx                    Headline figures with change since previous scan
-      Treemap.tsx                   Storage-by-file-type treemap with hover tooltip
+      Treemap.tsx                   Files-by-file-type treemap with hover tooltip
       squarify.ts                   Squarified treemap layout (no chart library)
-      TopFileTypes.tsx              Labelled per-extension bar list
+      TopFileTypes.tsx              Every extension with counts (show all)
       fileTypeCategories.ts         Extension -> category and validated colour palette
       format.ts                     Number / date formatting
       Dashboard.module.scss
@@ -165,7 +144,6 @@ src/webparts/fileTypeAnalyser/
     ResultsStore.ts                 Save / load the last scan in Site Assets
     ExportService.ts                CSV export
     httpErrors.ts                   Reads SharePoint's error message from a failed response
-    sizeEstimate.ts                 Size-band parsing and per-type storage estimate
     formatBytes.ts                  Byte formatting helper
   models/                           Shared TypeScript interfaces
   loc/                              Localized strings

@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { IFileTypeStat } from '../../models/IFileTypeStat';
 import { ISiteCollectionOverview } from '../../models/ISiteCollectionOverview';
-import { formatBytes } from '../../services/formatBytes';
 import styles from './Dashboard.module.scss';
 import { categoryOf, IFileCategory, OTHER_CATEGORY, totalsByCategory } from './fileTypeCategories';
 import { formatPercent } from './format';
@@ -48,8 +47,7 @@ function useWidth(ref: React.RefObject<HTMLDivElement>): number {
 
 /**
  * WinDirStat-style extension view: one tile per file type across the whole
- * site collection, sized by estimated storage (or by file count when no
- * estimate is available) and coloured by category.
+ * site collection, sized by number of files and coloured by category.
  */
 export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overview }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -57,19 +55,15 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
   const height = Math.round(Math.max(280, Math.min(460, width * 0.5)));
   const [hover, setHover] = useState<IHover | undefined>(undefined);
 
-  const bySize = !!overview.typeSizesEstimated;
-  const measure = (s: IFileTypeStat): number => (bySize ? s.estimatedBytes || 0 : s.count);
-  const formatValue = (v: number): string => (bySize ? `~${formatBytes(v)}` : `${v.toLocaleString()} files`);
+  const formatValue = (v: number): string => `${v.toLocaleString()} files`;
 
   const entries = useMemo(() => {
     const list: ITypeEntry[] = overview.totalFileTypeStats
-      .filter((s) => (bySize ? typeof s.estimatedBytes === 'number' : true))
-      .map((stat) => ({ stat, category: categoryOf(stat.extension), value: measure(stat) }))
+      .map((stat: IFileTypeStat) => ({ stat, category: categoryOf(stat.extension), value: stat.count }))
       .filter((e) => e.value > 0);
     list.sort((a, b) => b.value - a.value);
     return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overview, bySize]);
+  }, [overview]);
 
   const total = useMemo(() => entries.reduce((sum, e) => sum + e.value, 0), [entries]);
 
@@ -90,14 +84,7 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
     return squarify(items, { x: 0, y: 0, w: width, h: height });
   }, [entries, width, height]);
 
-  // Legend shares use the same measure as the tiles, so the two always agree.
-  const legend = useMemo(() => {
-    const measured = overview.totalFileTypeStats
-      .filter((s) => (bySize ? typeof s.estimatedBytes === 'number' : true))
-      .map((s) => ({ extension: s.extension, count: measure(s) }));
-    return totalsByCategory(measured);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overview, bySize]);
+  const legend = useMemo(() => totalsByCategory(overview.totalFileTypeStats), [overview]);
 
   const track = (e: React.MouseEvent, datum: TileDatum): void => {
     const box = containerRef.current ? containerRef.current.getBoundingClientRect() : undefined;
@@ -107,16 +94,7 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
     setHover({ x: e.clientX - box.left, y: e.clientY - box.top, datum });
   };
 
-  const unmeasured = overview.unmeasuredTypes || 0;
-  const caption = bySize
-    ? `Tile area is the estimated storage of each file type across the site collection (~${formatBytes(total)} in total). ` +
-      'Estimated from search size bands for current file versions only, so it comes to less than site storage, ' +
-      'which also counts version history, the recycle bin and metadata.' +
-      (unmeasured > 0 ? ` ${unmeasured} rare ${unmeasured === 1 ? 'type was' : 'types were'} not measured and ${unmeasured === 1 ? 'is' : 'are'} not shown.` : '')
-    : overview.typeSizesEstimated === undefined
-    ? 'This scan was saved by an earlier version without storage estimates, so tile area is the number of files ' +
-      'of each type. Run a new scan to size tiles by storage.'
-    : 'Storage estimates were not available for this scan, so tile area is the number of files of each type.';
+  const caption = 'Tile area is the number of files of each type across the whole site collection.';
 
   const tooltip = (datum: TileDatum): JSX.Element => {
     if (datum.kind === 'more') {
@@ -130,28 +108,21 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
       );
     }
     const { stat, category } = datum.entry;
-    const bytes = stat.estimatedBytes;
     return (
       <>
         <div className={styles.tooltipTitle}>
           .{stat.extension} <span className={styles.tooltipMuted}>{category.label}</span>
         </div>
-        {bySize && typeof bytes === 'number' && (
-          <div>
-            Estimated storage: ~{formatBytes(bytes)} ({formatPercent(bytes, total)})
-          </div>
-        )}
-        <div>Files: {stat.count.toLocaleString()}</div>
-        {bySize && typeof bytes === 'number' && stat.count > 0 && (
-          <div className={styles.tooltipMuted}>Average ~{formatBytes(bytes / stat.count)} per file</div>
-        )}
+        <div>
+          {stat.count.toLocaleString()} files ({formatPercent(stat.count, total)} of all files)
+        </div>
       </>
     );
   };
 
   return (
     <div className={styles.panel}>
-      <h3 className={styles.panelTitle}>{bySize ? 'Storage by file type' : 'Files by file type'}</h3>
+      <h3 className={styles.panelTitle}>Files by file type</h3>
       <p className={styles.panelCaption}>{caption}</p>
 
       <div
@@ -159,7 +130,7 @@ export const Treemap: React.FC<{ overview: ISiteCollectionOverview }> = ({ overv
         className={styles.treemap}
         style={{ height }}
         role="img"
-        aria-label={`Treemap of ${entries.length} file types sized by ${bySize ? 'estimated storage' : 'file count'}. The file type list shows exact figures.`}
+        aria-label={`Treemap of ${entries.length} file types sized by number of files. The file type list shows exact figures.`}
         onMouseLeave={() => setHover(undefined)}
       >
         {entries.length === 0 && <div className={styles.empty}>No files found in the scanned libraries.</div>}

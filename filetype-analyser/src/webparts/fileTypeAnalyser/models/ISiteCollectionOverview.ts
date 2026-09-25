@@ -21,14 +21,8 @@ export interface ISiteCollectionOverview {
   totalFiles: number;
   totalLibraries: number;
   totalWebs: number;
-  /** Sum of library sizes; only meaningful when sizesAvailable is true. */
-  totalLibraryBytes: number;
-  sizesAvailable: boolean;
-  /** True when at least one file type got a storage estimate (see IFileTypeStat.estimatedBytes). */
-  typeSizesEstimated?: boolean;
-  totalEstimatedBytes?: number;
-  /** File types that got no estimate (beyond the per-scan cap, or the query failed). */
-  unmeasuredTypes?: number;
+  /** At least one library only reported its 10 most common file types. */
+  typeListCapped?: boolean;
   scanStartedAt: Date;
   scanCompletedAt?: Date;
   scannedBy?: string;

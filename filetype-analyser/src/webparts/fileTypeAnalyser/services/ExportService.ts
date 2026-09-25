@@ -46,7 +46,6 @@ export function exportOverviewToCsv(overview: ISiteCollectionOverview): void {
     'File Type',
     'File Count',
     'Library Item Count',
-    'Library Size (bytes)',
     'Scan Error'
   ];
   const lines: string[] = [header.map(csvEscape).join(',')];
@@ -54,9 +53,8 @@ export function exportOverviewToCsv(overview: ISiteCollectionOverview): void {
 
   for (const row of rows) {
     const lib = row.library;
-    const size = typeof lib.sizeBytes === 'number' ? String(lib.sizeBytes) : '';
     if (lib.fileTypes.length === 0) {
-      lines.push(line([overview.siteUrl, row.webUrl, lib.title, '', '0', String(lib.itemCount), size, lib.error || '']));
+      lines.push(line([overview.siteUrl, row.webUrl, lib.title, '', '0', String(lib.itemCount), lib.error || '']));
       continue;
     }
     for (const stat of lib.fileTypes) {
@@ -68,7 +66,6 @@ export function exportOverviewToCsv(overview: ISiteCollectionOverview): void {
           stat.extension,
           String(stat.count),
           String(lib.itemCount),
-          size,
           lib.error || ''
         ])
       );
@@ -78,7 +75,7 @@ export function exportOverviewToCsv(overview: ISiteCollectionOverview): void {
   const failedWebs: IWebNode[] = [];
   collectWebErrors(overview.rootWeb, failedWebs);
   for (const web of failedWebs) {
-    lines.push(line([overview.siteUrl, web.url, '', '', '', '', '', web.error || '']));
+    lines.push(line([overview.siteUrl, web.url, '', '', '', '', web.error || '']));
   }
 
   const csvContent = lines.join('\r\n');
