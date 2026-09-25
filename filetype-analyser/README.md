@@ -189,15 +189,26 @@ gulp bundle --ship
 gulp package-solution --ship
 ```
 
-This produces `sharepoint/solution/filetype-analyser.sppkg`.
+This produces `sharepoint/solution/file-type-analyser-webpart.sppkg`. The
+prebuilt package is also committed at
+`releases/file-type-analyser-webpart.sppkg`.
 
 ## Deploy
 
-1. Upload `filetype-analyser.sppkg` to your tenant or site collection
+1. Upload `file-type-analyser-webpart.sppkg` to your tenant or site collection
    **App Catalog**. When upgrading, upload a file with the **same file
    name** and choose **Replace** — the catalog replaces entries by file
    name, so a renamed file becomes a second entry for the same solution ID
    and can leave the web part undeployed and missing from the toolbox.
+
+   **Moving from `filetype-analyser.sppkg` (v1.0.11 and earlier):** the
+   package was renamed in v1.0.12. Delete every existing File Type
+   Analyser entry from the App Catalog first (including browser-renamed
+   copies such as `filetype-analyser (1).sppkg`), then upload
+   `file-type-analyser-webpart.sppkg`. Pages that already host the web
+   part keep working once the new package is deployed, because the
+   solution and web part IDs are unchanged. Saved scan results in Site
+   Assets are not affected.
 2. Deploy it when prompted ("Make this solution available to all sites in
    the organization" is optional — the solution has
    `skipFeatureDeployment: true`, so it can also be added site-by-site

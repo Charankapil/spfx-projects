@@ -3,7 +3,7 @@
   "solution": {
     "name": "filetype-analyser-client-side-solution",
     "id": "b4c2d9f0-2a3f-4d6e-9a1c-6f8e5a2b7c10",
-    "version": "1.0.11.0",
+    "version": "1.0.12.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -19,7 +19,7 @@
         "default": "File Type Analyser - tree-based file type overview for a SharePoint site collection"
       },
       "longDescription": {
-        "default": "Scans a SharePoint site collection using only SharePoint REST/Search APIs (no Azure AD app registration required) and presents a tree view of webs, document libraries and file types, with counts, approximate sizes and CSV export. Designed to work on large site collections (10+ TB, millions of documents) by aggregating counts through the search index instead of enumerating every file."
+        "default": "Scans a SharePoint site collection using only SharePoint REST/Search APIs (no Azure AD app registration required) and presents a tree view of webs, document libraries and file types, with file counts per type, a dashboard, saved results and CSV export. Designed to work on large site collections (10+ TB, millions of documents) by aggregating counts through the search index instead of enumerating every file."
       },
       "screenshotPaths": []
     },
@@ -28,11 +28,11 @@
         "title": "filetype-analyser Feature",
         "description": "The feature that activates elements of the filetype-analyser solution.",
         "id": "d1e9a3c4-5b6f-4a7e-8c9d-0e1f2a3b4c5d",
-        "version": "1.0.11.0"
+        "version": "1.0.12.0"
       }
     ]
   },
   "paths": {
-    "zippedPackage": "solution/filetype-analyser.sppkg"
+    "zippedPackage": "solution/file-type-analyser-webpart.sppkg"
   }
 }
