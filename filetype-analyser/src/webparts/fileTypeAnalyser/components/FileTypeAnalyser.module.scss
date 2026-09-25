@@ -2,7 +2,6 @@
 
 // SharePoint theme tokens: SPFx swaps these for the site's theme colours at runtime.
 $theme-primary: '[theme:themePrimary, default:#0078d4]';
-$theme-dark: '[theme:themeDark, default:#005a9e]';
 $theme-darker: '[theme:themeDarker, default:#004578]';
 $theme-lighter: '[theme:themeLighter, default:#deecf9]';
 $theme-lighter-alt: '[theme:themeLighterAlt, default:#eff6fc]';
@@ -26,7 +25,8 @@ $card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   color: $ms-color-neutralPrimary;
 }
 
-// Hero band
+// Header: a light card with a soft tint of the site's theme colour and a thin
+// accent stripe - on-brand without a full block of strong colour.
 .hero {
   position: relative;
   overflow: hidden;
@@ -35,35 +35,38 @@ $card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  padding: 22px 24px;
+  padding: 20px 24px 20px 28px;
   margin-bottom: 16px;
   border-radius: 14px;
-  color: #ffffff;
-  background: linear-gradient(135deg, $theme-darker 0%, $theme-dark 45%, $theme-primary 100%);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  border: 1px solid $border;
+  color: $ms-color-neutralPrimary;
+  background: linear-gradient(120deg, $theme-lighter-alt 0%, #ffffff 65%);
+  box-shadow: $card-shadow;
 
-  // Soft light circles for depth; purely decorative and behind the text.
-  &::before,
+  // Accent stripe down the left edge.
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: $theme-primary;
+    opacity: 0.8;
+  }
+
+  // One faint circle for depth; decorative and behind the text.
   &::after {
     content: '';
     position: absolute;
+    width: 320px;
+    height: 320px;
+    right: -90px;
+    top: -190px;
     border-radius: 50%;
     pointer-events: none;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 70%);
-  }
-
-  &::before {
-    width: 360px;
-    height: 360px;
-    right: -80px;
-    top: -200px;
-  }
-
-  &::after {
-    width: 240px;
-    height: 240px;
-    right: 220px;
-    bottom: -170px;
+    background: $theme-lighter;
+    opacity: 0.35;
   }
 }
 
@@ -80,19 +83,19 @@ $card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.85;
+  color: $theme-primary;
 }
 
 .heroTitle {
   margin: 6px 0 4px;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
   line-height: 1.2;
 }
 
 .heroMeta {
   font-size: 13px;
-  opacity: 0.85;
+  color: $ms-color-neutralSecondary;
 }
 
 .heroActions {

@@ -2,8 +2,6 @@ import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DefaultButton,
-  getTheme,
-  IButtonStyles,
   Icon,
   MessageBar,
   MessageBarType,
@@ -35,32 +33,6 @@ const INITIAL_PROGRESS: IScanProgress = {
   librariesDiscovered: 0,
   librariesScanned: 0
 };
-
-/**
- * Buttons sit on the theme-coloured hero band, so they are styled from the
- * Fluent theme - which SPFx loads with the site's own theme colours.
- */
-function heroButtonStyles(): { primary: IButtonStyles; secondary: IButtonStyles } {
-  const { palette } = getTheme();
-  const white = '#ffffff';
-  return {
-    primary: {
-      root: { background: white, color: palette.themeDarker, border: 'none', borderRadius: 6, fontWeight: 600 },
-      rootHovered: { background: palette.themeLighterAlt, color: palette.themeDarker },
-      rootPressed: { background: palette.themeLighter, color: palette.themeDarker },
-      rootDisabled: { background: 'rgba(255,255,255,0.55)', color: palette.themeDarker },
-      icon: { color: palette.themeDarker }
-    },
-    secondary: {
-      root: { background: 'rgba(255,255,255,0.08)', color: white, border: '1px solid rgba(255,255,255,0.55)', borderRadius: 6 },
-      rootHovered: { background: 'rgba(255,255,255,0.18)', color: white },
-      rootPressed: { background: 'rgba(255,255,255,0.26)', color: white },
-      rootDisabled: { background: 'transparent', color: 'rgba(255,255,255,0.5)', borderColor: 'rgba(255,255,255,0.3)' },
-      icon: { color: white },
-      iconDisabled: { color: 'rgba(255,255,255,0.5)' }
-    }
-  };
-}
 
 interface INotice {
   type: MessageBarType;
@@ -96,7 +68,6 @@ export const FileTypeAnalyser: React.FC<IFileTypeAnalyserProps> = (props) => {
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<INotice | undefined>(undefined);
-  const heroButtons = useMemo(heroButtonStyles, []);
 
   useEffect(() => {
     let active = true;
@@ -255,18 +226,16 @@ export const FileTypeAnalyser: React.FC<IFileTypeAnalyserProps> = (props) => {
               iconProps={{ iconName: 'ScanView' }}
               onClick={startScan}
               disabled={isLoadingSaved || isSaving}
-              styles={heroButtons.primary}
             />
           )}
           {isScanning && (
-            <DefaultButton text="Cancel" iconProps={{ iconName: 'Cancel' }} onClick={cancelScan} styles={heroButtons.secondary} />
+            <DefaultButton text="Cancel" iconProps={{ iconName: 'Cancel' }} onClick={cancelScan} />
           )}
           <DefaultButton
             text="Export CSV"
             iconProps={{ iconName: 'ExcelDocument' }}
             disabled={!overview || isScanning}
             onClick={handleExport}
-            styles={heroButtons.secondary}
           />
         </Stack>
       </div>

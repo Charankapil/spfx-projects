@@ -78,9 +78,9 @@ there.
 - **Saved results** — the last scan is saved to the site and shown to
   everyone who opens the page, so nobody lands on an empty web part (see
   *Saved results* below).
-- **Look and feel** — a hero band and accents in the site's own theme
-  colours (SharePoint theme tokens, so it follows the site theme without
-  configuration), category icons, WinDirStat-style cushioned treemap tiles
+- **Look and feel** — a light header tinted with the site's own theme
+  colour and accents in the same theme (SharePoint theme tokens, so it
+  follows the site theme without configuration), category icons, WinDirStat-style cushioned treemap tiles
   and short entrance / count-up animations that are switched off for
   people who set their system to reduce motion.
 - **Dashboard**
