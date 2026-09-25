@@ -72,6 +72,7 @@ $card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
 
 .heroText {
   position: relative;
+  z-index: 1;
   min-width: 0;
 }
 
@@ -98,8 +99,10 @@ $card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   color: $ms-color-neutralSecondary;
 }
 
+// Keep the text and buttons above the decorative circle.
 .heroActions {
   position: relative;
+  z-index: 1;
 }
 
 // Fluent MessageBars sit flush against each other and the dashboard otherwise.

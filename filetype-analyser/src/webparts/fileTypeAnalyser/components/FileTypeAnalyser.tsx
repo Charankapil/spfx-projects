@@ -223,7 +223,7 @@ export const FileTypeAnalyser: React.FC<IFileTypeAnalyserProps> = (props) => {
           {canScan && !isScanning && (
             <PrimaryButton
               text={overview ? 'Run new scan' : 'Start scan'}
-              iconProps={{ iconName: 'ScanView' }}
+              iconProps={{ iconName: overview ? 'Refresh' : 'Search' }}
               onClick={startScan}
               disabled={isLoadingSaved || isSaving}
             />
