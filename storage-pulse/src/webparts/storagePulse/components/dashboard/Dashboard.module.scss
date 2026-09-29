@@ -1,0 +1,674 @@
+@import '~@fluentui/react/dist/sass/References.scss';
+
+// All colours come from the custom properties set on the web part root
+// (StoragePulse.module.scss), so light and dark variants need no rules here.
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes growX {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes draw {
+  from {
+    stroke-dasharray: 0 1000;
+  }
+}
+
+@keyframes glowLine {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--sp-text);
+}
+
+// Glass card: translucent surface, soft blur, hairline border, a faint accent
+// line along the top edge and a gentle lift on hover.
+.card {
+  position: relative;
+  background: var(--sp-surface);
+  border: 1px solid var(--sp-border);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: var(--sp-shadow);
+  backdrop-filter: blur(12px);
+  min-width: 0;
+  animation: fadeUp 0.45s ease-out both;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    top: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--sp-active), var(--sp-inactive), transparent);
+    opacity: 0.45;
+  }
+
+  &:hover {
+    box-shadow: var(--sp-shadow-hover);
+  }
+}
+
+.dashboard > .card:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.dashboard > .card:nth-child(3) {
+  animation-delay: 120ms;
+}
+
+.dashboard > .card:nth-child(4) {
+  animation-delay: 180ms;
+}
+
+.dashboard > .card:nth-child(5) {
+  animation-delay: 240ms;
+}
+
+.enter {
+  animation: fadeUp 0.45s ease-out both;
+}
+
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.cardTitle {
+  margin: 0 0 2px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--sp-text);
+}
+
+.cardSubtitle {
+  font-size: 12px;
+  color: var(--sp-text-2);
+  max-width: 660px;
+}
+
+.active {
+  background: var(--sp-active);
+}
+
+.inactive {
+  background: var(--sp-inactive);
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+// ---------------------------------------------------------------- Summary
+
+.summaryTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px 32px;
+}
+
+.gauge {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  flex-shrink: 0;
+
+  svg {
+    display: block;
+  }
+}
+
+.gaugeTrack {
+  fill: none;
+  stroke: var(--sp-surface-2);
+  stroke-width: 16;
+}
+
+.gaugeArc {
+  fill: none;
+  stroke-width: 16;
+  animation: draw 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.gaugeInactive {
+  stroke: var(--sp-inactive);
+  filter: drop-shadow(0 0 6px rgba(235, 104, 52, 0.35));
+}
+
+.gaugeActive {
+  stroke: var(--sp-active);
+  filter: drop-shadow(0 0 6px rgba(42, 120, 214, 0.35));
+  animation-delay: 0.25s;
+}
+
+.gaugeCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.gaugeValue {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--sp-text);
+}
+
+.gaugeLabel {
+  margin-top: 4px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sp-text-2);
+}
+
+.figures {
+  flex: 1;
+  min-width: 240px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px 24px;
+}
+
+.figure {
+  min-width: 0;
+}
+
+.figureHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.figureIcon {
+  font-size: 12px;
+  color: var(--sp-text-2);
+}
+
+.figureLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sp-text-2);
+}
+
+.figureValue {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--sp-text);
+}
+
+.figureMeta {
+  font-size: 13px;
+  margin-top: 2px;
+  color: var(--sp-text);
+}
+
+.figureCaption {
+  font-size: 12px;
+  margin-top: 2px;
+  color: var(--sp-text-2);
+}
+
+.insights {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--sp-hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--sp-text);
+
+  li {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+  }
+}
+
+.insightIcon {
+  color: var(--sp-accent);
+  flex-shrink: 0;
+}
+
+.highlight {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--sp-text);
+}
+
+// ---------------------------------------------------------------- Legend
+
+.legend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--sp-text-2);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+// ---------------------------------------------------------------- Age chart
+
+.chart {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  height: 220px;
+  border-bottom: 1px solid var(--sp-hairline);
+  padding-top: 8px;
+  margin-bottom: 26px;
+}
+
+.column {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+
+  &:focus-visible .bar {
+    box-shadow: 0 0 0 2px var(--sp-surface-solid), 0 0 0 4px var(--sp-text);
+  }
+}
+
+// The "inactive from here" line, glowing gently.
+.boundary::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: -26px;
+  width: 2px;
+  background: repeating-linear-gradient(to bottom, var(--sp-inactive) 0 6px, transparent 6px 11px);
+  box-shadow: 0 0 10px var(--sp-inactive);
+  animation: glowLine 2.6s ease-in-out infinite;
+}
+
+.barArea {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.barValue {
+  font-size: 11px;
+  color: var(--sp-text-2);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  width: 100%;
+  max-width: 56px;
+  border-radius: 4px 4px 0 0;
+  transform-origin: bottom;
+  animation: rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: opacity 0.15s ease, height 0.35s ease, filter 0.15s ease;
+
+  &.active {
+    background: linear-gradient(to top, var(--sp-active), #4aa3ff);
+  }
+
+  &.inactive {
+    background: linear-gradient(to top, var(--sp-inactive), #ff9a5a);
+  }
+}
+
+.column:hover .bar {
+  filter: brightness(1.08) drop-shadow(0 0 8px var(--sp-glow));
+}
+
+.dimmed {
+  opacity: 0.4;
+}
+
+.axisLabel {
+  position: absolute;
+  bottom: -22px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--sp-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% - 20px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  min-width: 170px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--sp-surface-solid);
+  border: 1px solid var(--sp-hairline);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+  font-size: 12px;
+  color: var(--sp-text);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.tooltipTitle {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.tooltipMuted {
+  color: var(--sp-text-2);
+}
+
+// ---------------------------------------------------------------- Tables
+
+.tableWrap {
+  overflow-x: auto;
+  margin: 0 -4px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--sp-text);
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--sp-text-2);
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--sp-hairline);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 8px;
+    border-bottom: 1px solid var(--sp-hairline);
+    vertical-align: top;
+  }
+
+  // Keep names readable on narrow pages; the table scrolls sideways instead.
+  th:first-child,
+  td:first-child {
+    min-width: 160px;
+  }
+
+  tbody tr {
+    transition: background-color 0.15s ease;
+  }
+
+  tbody tr:hover {
+    background: linear-gradient(90deg, var(--sp-surface-2), transparent);
+  }
+}
+
+.num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sortButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  &:hover {
+    color: var(--sp-text);
+  }
+}
+
+.sortIcon {
+  font-size: 10px;
+}
+
+.nameCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nameLink,
+.nameText {
+  color: var(--sp-text);
+  font-weight: 600;
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.nameLink:hover {
+  color: var(--sp-accent);
+  text-decoration: underline;
+}
+
+.subtle {
+  font-size: 12px;
+  color: var(--sp-text-2);
+  margin-top: 1px;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--sp-badge-bg);
+  color: var(--sp-badge-text);
+  white-space: nowrap;
+}
+
+.warnIcon {
+  display: inline-flex;
+  color: $ms-color-error;
+  cursor: default;
+  border-radius: 4px;
+
+  &:focus-visible {
+    outline: 2px solid var(--sp-text);
+  }
+}
+
+.shareCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.miniBar {
+  display: flex;
+  gap: 2px;
+  width: 90px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--sp-surface-2);
+  transform-origin: left;
+  animation: growX 0.6s ease-out both;
+
+  @media (max-width: 600px) {
+    display: none;
+  }
+}
+
+.miniSegment {
+  height: 8px;
+  min-width: 2px;
+}
+
+.shareValue {
+  min-width: 36px;
+  text-align: right;
+}
+
+// File type table: the bar column takes the spare width.
+.barHeader {
+  width: 34%;
+  font-weight: 400 !important;
+}
+
+.barCell {
+  vertical-align: middle !important;
+}
+
+.typeBar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 3px;
+  transform-origin: left;
+  animation: growX 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.typeIcon {
+  color: var(--sp-text-2);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.typeName {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.showAll {
+  margin-top: 10px;
+}
+
+// Fluent controls inside cards follow the card colours in dark mode.
+.card :global(.ms-Pivot-link),
+.card :global(.ms-Pivot-text) {
+  color: var(--sp-text-2);
+}
+
+.card :global(.ms-Pivot-link.is-selected) :global(.ms-Pivot-text) {
+  color: var(--sp-text);
+}
+
+.footnote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--sp-text-2);
+  max-width: 860px;
+}
+
+// On narrow pages the bar labels would collide; the hover / focus tooltip still has the values.
+@media (max-width: 600px) {
+  .barValue {
+    visibility: hidden;
+  }
+
+  .chart {
+    gap: 4px;
+  }
+
+  .gauge {
+    margin: 0 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .enter,
+  .bar,
+  .gaugeArc,
+  .miniBar,
+  .typeBar,
+  .boundary::before {
+    animation: none;
+  }
+
+  .card,
+  .bar,
+  .table tbody tr {
+    transition: none;
+  }
+}

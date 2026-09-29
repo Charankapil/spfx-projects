@@ -1,0 +1,17 @@
+{
+  "name": "storage-pulse-tests",
+  "private": true,
+  "description": "Unit, scan-engine and browser tests for Storage Pulse. Needs Node 20+ (separate from the SPFx build, which needs Node 18).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node run-unit.mjs",
+    "e2e": "node --test e2e/run.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright-core": "1.63.0"
+  }
+}

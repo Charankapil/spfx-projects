@@ -1,0 +1,30 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "f558ae53-6726-44d1-80a2-7157fda7a618",
+  "alias": "StoragePulseWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportsThemeVariants": true,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage", "TeamsTab", "TeamsPersonalApp"],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "Other" },
+      "title": { "default": "Storage Pulse" },
+      "description": { "default": "See how much of a site's file storage is still in use, and how much is in files nobody has changed for a year or more, by age, file type, library and site." },
+      "iconImageUrl": "./assets/storage-pulse-toolbox.png",
+      "properties": {
+        "title": "Storage Pulse",
+        "scope": "siteCollection",
+        "thresholdMonths": 12,
+        "scanPermission": "owners",
+        "includeHidden": false,
+        "excludeSystemLibraries": false,
+        "excludedLibraries": "",
+        "staleAfterDays": 90
+      }
+    }
+  ]
+}

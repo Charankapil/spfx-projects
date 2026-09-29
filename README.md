@@ -11,10 +11,10 @@ A collection of SharePoint Framework (SPFx) web part solutions.
   SharePoint REST/Search APIs — no Azure AD app registration or client id
   required. See its own [README](./filetype-analyser/README.md) for setup,
   architecture and deployment details.
-- [`storage-activity-analyser`](./storage-activity-analyser) — Shows how
-  much of a site or site collection's file storage is in active files and
-  how much is in files nobody has modified for a chosen period (3 months
-  to 5 years), by file type, library, site and age, with the largest
-  inactive files and CSV export. Runs with the current user's permissions only — no
-  app registration or API permissions. See its own
-  [README](./storage-activity-analyser/README.md).
+- [`storage-pulse`](./storage-pulse) — **Storage Pulse**: shows how much
+  of a site or site collection's file storage is in files people still use,
+  and how much is in files nobody has modified for a chosen period (3
+  months to 5 years). The breakdown is by age, file type, library and site,
+  with the largest inactive files and CSV exports. It runs with the
+  current user's permissions only, with no app registration and no API
+  permissions. See its own [README](./storage-pulse/README.md).

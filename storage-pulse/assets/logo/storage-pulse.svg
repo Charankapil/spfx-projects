@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Storage Pulse">
+  <defs>
+    <linearGradient id="sp-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1530"/>
+      <stop offset="1" stop-color="#18336a"/>
+    </linearGradient>
+    <radialGradient id="sp-sheen" cx="0.25" cy="0.15" r="0.85">
+      <stop offset="0" stop-color="#5b8cff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#5b8cff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sp-amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffc062"/>
+      <stop offset="1" stop-color="#ff8a3d"/>
+    </linearGradient>
+    <linearGradient id="sp-cyan" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#2aa7ff"/>
+      <stop offset="1" stop-color="#4af0ff"/>
+    </linearGradient>
+    <filter id="sp-glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="1.8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#sp-bg)"/>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#sp-sheen)"/>
+  <rect x="4.5" y="4.5" width="119" height="119" rx="27.5" fill="none" stroke="#ffffff" stroke-opacity="0.16"/>
+  <circle cx="64" cy="64" r="38" fill="none" stroke="#ffffff" stroke-opacity="0.09" stroke-width="10"/>
+  <!-- Inactive share (amber, ~62%) then active share (cyan), with a gap between them. -->
+  <circle cx="64" cy="64" r="38" fill="none" stroke="url(#sp-amber)" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="140 239" transform="rotate(-90 64 64)" filter="url(#sp-glow)"/>
+  <circle cx="64" cy="64" r="38" fill="none" stroke="url(#sp-cyan)" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="76 239" stroke-dashoffset="-153" transform="rotate(-90 64 64)" filter="url(#sp-glow)"/>
+  <path d="M35 66h14l5-12 8 25 7-31 6 23 4-5h14" fill="none" stroke="#eef8ff" stroke-width="5.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

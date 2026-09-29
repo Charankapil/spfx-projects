@@ -1,0 +1,47 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "storage-pulse-client-side-solution",
+    "id": "5cff86ca-e33d-4328-b004-90b9c8787d09",
+    "version": "2.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "undefined"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Storage Pulse - see how much of your SharePoint storage is still in use"
+      },
+      "longDescription": {
+        "default": "Storage Pulse scans a SharePoint site or site collection as the signed-in user and splits the storage used by files into active and inactive, based on when each file was last modified. It shows the split, storage by age, by file type and category, by library and site, the largest inactive files and CSV exports, so site owners can decide what to archive or clean up. It uses only SharePoint REST with the user's own permissions: no Azure AD app registration, no API permission requests and no data leaves SharePoint."
+      },
+      "screenshotPaths": [
+        "assets/screenshot-dashboard.png"
+      ],
+      "videoUrl": "",
+      "categories": [
+        "Content management",
+        "Productivity"
+      ]
+    },
+    "features": [
+      {
+        "title": "Storage Pulse",
+        "description": "Adds the Storage Pulse web part.",
+        "id": "caefa46b-3f0d-4b4c-878a-14c3fb9244d7",
+        "version": "2.0.0.0"
+      }
+    ],
+    "title": "Storage Pulse",
+    "iconPath": "assets/storage-pulse-icon.png"
+  },
+  "paths": {
+    "zippedPackage": "solution/storage-pulse.sppkg"
+  }
+}

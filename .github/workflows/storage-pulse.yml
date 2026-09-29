@@ -1,0 +1,53 @@
+name: Storage Pulse
+
+on:
+  push:
+    paths:
+      - 'storage-pulse/**'
+      - '.github/workflows/storage-pulse.yml'
+  pull_request:
+    paths:
+      - 'storage-pulse/**'
+      - '.github/workflows/storage-pulse.yml'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: storage-pulse
+    steps:
+      - uses: actions/checkout@v4
+
+      # SPFx 1.18 builds on Node 18.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: storage-pulse/package-lock.json
+      - run: npm ci
+      - name: Lint, compile and bundle
+        run: npx gulp bundle --ship
+      - name: Package
+        run: npx gulp package-solution --ship
+
+      # The tests use Node 20 (node:test, esbuild, Playwright).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install test tools
+        working-directory: storage-pulse/tests
+        run: |
+          npm ci
+          npx playwright-core install --with-deps chromium
+      - name: Unit and scan-engine tests
+        working-directory: storage-pulse/tests
+        run: npm test
+      - name: Browser tests
+        working-directory: storage-pulse/tests
+        run: npm run e2e
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storage-pulse-sppkg
+          path: storage-pulse/sharepoint/solution/storage-pulse.sppkg

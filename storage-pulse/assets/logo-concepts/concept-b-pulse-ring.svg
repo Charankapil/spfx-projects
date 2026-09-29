@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c1631"/>
+      <stop offset="1" stop-color="#15315e"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="4.5" y="4.5" width="119" height="119" rx="27.5" fill="none" stroke="#ffffff" stroke-opacity="0.14"/>
+  <circle cx="64" cy="64" r="38" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="10"/>
+  <!-- ring: 35% active (cyan), 65% inactive (amber) -->
+  <circle cx="64" cy="64" r="38" fill="none" stroke="#ff9a3d" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="148 239" transform="rotate(-90 64 64)" filter="url(#soft)"/>
+  <circle cx="64" cy="64" r="38" fill="none" stroke="#3ee6ff" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="78 239" stroke-dashoffset="-160" transform="rotate(-90 64 64)" filter="url(#soft)"/>
+  <path d="M36 66h13l5-12 8 24 7-30 6 22 4-4h13" fill="none" stroke="#eaf6ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
