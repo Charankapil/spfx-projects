@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "storage-activity-analyser-client-side-solution",
+    "id": "5cff86ca-e33d-4328-b004-90b9c8787d09",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "undefined"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Storage Activity Analyser - how much of a site's storage is in active vs inactive files"
+      },
+      "longDescription": {
+        "default": "Scans a SharePoint site or site collection as the signed-in user (SharePoint REST only, no Azure AD app registration and no extra API permissions) and splits the storage used by files into active and inactive, based on when each file was last modified. Shows the split, an age breakdown, per-library and per-site figures, the largest inactive files and a CSV export, so site owners can decide what to archive or clean up."
+      },
+      "screenshotPaths": []
+    },
+    "features": [
+      {
+        "title": "storage-activity-analyser Feature",
+        "description": "The feature that activates elements of the storage-activity-analyser solution.",
+        "id": "caefa46b-3f0d-4b4c-878a-14c3fb9244d7",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/storage-activity-analyser-webpart.sppkg"
+  }
+}

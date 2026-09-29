@@ -1,0 +1,463 @@
+@import '~@fluentui/react/dist/sass/References.scss';
+
+// Ink uses SharePoint's neutrals; the two series colours are the validated
+// categorical slots 1 (blue = active) and 2 (orange = inactive).
+$ink-primary: $ms-color-neutralPrimary;
+$ink-secondary: $ms-color-neutralSecondary;
+$ink-muted: #898781;
+$hairline: #e1e0d9;
+$border: rgba(11, 11, 11, 0.08);
+$surface: #ffffff;
+$wash: #f7f6f3;
+$series-active: #2a78d6;
+$series-inactive: #eb6834;
+$theme-primary: '[theme:themePrimary, default:#0078d4]';
+$theme-lighter-alt: '[theme:themeLighterAlt, default:#eff6fc]';
+$card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: $ink-primary;
+}
+
+.card {
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: 12px;
+  padding: 18px 20px;
+  box-shadow: $card-shadow;
+  min-width: 0;
+}
+
+.enter {
+  animation: fadeUp 0.4s ease-out both;
+}
+
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cardTitle {
+  margin: 0 0 2px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cardSubtitle {
+  font-size: 12px;
+  color: $ink-secondary;
+  max-width: 640px;
+}
+
+.active {
+  background: $series-active;
+}
+
+.inactive {
+  background: $series-inactive;
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+// Headline figures
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 24px;
+}
+
+.figure {
+  min-width: 0;
+}
+
+.figureHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.figureIcon {
+  display: inline-flex;
+  font-size: 12px;
+  color: $ink-secondary;
+}
+
+.figureLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: $ink-secondary;
+}
+
+.figureValue {
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.figureMeta {
+  font-size: 13px;
+  color: $ink-primary;
+  margin-top: 2px;
+}
+
+.figureCaption {
+  font-size: 12px;
+  color: $ink-secondary;
+  margin-top: 2px;
+}
+
+// Split bar: the two shares side by side with a 2px surface gap.
+.splitBar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  margin: 18px 0 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: $wash;
+}
+
+.splitSegment {
+  min-width: 3px;
+  height: 100%;
+}
+
+.insights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: $ink-primary;
+
+  li {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+}
+
+.insightIcon {
+  color: $ink-secondary;
+  flex-shrink: 0;
+}
+
+// Legend
+.legend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: $ink-secondary;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+// Age chart (plain HTML columns, no chart library)
+.chart {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  height: 220px;
+  border-bottom: 1px solid $hairline;
+  padding-top: 8px;
+}
+
+.column {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+
+  &:focus-visible .bar {
+    box-shadow: 0 0 0 2px $surface, 0 0 0 4px $ink-primary;
+  }
+}
+
+// Dashed line marking where "inactive" starts.
+.boundary::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: -26px;
+  border-left: 1px dashed $ink-muted;
+}
+
+.barArea {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.barValue {
+  font-size: 11px;
+  color: $ink-secondary;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  width: 100%;
+  max-width: 56px;
+  border-radius: 4px 4px 0 0;
+  transition: opacity 0.12s ease, height 0.3s ease;
+}
+
+.dimmed {
+  opacity: 0.45;
+}
+
+.axisLabel {
+  position: absolute;
+  bottom: -22px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  color: $ink-secondary;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chart + * {
+  margin-top: 30px;
+}
+
+.chart {
+  margin-bottom: 26px;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% - 20px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  min-width: 170px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: $surface;
+  border: 1px solid $hairline;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  color: $ink-primary;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.tooltipTitle {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.tooltipMuted {
+  color: $ink-secondary;
+}
+
+// Tables
+.tableWrap {
+  overflow-x: auto;
+  margin: 0 -4px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    color: $ink-secondary;
+    padding: 6px 8px;
+    border-bottom: 1px solid $hairline;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 8px;
+    border-bottom: 1px solid $wash;
+    vertical-align: top;
+  }
+
+  // Keep names readable on narrow pages; the table scrolls sideways instead.
+  th:first-child,
+  td:first-child {
+    min-width: 160px;
+  }
+
+  tbody tr:hover {
+    background: $wash;
+  }
+}
+
+.num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sortButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  &:hover {
+    color: $ink-primary;
+  }
+}
+
+.sortIcon {
+  font-size: 10px;
+}
+
+.nameCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nameLink {
+  color: $ink-primary;
+  font-weight: 600;
+  text-decoration: none;
+  word-break: break-word;
+
+  &:hover {
+    color: $theme-primary;
+    text-decoration: underline;
+  }
+}
+
+.subtle {
+  font-size: 12px;
+  color: $ink-secondary;
+  margin-top: 1px;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #fbe3d8;
+  color: #8a3413;
+  white-space: nowrap;
+}
+
+.warnIcon {
+  color: $ms-color-error;
+  cursor: default;
+}
+
+.shareCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.miniBar {
+  display: flex;
+  gap: 2px;
+  width: 90px;
+  height: 8px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: $wash;
+
+  @media (max-width: 600px) {
+    display: none;
+  }
+}
+
+.miniSegment {
+  height: 8px;
+  min-width: 2px;
+}
+
+.shareValue {
+  min-width: 36px;
+  text-align: right;
+}
+
+.showAll {
+  margin-top: 10px;
+}
+
+.footnote {
+  margin: 0;
+  font-size: 12px;
+  color: $ink-secondary;
+  max-width: 820px;
+}
+
+// On narrow pages the bar labels would collide; the hover/focus tooltip still has the values.
+@media (max-width: 600px) {
+  .barValue {
+    visibility: hidden;
+  }
+
+  .chart {
+    gap: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter {
+    animation: none;
+  }
+
+  .bar {
+    transition: none;
+  }
+}
