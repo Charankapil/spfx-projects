@@ -3,7 +3,7 @@
   "solution": {
     "name": "storage-pulse-client-side-solution",
     "id": "5cff86ca-e33d-4328-b004-90b9c8787d09",
-    "version": "2.1.1.0",
+    "version": "2.2.0.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -35,7 +35,7 @@
         "title": "Storage Pulse",
         "description": "Adds the Storage Pulse web part.",
         "id": "caefa46b-3f0d-4b4c-878a-14c3fb9244d7",
-        "version": "2.1.1.0"
+        "version": "2.2.0.0"
       }
     ],
     "title": "Storage Pulse",

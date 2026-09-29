@@ -18,6 +18,7 @@ import { IStoragePulseProps, IStoragePulseTheme, ScanMode, ScanPermission } from
 import { format, thresholdLabel } from './components/text';
 import { ScanScope } from './models/IScanResult';
 import { DEFAULT_THRESHOLD_MONTHS, THRESHOLD_OPTIONS } from './services/activity';
+import { ScanSpeed } from './services/RequestGovernor';
 
 export interface IStoragePulseWebPartProps {
   title: string;
@@ -25,6 +26,7 @@ export interface IStoragePulseWebPartProps {
   thresholdMonths: number;
   scanPermission: ScanPermission;
   scanMode: ScanMode;
+  scanSpeed: ScanSpeed;
   includeHidden: boolean;
   excludeSystemLibraries: boolean;
   /** One library title or URL name per line. */
@@ -103,6 +105,9 @@ export default class StoragePulseWebPart extends BaseClientSideWebPart<IStorageP
       scanPermission: this.properties.scanPermission === 'everyone' ? 'everyone' : 'owners',
       // Pages added before v2.1 have no scan mode set; they get the quick scan too.
       scanMode: this.properties.scanMode === 'detailed' ? 'detailed' : 'quick',
+      // Pages added before v2.2 have no speed set; they get the gentle default too.
+      scanSpeed:
+        this.properties.scanSpeed === 'fast' || this.properties.scanSpeed === 'balanced' ? this.properties.scanSpeed : 'gentle',
       includeHidden: this.properties.includeHidden === true,
       excludeSystemLibraries: this.properties.excludeSystemLibraries === true,
       excludedLibraries: (this.properties.excludedLibraries || '')
@@ -166,6 +171,14 @@ export default class StoragePulseWebPart extends BaseClientSideWebPart<IStorageP
                   options: [
                     { key: 'quick', text: strings.ScanModeQuick },
                     { key: 'detailed', text: strings.ScanModeDetailed }
+                  ]
+                }),
+                PropertyPaneDropdown('scanSpeed', {
+                  label: strings.ScanSpeedLabel,
+                  options: [
+                    { key: 'gentle', text: strings.ScanSpeedGentle },
+                    { key: 'balanced', text: strings.ScanSpeedBalanced },
+                    { key: 'fast', text: strings.ScanSpeedFast }
                   ]
                 }),
                 PropertyPaneToggle('includeHidden', {

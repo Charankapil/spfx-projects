@@ -72,6 +72,14 @@ export interface ILibraryResult {
    * no file-type breakdown or largest-file entries.
    */
   measuredAsWhole?: { lastChange: string; dormantMonths: number };
+  /**
+   * Only in a checkpoint of an unfinished scan: this library has not been read
+   * yet (or was being read when the checkpoint was taken), so it starts again
+   * on resume.
+   */
+  pending?: boolean;
+  /** The list's last change by a person (ISO). Kept only while pending, for the quick-scan check on resume. */
+  lastUserChange?: string;
 }
 
 export interface IWebResult {
@@ -120,6 +128,11 @@ export interface IScanResult {
    * libraries and a more conservative form was used for them.
    */
   paging?: { level: number; libraries: number };
+  /**
+   * Only in a checkpoint of an unfinished scan. Libraries still `pending`
+   * are read again on resume; ages stay measured from scanStartedAt.
+   */
+  partial?: { librariesDone: number; librariesTotal: number };
 }
 
 export interface IScanProgress {
@@ -134,4 +147,14 @@ export interface IScanProgress {
   itemsRead: number;
   filesRead: number;
   bytesRead: number;
+  /** Present once SharePoint has throttled the scan. */
+  throttle?: {
+    /** Epoch ms until which requests are on hold; in the past when not on hold. */
+    pausedUntil: number;
+    throttledCount: number;
+    /** Requests allowed at once now, and at most. */
+    concurrency: number;
+    maxConcurrency: number;
+    waitedMs: number;
+  };
 }

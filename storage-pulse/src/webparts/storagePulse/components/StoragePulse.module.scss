@@ -466,6 +466,35 @@
   color: var(--sp-text-2);
 }
 
+// SharePoint asked the scan to slow down: calm, informational, never an error look.
+.throttleNote {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 12px 0 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--sp-text-2);
+  background: var(--sp-surface-2);
+  border: 1px solid var(--sp-border);
+
+  strong {
+    color: var(--sp-text);
+    font-size: 13px;
+  }
+}
+
+.throttleActive {
+  border-color: var(--sp-accent);
+}
+
+.throttleIcon {
+  margin-top: 2px;
+  color: var(--sp-accent);
+  flex-shrink: 0;
+}
+
 // ---------------------------------------------------------------- Loading and empty
 
 @keyframes shimmer {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { IScanResult } from '../../src/webparts/storagePulse/models/IScanResult';
+import { sanitizeResult } from '../../src/webparts/storagePulse/services/safeData';
 import { splitByThreshold, splitFileType, THRESHOLD_OPTIONS, totalFileTypes, totalHistogram } from '../../src/webparts/storagePulse/services/activity';
 import { describeError } from '../../src/webparts/storagePulse/services/httpErrors';
 import {
@@ -9,12 +10,22 @@ import {
   HttpError,
   IScanOptions,
   ScanCancelledError,
+  ScanPausedError,
   StorageScanService
 } from '../../src/webparts/storagePulse/services/StorageScanService';
 // @ts-ignore - plain JS test double
 import { createMockSharePoint } from '../mock/mockSharePoint.js';
 
-const BASE: IScanOptions = { scope: 'siteCollection', includeHidden: false, excludeSystemLibraries: false, excludedLibraries: [] };
+// Tests run without real-world pacing: the fast profile with no gap between requests, and no wait before the automatic second pass.
+const BASE: IScanOptions = {
+  scope: 'siteCollection',
+  includeHidden: false,
+  excludeSystemLibraries: false,
+  excludedLibraries: [],
+  speed: 'fast',
+  autoRetryDelayMs: 0,
+  profileOverride: { minGapMs: 0 }
+};
 
 async function scan(mockOptions: Record<string, unknown>, options: Partial<IScanOptions> = {}) {
   const sp = createMockSharePoint(mockOptions);
@@ -208,4 +219,88 @@ test('failures are described by cause, not blamed on access', () => {
   assert.match(describeFailure(new HttpError(429, '429: throttled')), /throttling/);
   assert.match(describeFailure(new HttpError(403, '403: Access denied.')), /Access denied/);
   assert.match(describeFailure(new HttpError(500, '500: exceeds the list view threshold')), /list view threshold/);
+});
+
+test('a busy tenant: throttling never fails a library, and nothing is sent while a Retry-After is active', async () => {
+  const sp = createMockSharePoint({ tenantLimit: { perSecond: 6, retryAfterSec: 1 }, extraLibraries: 12 });
+  const service = new StorageScanService(sp.context as never);
+  const concurrency: number[] = [];
+  const result = await service.scan(BASE, (p) => {
+    if (p.throttle) {
+      concurrency.push(p.throttle.concurrency);
+    }
+  });
+  const expected = sp.expected(BASE);
+  assert.deepEqual(totals(result), { files: expected.files, bytes: expected.bytes });
+  assert.deepEqual(result.libraries.filter((l) => l.error).map((l) => l.title), []);
+  assert.ok(sp.throttles() >= 1, 'the simulated tenant never throttled');
+  // The scan slowed itself down after being throttled ...
+  assert.ok(concurrency.some((c) => c < 6), `concurrency stayed at ${Math.max(...concurrency)}`);
+  // ... and did not keep sending: only requests already on their way can arrive during a hold.
+  assert.ok(sp.violations() <= sp.throttles() * 6, `${sp.violations()} requests sent during ${sp.throttles()} holds`);
+});
+
+test('long throttling pauses the scan with its progress saved, and it resumes to exact totals', async () => {
+  const sp = createMockSharePoint({ outage: { afterRequests: 25, forMs: 6000 }, extraLibraries: 10 });
+  const service = new StorageScanService(sp.context as never);
+  const checkpoints: IScanResult[] = [];
+  const options: IScanOptions = { ...BASE, throttlePatienceMs: 1500, checkpointEveryMs: 0 };
+  let paused: ScanPausedError | undefined;
+  try {
+    await service.scan(options, () => undefined, (snapshot) => {
+      checkpoints.push(snapshot);
+    });
+    assert.fail('the scan should have paused');
+  } catch (err) {
+    assert.ok(err instanceof ScanPausedError, `expected a pause, got ${String(err)}`);
+    paused = err as ScanPausedError;
+  }
+  const snapshot = paused!.snapshot as IScanResult;
+  assert.ok(snapshot && snapshot.partial, 'the pause carried no snapshot');
+  assert.ok(snapshot.partial!.librariesDone > 0 && snapshot.partial!.librariesDone < snapshot.partial!.librariesTotal);
+  assert.ok(checkpoints.length >= 1, 'no checkpoint was handed out');
+  assert.equal(snapshot.libraries.filter((l) => l.pending).length, snapshot.partial!.librariesTotal - snapshot.partial!.librariesDone);
+  // Nothing half-read leaks into the snapshot: pending libraries are empty.
+  assert.ok(snapshot.libraries.filter((l) => l.pending).every((l) => l.files === 0 && l.bytes === 0));
+
+  // Saved to Site Assets and loaded back the way a later visit would: through the sanitiser.
+  const restored = sanitizeResult(JSON.parse(JSON.stringify(snapshot)), 'https://contoso.sharepoint.com')!;
+  assert.ok(restored && restored.partial);
+
+  sp.endOutage();
+  const resumed = await new StorageScanService(sp.context as never).resume(restored, BASE, () => undefined);
+  const expected = sp.expected(BASE);
+  assert.deepEqual(totals(resumed), { files: expected.files, bytes: expected.bytes });
+  assert.equal(resumed.partial, undefined);
+  assert.ok(resumed.libraries.every((l) => !l.pending && !l.error));
+  assert.equal(resumed.scanStartedAt, snapshot.scanStartedAt, 'ages must stay measured from the original start');
+  assert.equal(resumed.libraries.length, snapshot.libraries.length);
+});
+
+test('a library that failed for a transient reason is retried automatically', async () => {
+  const sp = createMockSharePoint({ flaky: 6 }); // fails its first six item requests, then recovers
+  const service = new StorageScanService(sp.context as never);
+  const result = await service.scan(BASE, () => undefined);
+  const flaky = result.libraries.find((l) => l.title === 'Flaky Library')!;
+  assert.equal(flaky.error, undefined, flaky.error);
+  assert.ok(flaky.files > 0);
+  const expected = sp.expected(BASE);
+  assert.deepEqual(totals(result), { files: expected.files, bytes: expected.bytes });
+  // The failed first attempt did not leave a second copy of its files behind.
+  assert.equal(flaky.files, sp.libs.flaky.items.filter((i: { folder?: boolean }) => !i.folder).length);
+});
+
+test('slower profiles really send fewer requests per second', async () => {
+  const sp = createMockSharePoint({ extraLibraries: 6, latencyMs: 1 });
+  const rate = async (options: Partial<IScanOptions>): Promise<number> => {
+    const fresh = createMockSharePoint({ extraLibraries: 6, latencyMs: 1 });
+    const t0 = Date.now();
+    await new StorageScanService(fresh.context as never).scan({ ...BASE, ...options, quickAfterMonths: undefined }, () => undefined);
+    return fresh.log.length / ((Date.now() - t0) / 1000);
+  };
+  const gentle = await rate({ speed: 'gentle', profileOverride: { minGapMs: 40 } });
+  const fast = await rate({ speed: 'fast', profileOverride: { minGapMs: 5 } });
+  assert.ok(gentle < fast, `gentle ${gentle.toFixed(1)}/s vs fast ${fast.toFixed(1)}/s`);
+  assert.ok(gentle <= 1000 / 40 + 1, `gentle ${gentle.toFixed(1)} requests/s exceeds its pacing`);
+  assert.ok(sp.log.length === 0);
 });

@@ -13,8 +13,19 @@ import {
   ScanScope
 } from '../models/IScanResult';
 import { ageInMonths, bandIndex, emptyFileTypeStat, emptyHistogram, extensionOf, MIN_THRESHOLD_MONTHS } from './activity';
+import { HttpError, ScanCancelledError, ScanPausedError } from './errors';
 import { describeError } from './httpErrors';
+import {
+  DEFAULT_SPEED,
+  ISpeedProfile,
+  parseRetryAfter,
+  RequestGovernor,
+  ScanSpeed,
+  SPEED_PROFILES
+} from './RequestGovernor';
 import { encodePath } from './safeData';
+
+export { HttpError, ScanCancelledError, ScanPausedError };
 
 /**
  * Every call goes through the ambient SPHttpClient, which reuses the signed-in
@@ -55,6 +66,20 @@ export interface IScanOptions {
    * instead of file by file. Undefined for a detailed scan.
    */
   quickAfterMonths?: number;
+  /**
+   * How hard the scan may push SharePoint (default gentle). Throttling is
+   * measured per user, per app and per tenant, so a busy scan can slow down
+   * other people and tools too.
+   */
+  speed?: ScanSpeed;
+  /** Total time to wait for throttling before pausing the scan so it can be resumed (default 60 minutes). */
+  throttlePatienceMs?: number;
+  /** How often an unfinished scan's progress is handed to onCheckpoint (default 60 seconds). */
+  checkpointEveryMs?: number;
+  /** Wait before the automatic second pass over libraries that failed for a transient reason (default 15 seconds). */
+  autoRetryDelayMs?: number;
+  /** Test hook: overrides parts of the speed profile (for example minGapMs: 0). */
+  profileOverride?: Partial<ISpeedProfile>;
 }
 
 /** URL names of the libraries SharePoint creates for the site itself rather than for people's files. */
@@ -84,16 +109,12 @@ interface IStorageMetricsResponse {
   };
 }
 
-const REQUEST_GAP_MS = 100;
-/**
- * Throttling is expected on long scans, so a throttled request waits and
- * tries again for a long time (about half an hour in total) rather than
- * giving up part-way through a big library.
- */
-const MAX_THROTTLE_RETRIES = 12;
-/** Network failures (no HTTP response at all) are retried separately from throttling. */
+/** Network failures (no HTTP response at all) are retried a few times. Throttling is handled by the RequestGovernor. */
 const MAX_NETWORK_RETRIES = 3;
-const MAX_BACKOFF_SECONDS = 300;
+/** Total time the scan waits for SharePoint throttling before it pauses so it can be resumed. */
+const DEFAULT_THROTTLE_PATIENCE_MS = 60 * 60 * 1000;
+const DEFAULT_CHECKPOINT_MS = 60 * 1000;
+const DEFAULT_AUTO_RETRY_MS = 15 * 1000;
 /**
  * nometadata drops the per-item odata.type / id / etag / editLink fields
  * (also on the expanded File), which makes each 5,000-item page much
@@ -114,12 +135,6 @@ const JSON_OPTIONS = { headers: { Accept: 'application/json;odata.metadata=nomet
 const MAX_PAGING_LEVEL = 2;
 /** After this many libraries needed a fallback, later libraries start at that level. */
 const LEVEL_LEARN_AFTER = 3;
-/** Libraries read at the same time. Most of a scan of many small libraries is per-library overhead. */
-const LIBRARY_CONCURRENCY = 4;
-/** Readers per large library (one ID range each). */
-const PARALLEL_READERS = 3;
-/** Requests in flight at once across the whole scan, to stay friendly to SharePoint's throttling. */
-const MAX_CONCURRENT_REQUESTS = 6;
 /** Libraries with more items than this are split into ID ranges read in parallel. */
 const PARALLEL_ITEM_THRESHOLD = 20000;
 const IDS_PER_RANGE = 50000;
@@ -138,36 +153,6 @@ const LARGEST_FILES_KEPT = 200;
 const MAX_FILE_TYPES_PER_LIBRARY = 300;
 
 type FileTypeMap = Map<string, IFileTypeStat>;
-
-/*
- * The SPFx build compiles to ES5, where a subclass of Error loses its
- * prototype: `instanceof ScanCancelledError` would always be false and a
- * cancel (or an HTTP status) would be mistaken for some other failure. Both
- * classes therefore restore their prototype explicitly.
- */
-function restorePrototype(instance: object, prototype: object): void {
-  // Object.setPrototypeOf exists in every browser SharePoint supports; the ES5 typings just do not declare it.
-  (Object as unknown as { setPrototypeOf(o: object, p: object): object }).setPrototypeOf(instance, prototype);
-}
-
-export class ScanCancelledError extends Error {
-  constructor(message: string) {
-    super(message);
-    restorePrototype(this, ScanCancelledError.prototype);
-    this.name = 'ScanCancelledError';
-  }
-}
-
-export class HttpError extends Error {
-  public status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    restorePrototype(this, HttpError.prototype);
-    this.name = 'HttpError';
-    this.status = status;
-  }
-}
 
 /**
  * Says why a request failed in terms a site owner can act on. A site
@@ -217,37 +202,96 @@ interface IIdRange {
   to?: number;
 }
 
+interface IRun {
+  scope: ScanScope;
+  rootUrl: string;
+  rootTitle: string;
+  siteStorageBytes?: number;
+  webs: IWebResult[];
+  libraries: ILibraryResult[];
+  largest: ILargeFile[];
+  scanStart: Date;
+  options: IScanOptions;
+  previousPaging?: { level: number; libraries: number };
+}
+
 export class StorageScanService {
   private cancelled = false;
-  /** Pending waits, so Cancel can end a long throttling back-off at once instead of after it. */
+  /** Pending sleeps, so Cancel can end a long wait at once instead of after it. */
   private waiters: (() => void)[] = [];
-  private inFlight = 0;
+  private profile: ISpeedProfile = SPEED_PROFILES[DEFAULT_SPEED];
+  private governor: RequestGovernor;
   /** Item query level new libraries start at, raised once several libraries needed a fallback. */
   private pagingFloor = 0;
   private fallbackLibraries = 0;
   private highestLevelUsed = 0;
-  private slotQueue: { resolve: () => void; reject: (e: Error) => void }[] = [];
+  /** State of the scan in progress, for checkpoints. */
+  private run: IRun | undefined;
+  private inProgress: ILibraryResult[] = [];
+  /** Libraries that failed for a reason worth one more automatic try (server error, timeout, network). */
+  private transient = new Set<ILibraryResult>();
+  private onCheckpoint: ((snapshot: IScanResult) => Promise<void> | void) | undefined;
+  private lastCheckpointAt = 0;
+  private checkpointing = false;
 
-  constructor(private context: WebPartContext) {}
+  constructor(private context: WebPartContext) {
+    this.governor = this.createGovernor({ scope: 'siteCollection', includeHidden: false, excludeSystemLibraries: false, excludedLibraries: [] });
+  }
 
   public cancel(): void {
     this.cancelled = true;
     const waiters = this.waiters;
     this.waiters = [];
     waiters.forEach((wake) => wake());
-    const queued = this.slotQueue;
-    this.slotQueue = [];
-    queued.forEach((q) => q.reject(new ScanCancelledError('Scan cancelled.')));
+    this.governor.cancel();
   }
 
-  private reset(): void {
+  private createGovernor(options: IScanOptions): RequestGovernor {
+    this.profile = {
+      ...(SPEED_PROFILES[options.speed || DEFAULT_SPEED] || SPEED_PROFILES[DEFAULT_SPEED]),
+      ...(options.profileOverride || {})
+    };
+    return new RequestGovernor(
+      this.profile,
+      { now: () => Date.now(), sleep: (ms: number) => this.delay(ms) },
+      options.throttlePatienceMs !== undefined ? options.throttlePatienceMs : DEFAULT_THROTTLE_PATIENCE_MS
+    );
+  }
+
+  /** Starts a run: clears the previous one's state and applies the options' speed and patience. */
+  private begin(options: IScanOptions, onCheckpoint?: (snapshot: IScanResult) => Promise<void> | void): void {
     this.cancelled = false;
     this.waiters = [];
-    this.slotQueue = [];
-    this.inFlight = 0;
     this.pagingFloor = 0;
     this.fallbackLibraries = 0;
     this.highestLevelUsed = 0;
+    this.inProgress = [];
+    this.transient = new Set<ILibraryResult>();
+    this.onCheckpoint = onCheckpoint;
+    this.lastCheckpointAt = Date.now();
+    this.checkpointing = false;
+    this.run = undefined;
+    this.governor = this.createGovernor(options);
+  }
+
+  /** Wraps the caller's progress callback so every update also carries the current throttling state. */
+  private makeEmitter(onProgress: (p: IScanProgress) => void): (p: IScanProgress) => void {
+    return (p: IScanProgress): void => {
+      const state = this.governor.state();
+      onProgress({
+        ...p,
+        throttle:
+          state.throttledCount > 0
+            ? {
+                pausedUntil: state.pausedUntil,
+                throttledCount: state.throttledCount,
+                concurrency: state.concurrency,
+                maxConcurrency: state.maxConcurrency,
+                waitedMs: state.waitedMs
+              }
+            : undefined
+      });
+    };
   }
 
   private throwIfCancelled(): void {
@@ -272,83 +316,62 @@ export class StorageScanService {
     });
   }
 
-  /** Waits for one of the MAX_CONCURRENT_REQUESTS slots. */
-  private acquireSlot(): Promise<void> {
-    this.throwIfCancelled();
-    if (this.inFlight < MAX_CONCURRENT_REQUESTS) {
-      this.inFlight++;
-      return Promise.resolve();
-    }
-    return new Promise<void>((resolve, reject) => {
-      this.slotQueue.push({
-        resolve: () => {
-          this.inFlight++;
-          resolve();
-        },
-        reject
-      });
-    });
-  }
+  /**
+   * GET through the RequestGovernor. Throttling (429/503) is never a failure:
+   * the governor holds back every request until Retry-After has passed, and
+   * this request simply goes again. Only after the scan has waited longer
+   * than its patience does acquire() stop it with ScanPausedError.
+   */
+  private async getJson<T>(url: string, networkAttempt = 0, lean = true): Promise<T> {
+    for (;;) {
+      await this.governor.acquire();
+      let response: SPHttpClientResponse;
+      try {
+        response = await this.context.spHttpClient.get(
+          url,
+          SPHttpClient.configurations.v1,
+          lean ? JSON_OPTIONS : undefined
+        );
+      } catch (err) {
+        this.governor.release({ throttled: false });
+        this.throwIfCancelled();
+        // Network failure or timeout (no response at all): retry a few times.
+        if (networkAttempt < MAX_NETWORK_RETRIES) {
+          await this.delay(2000 * (networkAttempt + 1));
+          return this.getJson<T>(url, networkAttempt + 1, lean);
+        }
+        throw err;
+      }
 
-  private releaseSlot(): void {
-    this.inFlight--;
-    const next = this.slotQueue.shift();
-    if (next) {
-      next.resolve();
-    }
-  }
-
-  /** GET with SharePoint throttling (429/503) handled by waiting for Retry-After. The slot is not held while waiting. */
-  private async getJson<T>(url: string, throttleAttempt = 0, networkAttempt = 0, lean = true): Promise<T> {
-    await this.acquireSlot();
-    let response: SPHttpClientResponse;
-    try {
-      response = await this.context.spHttpClient.get(
-        url,
-        SPHttpClient.configurations.v1,
-        lean ? JSON_OPTIONS : undefined
+      const throttled = response.status === 429 || response.status === 503;
+      let body: T | undefined;
+      let failure: HttpError | undefined;
+      try {
+        if (response.ok) {
+          body = (await response.json()) as T;
+        } else if (!throttled) {
+          const detail = await describeError(response);
+          console.error(`[Storage Pulse] ${response.status} from ${url}: ${detail}`);
+          failure = new HttpError(response.status, `${response.status}: ${detail}`);
+        }
+      } catch (err) {
+        this.governor.release({ throttled: false });
+        throw err;
+      }
+      this.governor.release(
+        throttled
+          ? { throttled: true, retryAfterMs: parseRetryAfter(response.headers.get('Retry-After'), Date.now()) }
+          : { throttled: false }
       );
-    } catch (err) {
-      this.releaseSlot();
       this.throwIfCancelled();
-      // Network failure or timeout (no response at all): retry with its own counter.
-      if (networkAttempt < MAX_NETWORK_RETRIES) {
-        await this.delay(2000 * (networkAttempt + 1));
-        return this.getJson<T>(url, throttleAttempt, networkAttempt + 1, lean);
+      if (throttled) {
+        continue;
       }
-      throw err;
-    }
-
-    let body: T | undefined;
-    let failure: HttpError | undefined;
-    try {
-      if (response.ok) {
-        body = (await response.json()) as T;
-      } else if (response.status !== 429 && response.status !== 503) {
-        const detail = await describeError(response);
-        console.error(`[Storage Pulse] ${response.status} from ${url}: ${detail}`);
-        failure = new HttpError(response.status, `${response.status}: ${detail}`);
+      if (failure) {
+        throw failure;
       }
-    } finally {
-      this.releaseSlot();
+      return body as T;
     }
-    this.throwIfCancelled();
-
-    if (response.status === 429 || response.status === 503) {
-      if (throttleAttempt >= MAX_THROTTLE_RETRIES) {
-        throw new HttpError(response.status, `${response.status}: throttled ${MAX_THROTTLE_RETRIES} times in a row`);
-      }
-      const header = response.headers.get('Retry-After');
-      const seconds = header ? parseInt(header, 10) : NaN;
-      const backoff = Math.min(MAX_BACKOFF_SECONDS, 5 * Math.pow(2, throttleAttempt));
-      await this.delay((isNaN(seconds) || seconds < 0 ? backoff : Math.min(seconds, MAX_BACKOFF_SECONDS)) * 1000);
-      return this.getJson<T>(url, throttleAttempt + 1, networkAttempt, lean);
-    }
-    if (failure) {
-      throw failure;
-    }
-    await this.delay(REQUEST_GAP_MS);
-    return body as T;
   }
 
   private get origin(): string {
@@ -463,7 +486,7 @@ export class StorageScanService {
     }
   }
 
-  private newLibrary(list: IListListItem, webUrl: string, webTitle: string): ILibraryResult & { lastUserChange?: string } {
+  private newLibrary(list: IListListItem, webUrl: string, webTitle: string): ILibraryResult {
     return {
       id: list.Id,
       title: list.Title,
@@ -474,7 +497,8 @@ export class StorageScanService {
       files: 0,
       bytes: 0,
       histogram: emptyHistogram(),
-      lastUserChange: list.LastItemUserModifiedDate
+      lastUserChange: list.LastItemUserModifiedDate,
+      pending: true
     };
   }
 
@@ -536,7 +560,7 @@ export class StorageScanService {
     // Lean header first, then SharePoint's default one; without a highest ID the library is simply read in one range.
     for (const lean of [true, false]) {
       try {
-        const json = await this.getJson<IItemsPage>(url, 0, 0, lean);
+        const json = await this.getJson<IItemsPage>(url, 0, lean);
         const top = (json.value || [])[0];
         return top ? Number(top.Id !== undefined ? top.Id : top.ID) || 0 : 0;
       } catch (err) {
@@ -575,7 +599,7 @@ export class StorageScanService {
    * change by a person, so every file in it is at least that old.
    */
   private measureAsWhole(
-    library: ILibraryResult & { lastUserChange?: string },
+    library: ILibraryResult,
     metrics: ILibraryStorageMetrics | undefined,
     scanStart: Date,
     quickAfterMonths: number | undefined
@@ -631,6 +655,7 @@ export class StorageScanService {
     const paging = { level: this.pagingFloor };
     let itemsSeen = 0;
     let skippedBatches = 0;
+    let anyTransient = false;
     let nextRange = 0;
 
     const reader = async (): Promise<void> => {
@@ -640,6 +665,7 @@ export class StorageScanService {
         const outcome = await this.readRange(library, range, lastId, paging, scanStart, types, largest, progress, onProgress);
         itemsSeen += outcome.seen;
         skippedBatches += outcome.skipped;
+        anyTransient = anyTransient || outcome.transient;
         outcome.errors.forEach((e) => {
           if (errors.indexOf(e) < 0) {
             errors.push(e);
@@ -648,7 +674,7 @@ export class StorageScanService {
       }
     };
     const readers: Promise<void>[] = [];
-    for (let i = 0; i < Math.min(PARALLEL_READERS, ranges.length); i++) {
+    for (let i = 0; i < Math.min(this.profile.rangeReaders, ranges.length); i++) {
       readers.push(reader());
     }
     await Promise.all(readers);
@@ -672,6 +698,9 @@ export class StorageScanService {
         (skippedBatches > 0 ? `${skippedBatches} batch(es) of up to ${MIN_PAGE_SIZE} items could not be read. ` : '') +
         errors.join(' | ');
       library.partial = library.files > 0;
+      if (anyTransient) {
+        this.transient.add(library);
+      }
     }
     // ItemCount counts every item, including ones the user cannot see. A
     // shortfall beyond normal churn during the scan is reported, not hidden.
@@ -697,7 +726,7 @@ export class StorageScanService {
     largest: ILargeFile[],
     progress: IScanProgress,
     onProgress: (p: IScanProgress) => void
-  ): Promise<{ seen: number; skipped: number; errors: string[] }> {
+  ): Promise<{ seen: number; skipped: number; errors: string[]; transient: boolean }> {
     const histogram: IAgeHistogram = library.histogram;
     const itemsUrl = `${library.webUrl}/_api/web/lists(guid'${library.id}')/items`;
     const errors: string[] = [];
@@ -706,6 +735,7 @@ export class StorageScanService {
     let seen = 0;
     let skipped = 0;
     let successes = 0;
+    let transient = false;
 
     for (;;) {
       this.throwIfCancelled();
@@ -716,9 +746,9 @@ export class StorageScanService {
         `&$filter=${encodeURIComponent(filter)}${level === 0 ? '&$orderby=Id' : ''}&$top=${pageSize}`;
       let items: IFileItem[];
       try {
-        items = (await this.getJson<IItemsPage>(url, 0, 0, level < MAX_PAGING_LEVEL)).value || [];
+        items = (await this.getJson<IItemsPage>(url, 0, level < MAX_PAGING_LEVEL)).value || [];
       } catch (err) {
-        if (err instanceof ScanCancelledError) {
+        if (err instanceof ScanCancelledError || err instanceof ScanPausedError) {
           throw err;
         }
         // 406 rejects the request's format, so a smaller page would not help: try the next, more
@@ -738,6 +768,8 @@ export class StorageScanService {
         if (errors.indexOf(reason) < 0) {
           errors.push(reason);
         }
+        // Server errors, timeouts and network drops are worth one more automatic try later.
+        transient = transient || retryable;
         // Skip this batch of IDs and carry on, unless it keeps happening or there is nothing left.
         skipped++;
         const end = range.to !== undefined ? range.to : await lastId();
@@ -817,22 +849,23 @@ export class StorageScanService {
         break;
       }
     }
-    return { seen, skipped, errors };
+    return { seen, skipped, errors, transient };
   }
 
-  /** Reads a set of libraries, LIBRARY_CONCURRENCY at a time. */
+  /** Reads a set of libraries, `workers` at a time (the speed profile's library workers by default). */
   private async readLibraries(
     libraries: ILibraryResult[],
     options: IScanOptions,
     scanStart: Date,
     largest: ILargeFile[],
     progress: IScanProgress,
-    onProgress: (p: IScanProgress) => void
+    onProgress: (p: IScanProgress) => void,
+    workers: number = this.profile.libraryWorkers
   ): Promise<void> {
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < libraries.length) {
-        const library = libraries[next++] as ILibraryResult & { lastUserChange?: string };
+        const library = libraries[next++];
         this.throwIfCancelled();
         progress.currentItem = library.url;
         onProgress({ ...progress });
@@ -845,23 +878,71 @@ export class StorageScanService {
           try {
             await this.readLibrary(library, scanStart, largest, progress, onProgress);
           } catch (err) {
-            if (err instanceof ScanCancelledError) {
+            if (err instanceof ScanCancelledError || err instanceof ScanPausedError) {
               throw err;
             }
             library.error = describeFailure(err);
             library.partial = library.files > 0;
+            if (!(err instanceof HttpError) || (err.status >= 500 && err.status !== 503)) {
+              this.transient.add(library);
+            }
           }
         }
+        // Done (successfully or with a recorded error): a checkpoint taken from here on counts it as read.
+        delete library.pending;
         delete library.lastUserChange;
         progress.librariesDone++;
         onProgress({ ...progress });
+        this.checkpoint(false);
       }
     };
-    const workers: Promise<void>[] = [];
-    for (let i = 0; i < Math.min(LIBRARY_CONCURRENCY, libraries.length); i++) {
-      workers.push(worker());
+    const pool: Promise<void>[] = [];
+    for (let i = 0; i < Math.min(workers, libraries.length); i++) {
+      pool.push(worker());
     }
-    await Promise.all(workers);
+    await Promise.all(pool);
+  }
+
+  /**
+   * One automatic second try, one library at a time and after a short
+   * cool-down, for libraries that failed for a reason that often passes on its
+   * own (server error, timeout, network drop), so the owner is not asked to
+   * retry things the scan can retry itself. Throttling never gets here: it
+   * pauses the whole scan instead of failing anything.
+   */
+  private async autoRetryTransient(
+    libraries: ILibraryResult[],
+    options: IScanOptions,
+    scanStart: Date,
+    largest: ILargeFile[],
+    progress: IScanProgress,
+    onProgress: (p: IScanProgress) => void
+  ): Promise<void> {
+    const failed = libraries.filter((l) => l.error && this.transient.has(l));
+    if (failed.length === 0) {
+      return;
+    }
+    await this.delay(options.autoRetryDelayMs !== undefined ? options.autoRetryDelayMs : DEFAULT_AUTO_RETRY_MS);
+    const roots: string[] = [];
+    for (const lib of failed) {
+      roots.push(pathPrefix(lib.url));
+      lib.files = 0;
+      lib.bytes = 0;
+      lib.histogram = emptyHistogram();
+      lib.fileTypes = undefined;
+      delete lib.error;
+      delete lib.partial;
+      delete lib.unreadItems;
+      delete lib.measuredAsWhole;
+      this.transient.delete(lib);
+    }
+    // Drop what the failed attempt contributed to the largest-files list; the retry adds it again.
+    for (let i = largest.length - 1; i >= 0; i--) {
+      if (roots.some((root) => largest[i].serverRelativeUrl.indexOf(root) === 0)) {
+        largest.splice(i, 1);
+      }
+    }
+    await this.readLibraries(failed, { ...options, quickAfterMonths: undefined }, scanStart, largest, progress, onProgress, 1);
   }
 
   private newProgress(currentItem: string): IScanProgress {
@@ -884,31 +965,147 @@ export class StorageScanService {
     return largest;
   }
 
-  public async scan(options: IScanOptions, onProgress: (p: IScanProgress) => void): Promise<IScanResult> {
-    this.reset();
+  /**
+   * A detached copy of the scan so far, for saving. Libraries not finished
+   * yet (including the ones being read right now) are written as unread, so
+   * a resume reads them again from the start instead of double counting.
+   */
+  private snapshot(): IScanResult {
+    const run = this.run as IRun;
+    const pendingRoots: string[] = [];
+    const libraries = run.libraries.map((lib) => {
+      if (!lib.pending) {
+        return lib;
+      }
+      pendingRoots.push(pathPrefix(lib.url));
+      return {
+        ...lib,
+        files: 0,
+        bytes: 0,
+        histogram: emptyHistogram(),
+        fileTypes: undefined,
+        error: undefined,
+        partial: undefined,
+        unreadItems: undefined,
+        measuredAsWhole: undefined
+      } as ILibraryResult;
+    });
+    const largest = run.largest
+      .filter((f) => !pendingRoots.some((root) => f.serverRelativeUrl.indexOf(root) === 0))
+      .sort((a, b) => b.bytes - a.bytes)
+      .slice(0, LARGEST_FILES_KEPT);
+    const result: IScanResult = {
+      scope: run.scope,
+      rootUrl: run.rootUrl,
+      rootTitle: run.rootTitle,
+      siteStorageBytes: run.siteStorageBytes,
+      webs: run.webs,
+      libraries,
+      largestOldFiles: largest,
+      scanStartedAt: run.scanStart.toISOString(),
+      scanCompletedAt: new Date().toISOString(),
+      scannedBy: this.context.pageContext.user.displayName,
+      options: {
+        includeHidden: run.options.includeHidden,
+        excludeSystemLibraries: run.options.excludeSystemLibraries,
+        excludedLibraries: run.options.excludedLibraries
+      },
+      quickAfterMonths: run.options.quickAfterMonths,
+      paging: this.pagingSummary(run.previousPaging),
+      partial: {
+        librariesDone: libraries.filter((l) => !l.pending).length,
+        librariesTotal: libraries.length
+      }
+    };
+    return JSON.parse(JSON.stringify(result)) as IScanResult;
+  }
+
+  /** Hands a snapshot to onCheckpoint, at most once per checkpointEveryMs (or now, when forced). */
+  private checkpoint(force: boolean): void {
+    const run = this.run;
+    if (!run || !this.onCheckpoint || this.checkpointing) {
+      return;
+    }
+    const every = run.options.checkpointEveryMs !== undefined ? run.options.checkpointEveryMs : DEFAULT_CHECKPOINT_MS;
+    if (!force && Date.now() - this.lastCheckpointAt < every) {
+      return;
+    }
+    this.lastCheckpointAt = Date.now();
+    this.checkpointing = true;
+    const save = this.onCheckpoint;
+    Promise.resolve()
+      .then(() => save(this.snapshot()))
+      .catch(() => undefined)
+      .then(() => {
+        this.checkpointing = false;
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * When SharePoint has throttled for longer than the scan's patience, the
+   * progress so far is attached to the error (and handed to onCheckpoint, and
+   * awaited) so the caller can save it and offer to resume. Other errors pass through.
+   */
+  private async withSnapshot(err: unknown): Promise<unknown> {
+    if (err instanceof ScanPausedError && this.run) {
+      const snapshot = this.snapshot();
+      err.snapshot = snapshot;
+      if (this.onCheckpoint) {
+        try {
+          await this.onCheckpoint(snapshot);
+        } catch {
+          // The caller still has the snapshot in memory.
+        }
+      }
+    }
+    return err;
+  }
+
+  public async scan(
+    options: IScanOptions,
+    onProgress: (p: IScanProgress) => void,
+    onCheckpoint?: (snapshot: IScanResult) => Promise<void> | void
+  ): Promise<IScanResult> {
+    this.begin(options, onCheckpoint);
+    const emit = this.makeEmitter(onProgress);
     const scope = options.scope;
     const scanStart = new Date();
     const rootUrl =
       scope === 'currentWeb' ? this.context.pageContext.web.absoluteUrl : this.context.pageContext.site.absoluteUrl;
 
     const progress = this.newProgress(rootUrl);
-    onProgress({ ...progress });
+    this.governor.onChange = () => emit(progress);
+    emit(progress);
 
     const storagePromise = this.getSiteStorage();
+    storagePromise.catch(() => undefined);
     const rootTitle = await this.getWebTitle(rootUrl);
 
     progress.phase = 'discovering';
     const webs: IWebResult[] = [];
     const libraries: ILibraryResult[] = [];
-    await this.discoverWebs(rootUrl, rootTitle, webs, libraries, options, progress, onProgress);
+    await this.discoverWebs(rootUrl, rootTitle, webs, libraries, options, progress, emit);
+
+    const largest: ILargeFile[] = [];
+    const run: IRun = { scope, rootUrl, rootTitle, webs, libraries, largest, scanStart, options };
+    this.run = run;
+    storagePromise.then((bytes) => (run.siteStorageBytes = bytes)).catch(() => undefined);
 
     progress.phase = 'reading-files';
-    const largest: ILargeFile[] = [];
-    await this.readLibraries(libraries, options, scanStart, largest, progress, onProgress);
+    // Save the list of libraries now, so a scan that gets interrupted can resume without listing everything again.
+    this.checkpoint(true);
+    try {
+      await this.readLibraries(libraries, options, scanStart, largest, progress, emit);
+      await this.autoRetryTransient(libraries, options, scanStart, largest, progress, emit);
+    } catch (err) {
+      throw await this.withSnapshot(err);
+    }
 
     const siteStorageBytes = await storagePromise;
     progress.phase = 'completed';
-    onProgress({ ...progress });
+    emit(progress);
+    this.run = undefined;
 
     return {
       scope,
@@ -931,6 +1128,80 @@ export class StorageScanService {
     };
   }
 
+  /**
+   * Continues a scan that was paused (SharePoint kept throttling) or
+   * interrupted (page closed): reads only the libraries the checkpoint marks
+   * as pending. Ages stay measured from the original scan's start.
+   */
+  public async resume(
+    previous: IScanResult,
+    options: IScanOptions,
+    onProgress: (p: IScanProgress) => void,
+    onCheckpoint?: (snapshot: IScanResult) => Promise<void> | void
+  ): Promise<IScanResult> {
+    // Work on a copy: the caller's object belongs to the UI.
+    const copy = JSON.parse(JSON.stringify(previous)) as IScanResult;
+    const resumeOptions: IScanOptions = {
+      ...options,
+      scope: copy.scope,
+      quickAfterMonths: copy.quickAfterMonths,
+      includeHidden: copy.options ? copy.options.includeHidden : options.includeHidden,
+      excludeSystemLibraries: copy.options ? copy.options.excludeSystemLibraries : options.excludeSystemLibraries,
+      excludedLibraries: copy.options ? copy.options.excludedLibraries : options.excludedLibraries
+    };
+    this.begin(resumeOptions, onCheckpoint);
+    const emit = this.makeEmitter(onProgress);
+    const scanStart = new Date(copy.scanStartedAt);
+    const toRead = copy.libraries.filter((l) => l.pending);
+
+    const progress = this.newProgress(copy.rootUrl);
+    progress.phase = 'reading-files';
+    progress.websFound = copy.webs.length;
+    progress.librariesFound = toRead.length;
+    progress.itemsExpected = toRead.reduce((sum, l) => sum + l.itemCount, 0);
+    this.governor.onChange = () => emit(progress);
+    emit(progress);
+
+    const storagePromise = copy.siteStorageBytes === undefined ? this.getSiteStorage() : Promise.resolve(copy.siteStorageBytes);
+    storagePromise.catch(() => undefined);
+    const largest = copy.largestOldFiles.slice();
+    const run: IRun = {
+      scope: copy.scope,
+      rootUrl: copy.rootUrl,
+      rootTitle: copy.rootTitle,
+      siteStorageBytes: copy.siteStorageBytes,
+      webs: copy.webs,
+      libraries: copy.libraries,
+      largest,
+      scanStart,
+      options: resumeOptions,
+      previousPaging: copy.paging
+    };
+    this.run = run;
+    storagePromise.then((bytes) => (run.siteStorageBytes = bytes)).catch(() => undefined);
+
+    try {
+      await this.readLibraries(toRead, resumeOptions, scanStart, largest, progress, emit);
+      await this.autoRetryTransient(copy.libraries, resumeOptions, scanStart, largest, progress, emit);
+    } catch (err) {
+      throw await this.withSnapshot(err);
+    }
+
+    const siteStorageBytes = await storagePromise;
+    progress.phase = 'completed';
+    emit(progress);
+    this.run = undefined;
+    return {
+      ...copy,
+      siteStorageBytes,
+      largestOldFiles: this.finishLargest(largest),
+      scanCompletedAt: new Date().toISOString(),
+      scannedBy: this.context.pageContext.user.displayName,
+      paging: this.pagingSummary(copy.paging),
+      partial: undefined
+    };
+  }
+
   /** How many libraries needed a more conservative query form, for the dashboard note. */
   private pagingSummary(previous?: { level: number; libraries: number }): { level: number; libraries: number } | undefined {
     const libraries = this.fallbackLibraries + (previous ? previous.libraries : 0);
@@ -946,12 +1217,14 @@ export class StorageScanService {
    * from the original scan's start, so the merged result is consistent.
    */
   public async retryFailed(previous: IScanResult, options: IScanOptions, onProgress: (p: IScanProgress) => void): Promise<IScanResult> {
-    this.reset();
+    this.begin(options);
+    const emit = this.makeEmitter(onProgress);
     const scanStart = new Date(previous.scanStartedAt);
     const quick = { ...options, quickAfterMonths: previous.quickAfterMonths };
     const progress = this.newProgress(previous.rootUrl);
     progress.phase = 'discovering';
-    onProgress({ ...progress });
+    this.governor.onChange = () => emit(progress);
+    emit(progress);
 
     const webs = previous.webs.map((w) => ({ ...w }));
     const knownLibraries = new Set(previous.libraries.map((l) => `${l.webUrl}|${l.id}`));
@@ -987,7 +1260,7 @@ export class StorageScanService {
           }
         }
       } catch (err) {
-        if (err instanceof ScanCancelledError) {
+        if (err instanceof ScanCancelledError || err instanceof ScanPausedError) {
           throw err;
         }
         errors.push(`Libraries: ${describeFailure(err)}`);
@@ -997,7 +1270,7 @@ export class StorageScanService {
           const url = this.toAbsoluteUrl(sub.ServerRelativeUrl);
           if (!knownWebs.has(url)) {
             const added: IWebResult[] = [];
-            await this.discoverWebs(url, sub.Title, added, toRead, options, progress, onProgress);
+            await this.discoverWebs(url, sub.Title, added, toRead, options, progress, emit);
             added.forEach((w) => {
               knownWebs.add(w.url);
               webs.push(w);
@@ -1005,7 +1278,7 @@ export class StorageScanService {
           }
         }
       } catch (err) {
-        if (err instanceof ScanCancelledError) {
+        if (err instanceof ScanCancelledError || err instanceof ScanPausedError) {
           throw err;
         }
         errors.push(`Subsites: ${describeFailure(err)}`);
@@ -1015,12 +1288,13 @@ export class StorageScanService {
     progress.librariesFound = toRead.length;
 
     progress.phase = 'reading-files';
-    const retriedRoots = toRead.map((l) => decodeURIComponent(new URL(l.url).pathname) + '/');
+    const retriedRoots = toRead.map((l) => pathPrefix(l.url));
     const largest = previous.largestOldFiles.filter((f) => !retriedRoots.some((root) => f.serverRelativeUrl.indexOf(root) === 0));
-    await this.readLibraries(toRead, quick, scanStart, largest, progress, onProgress);
+    await this.readLibraries(toRead, quick, scanStart, largest, progress, emit);
+    await this.autoRetryTransient(toRead, quick, scanStart, largest, progress, emit);
 
     progress.phase = 'completed';
-    onProgress({ ...progress });
+    emit(progress);
     return {
       ...previous,
       webs,
@@ -1030,4 +1304,9 @@ export class StorageScanService {
       paging: this.pagingSummary(previous.paging)
     };
   }
+}
+
+/** A library's server-relative path with a trailing slash, to match the files inside it. */
+function pathPrefix(libraryUrl: string): string {
+  return decodeURIComponent(new URL(libraryUrl).pathname) + '/';
 }

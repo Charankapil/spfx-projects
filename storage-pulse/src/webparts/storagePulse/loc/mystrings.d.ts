@@ -20,6 +20,10 @@ declare interface IStoragePulseWebPartStrings {
   ScanModeLabel: string;
   ScanModeQuick: string;
   ScanModeDetailed: string;
+  ScanSpeedLabel: string;
+  ScanSpeedGentle: string;
+  ScanSpeedBalanced: string;
+  ScanSpeedFast: string;
   StaleAfterLabel: string;
   AboutText: string;
   DefaultTitle: string;
@@ -37,6 +41,8 @@ declare interface IStoragePulseWebPartStrings {
   Cancel: string;
   ExportCsv: string;
   RetryFailed: string;
+  ResumeScan: string;
+  DiscardScan: string;
   QuickScanTag: string;
   DetailedScanTag: string;
   ApproxSuffix: string;
@@ -47,6 +53,9 @@ declare interface IStoragePulseWebPartStrings {
   SaveFailed: string;
   LoadFailed: string;
   StaleResults: string;
+  ScanPausedSaved: string;
+  ScanPausedNotSaved: string;
+  UnfinishedScan: string;
   RetryAllRead: string;
   RetrySomeLeft: string;
   StaleResultsCanScan: string;
@@ -65,6 +74,10 @@ declare interface IStoragePulseWebPartStrings {
   EtaCalculating: string;
   LibrariesValue: string;
   DiscoveringValue: string;
+  ThrottledTitle: string;
+  ThrottledWaiting: string;
+  ThrottledSlower: string;
+  ThrottledCount: string;
   ScanHint: string;
   LiveProgress: string;
   LiveDone: string;

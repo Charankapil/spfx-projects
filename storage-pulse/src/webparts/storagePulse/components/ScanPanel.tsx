@@ -85,6 +85,11 @@ export const ScanPanel: React.FC<IScanPanelProps> = ({ progress, isSaving }) => 
     }
   }, [fraction]);
 
+  // SharePoint has asked the scan to slow down: say what is happening and that nothing is lost.
+  const throttle = progress.throttle;
+  const secondsLeft = throttle ? Math.max(0, Math.ceil((throttle.pausedUntil - now) / 1000)) : 0;
+  const throttledNow = !!throttle && secondsLeft > 0;
+
   const stats: { label: string; value: string }[] = reading
     ? [
         { label: strings.StatFiles, value: formatCompact(progress.itemsRead) },
@@ -148,6 +153,19 @@ export const ScanPanel: React.FC<IScanPanelProps> = ({ progress, isSaving }) => 
           ))}
         </dl>
 
+        {throttle && (
+          <div className={`${styles.throttleNote} ${throttledNow ? styles.throttleActive : ''}`} role="status">
+            <Icon iconName="Clock" className={styles.throttleIcon} />
+            <div>
+              <strong>{strings.ThrottledTitle}</strong>
+              {throttledNow && <div>{format(strings.ThrottledWaiting, { time: formatDuration(secondsLeft * 1000) })}</div>}
+              {throttle.concurrency < throttle.maxConcurrency && (
+                <div>{format(strings.ThrottledSlower, { now: throttle.concurrency, max: throttle.maxConcurrency })}</div>
+              )}
+              <div>{format(strings.ThrottledCount, { count: throttle.throttledCount })}</div>
+            </div>
+          </div>
+        )}
         <div className={styles.currentItem} title={readable(progress.currentItem)}>
           {readable(progress.currentItem)}
         </div>

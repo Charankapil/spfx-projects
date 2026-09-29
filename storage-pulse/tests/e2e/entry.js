@@ -18,6 +18,8 @@ function render(extra) {
     thresholdMonths: 12,
     scanPermission: 'owners',
     scanMode: 'quick',
+    // Tests run without real-world pacing; scenarios can override any of it.
+    scanSpeed: 'fast',
     includeHidden: false,
     excludeSystemLibraries: false,
     excludedLibraries: [],
@@ -27,6 +29,7 @@ function render(extra) {
     ...(scenario.props || {}),
     ...(extra || {})
   };
+  props.tuning = { autoRetryDelayMs: 0, profileOverride: { minGapMs: 0 }, ...((scenario.props && scenario.props.tuning) || {}), ...((extra && extra.tuning) || {}) };
   const root = document.getElementById('root');
   ReactDOM.unmountComponentAtNode(root);
   ReactDOM.render(React.createElement(StoragePulse, props), root);

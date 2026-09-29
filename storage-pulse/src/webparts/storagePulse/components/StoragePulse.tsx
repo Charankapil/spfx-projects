@@ -24,7 +24,7 @@ import { IScanProgress, IScanResult } from '../models/IScanResult';
 import { THRESHOLD_OPTIONS } from '../services/activity';
 import { exportLibrariesCsv } from '../services/ExportService';
 import { ResultsStore } from '../services/ResultsStore';
-import { ScanCancelledError, StorageScanService } from '../services/StorageScanService';
+import { ScanCancelledError, ScanPausedError, StorageScanService } from '../services/StorageScanService';
 
 const INITIAL_PROGRESS: IScanProgress = {
   phase: 'idle',
@@ -82,6 +82,8 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
   const [progress, setProgress] = useState<IScanProgress>(INITIAL_PROGRESS);
   const [error, setError] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<INotice | undefined>(undefined);
+  /** An unfinished scan (paused by throttling, or interrupted) that can be resumed. */
+  const [partial, setPartial] = useState<IScanResult | undefined>(undefined);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -102,12 +104,21 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
     setIsLoadingSaved(true);
     setResult(undefined);
     setSavedBy(undefined);
-    (storeRef.current as ResultsStore)
+    setPartial(undefined);
+    const store = storeRef.current as ResultsStore;
+    store
       .load(props.scope)
-      .then((saved) => {
+      .then(async (saved) => {
         if (active && saved) {
           setResult(saved.result);
           setSavedBy(saved.savedBy);
+        }
+        // An unfinished scan is only offered when it is newer than the last complete one.
+        if (isOwner) {
+          const unfinished = await store.loadPartial(props.scope);
+          if (active && unfinished && (!saved || unfinished.result.scanStartedAt > saved.result.scanStartedAt)) {
+            setPartial(unfinished.result);
+          }
         }
       })
       .catch((err) => {
@@ -124,18 +135,26 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
     return () => {
       active = false;
     };
-  }, [props.scope]);
+  }, [props.scope, isOwner]);
 
   const resultRef = useRef<IScanResult | undefined>(undefined);
   resultRef.current = result;
 
-  const { scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode } = props;
-  /** Runs a full scan, or (retry) re-reads only what failed in the current result, then saves for owners. */
+  const partialRef = useRef<IScanResult | undefined>(undefined);
+  partialRef.current = partial;
+
+  const { scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, scanSpeed, tuning } = props;
+  /**
+   * Runs a full scan, resumes an unfinished one, or (retry) re-reads only what
+   * failed in the current result; then saves the result for owners.
+   */
   const runScan = useCallback(
-    (retry: boolean) => {
+    (kind: 'full' | 'retry' | 'resume') => {
+      const retry = kind === 'retry';
       const service = serviceRef.current as StorageScanService;
       const store = storeRef.current as ResultsStore;
       const previous = resultRef.current;
+      const unfinished = partialRef.current;
       setError(undefined);
       setNotice(undefined);
       setIsScanning(true);
@@ -147,8 +166,12 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
         excludeSystemLibraries,
         excludedLibraries,
         // Quick scans measure libraries unchanged for the chosen "Inactive after" period as a whole.
-        quickAfterMonths: scanMode === 'quick' ? threshold : undefined
+        quickAfterMonths: scanMode === 'quick' ? threshold : undefined,
+        speed: scanSpeed,
+        ...(tuning || {})
       };
+      // Owners save progress as the scan goes, so throttling or a closed tab never costs the work done so far.
+      const checkpoint = isOwner ? (snapshot: IScanResult): Promise<void> => store.savePartial(snapshot) : undefined;
       const onProgress = (p: IScanProgress): void => {
         if (mounted.current) {
           setProgress(p);
@@ -159,12 +182,31 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
         let scanned: IScanResult;
         try {
           scanned =
-            retry && previous
+            kind === 'resume' && unfinished
+              ? await service.resume(unfinished, options, onProgress, checkpoint)
+              : retry && previous
               ? await service.retryFailed(previous, options, onProgress)
-              : await service.scan(options, onProgress);
+              : await service.scan(options, onProgress, checkpoint);
         } catch (err) {
           if (mounted.current) {
-            setError(err instanceof ScanCancelledError ? strings.ScanCancelled : errorText(err) || strings.ScanFailed);
+            if (err instanceof ScanPausedError) {
+              // Throttling is not a failure: the progress so far is kept and can be resumed.
+              const snapshot = err.snapshot as IScanResult | undefined;
+              if (snapshot && snapshot.partial) {
+                setPartial(snapshot);
+                setNotice({
+                  type: MessageBarType.warning,
+                  text: format(isOwner ? strings.ScanPausedSaved : strings.ScanPausedNotSaved, {
+                    done: snapshot.partial.librariesDone,
+                    total: snapshot.partial.librariesTotal
+                  })
+                });
+              } else {
+                setError(err.message);
+              }
+            } else {
+              setError(err instanceof ScanCancelledError ? strings.ScanCancelled : errorText(err) || strings.ScanFailed);
+            }
             setIsScanning(false);
           }
           return;
@@ -174,6 +216,9 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
         }
         setResult(scanned);
         setSavedBy(undefined);
+        if (!retry) {
+          setPartial(undefined);
+        }
         const retryNotice = retry
           ? countFailures(scanned) === 0
             ? strings.RetryAllRead
@@ -188,6 +233,10 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
         setIsSaving(true);
         try {
           await store.save(scanned);
+          if (!retry) {
+            // The unfinished-scan file is obsolete now; failing to delete it is harmless (it is older than this scan).
+            store.deletePartial(scope).catch(() => undefined);
+          }
           if (mounted.current) {
             setNotice({ type: MessageBarType.success, text: retryNotice || strings.ScanSaved });
           }
@@ -204,10 +253,17 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
       };
       run().catch(() => undefined);
     },
-    [scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, threshold, isOwner]
+    [scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, scanSpeed, tuning, threshold, isOwner]
   );
-  const startScan = useCallback(() => runScan(false), [runScan]);
-  const retryFailed = useCallback(() => runScan(true), [runScan]);
+  const startScan = useCallback(() => runScan('full'), [runScan]);
+  const retryFailed = useCallback(() => runScan('retry'), [runScan]);
+  const resumeScan = useCallback(() => runScan('resume'), [runScan]);
+  const discardPartial = useCallback(() => {
+    setPartial(undefined);
+    if (isOwner) {
+      (storeRef.current as ResultsStore).deletePartial(scope).catch(() => undefined);
+    }
+  }, [isOwner, scope]);
 
   const cancelScan = useCallback(() => {
     (serviceRef.current as StorageScanService).cancel();
@@ -314,6 +370,23 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
       {notice && (
         <MessageBar messageBarType={notice.type} onDismiss={() => setNotice(undefined)}>
           {notice.text}
+        </MessageBar>
+      )}
+      {partial && partial.partial && !isScanning && (
+        <MessageBar
+          messageBarType={MessageBarType.info}
+          actions={
+            <div>
+              {canScan && <PrimaryButton text={strings.ResumeScan} iconProps={{ iconName: 'Play' }} onClick={resumeScan} />}{' '}
+              <DefaultButton text={strings.DiscardScan} onClick={discardPartial} />
+            </div>
+          }
+        >
+          {format(strings.UnfinishedScan, {
+            date: formatDate(new Date(partial.scanCompletedAt)),
+            done: partial.partial.librariesDone,
+            total: partial.partial.librariesTotal
+          })}
         </MessageBar>
       )}
       {isStale && (

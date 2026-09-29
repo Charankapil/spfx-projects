@@ -131,6 +131,12 @@ function library(raw: ILibraryResult, origin: string): ILibraryResult | undefine
       lib.metrics.lastModified = raw.metrics.lastModified;
     }
   }
+  if (raw.pending === true) {
+    lib.pending = true;
+    if (isDate(raw.lastUserChange)) {
+      lib.lastUserChange = raw.lastUserChange;
+    }
+  }
   if (raw.measuredAsWhole && isDate(raw.measuredAsWhole.lastChange)) {
     lib.measuredAsWhole = {
       lastChange: raw.measuredAsWhole.lastChange,
@@ -221,6 +227,13 @@ export function sanitizeResult(value: unknown, origin: string): IScanResult | un
           excludedLibraries: Array.isArray(options.excludedLibraries) ? options.excludedLibraries.map((n) => text(n)).slice(0, 100) : []
         }
       : undefined,
+    partial:
+      raw.partial && count(raw.partial.librariesTotal) > 0
+        ? {
+            librariesDone: Math.floor(count(raw.partial.librariesDone)),
+            librariesTotal: Math.floor(count(raw.partial.librariesTotal))
+          }
+        : undefined,
     paging:
       raw.paging && count(raw.paging.libraries) > 0
         ? { level: Math.min(2, Math.floor(count(raw.paging.level))), libraries: Math.floor(count(raw.paging.libraries)) }

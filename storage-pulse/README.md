@@ -117,6 +117,7 @@ Nothing is stored anywhere else, and nothing is sent outside SharePoint.
 | | Warn when results are older than (days, 0 = never) | 90 |
 | What to scan | Scan: whole site collection, or this site and its subsites | Whole site collection |
 | | How to scan: Quick, or Detailed (read every file) | Quick |
+| | Scan speed: Gentle, Balanced or Fast | Gentle |
 | | Include hidden libraries, such as the Preservation Hold Library | Off |
 | | Skip Site Pages, Site Assets, Style Library and Form Templates | Off |
 | | Libraries to skip (one title or URL name per line) | — |
@@ -166,20 +167,82 @@ request.
     list.
 - **Detailed scan** reads every file in every library.
 
-In both modes, four libraries are read at once and large libraries use
-three readers, with at most six requests in flight in total.
+How many libraries are read at once, and how many requests are in flight,
+depends on the **scan speed** (see the next section).
 
-Measured on a simulated site collection with 72 libraries at 300 ms per
-request:
+### Throttling: being a good neighbour
 
-| Version | Time | Requests |
+SharePoint Online throttles by resource units, per user and per app and
+also per tenant over a few minutes, with limits that grow with the number of
+licences. One busy scan can therefore slow down other people and tools on
+the same tenant, not only itself. Storage Pulse is built to stay well
+clear of that, and to treat throttling as a pause and never as a failure.
+
+**Scan speed** (a setting; the default is *Gentle*):
+
+| Speed | Requests in flight | Gap between requests | Libraries at once |
+| --- | --- | --- | --- |
+| Gentle (default) | 2 | 400 ms | 2 |
+| Balanced | 4 | 200 ms | 3 |
+| Fast | 6 | 100 ms | 4 |
+
+Measured on a simulated 72-library site at 300 ms per request:
+
+| | Time | Requests per second (peak in flight) |
 | --- | --- | --- |
-| v2.0 (one library at a time) | 66 s | 146 |
-| v2.1 detailed | 17 s | 146 |
-| v2.1 quick | 12 s | 101 |
+| v2.1.1 | 17 s | 8.6 (4) |
+| v2.2 Fast | 20 s | 7.4 (4) |
+| v2.2 Balanced | 35 s | 4.1 (2) |
+| v2.2 Gentle | 68 s | 2.1 (1) |
+| v2.2 Gentle, quick scan | 50 s | 2.0 (1) |
 
-Real timings depend on how long SharePoint takes per page and how much it
-throttles.
+Gentle is about three to four times slower than v2.1.1, and Fast is
+what v2.1 did. Start with Gentle. If the tenant stays calm, switch to
+Balanced, and use Fast only outside working hours. Real timings depend on
+how long SharePoint takes per page.
+
+![The scan panel while SharePoint has asked the scan to slow down](docs/images/scan-throttled.png)
+
+**What the scan does when SharePoint throttles it:**
+
+- **One shared brake.** Every request goes through a single governor. A
+  `429` or `503` puts *all* requests on hold until `Retry-After` has passed
+  (with a little random jitter), instead of only the request that was
+  refused while the others carry on. Against a simulated tenant that
+  throttles above 8 requests a second, v2.1.1 sent 26 requests while a hold
+  was active, and v2.2 sent none.
+- **Slows down, then recovers.** Each throttle halves the requests allowed
+  at once and widens the gap; a run of successful requests raises them
+  again, one step at a time.
+- **Throttling never fails a library.** The old limit of 12 retries is
+  gone. The scan panel says SharePoint asked it to slow down, shows the
+  countdown, and carries on by itself.
+- **Pause and resume.** If SharePoint has kept the scan waiting for more
+  than an hour in total, it stops with a warning instead of an error. Its
+  progress is saved and the page offers **Resume scan**, which reads only
+  what is left.
+- **Progress is saved as it goes** (site owners), roughly once a minute, in
+  a separate file next to the results. Closing the tab, or a browser crash,
+  costs at most the library being read at that moment. On the next visit an
+  owner sees "An unfinished scan from … is saved" with **Resume scan** and
+  **Discard**. Visitors never see it, and the last complete scan stays
+  visible to everyone meanwhile.
+- **Automatic second pass.** A library that failed for a reason that
+  often passes on its own (server error, timeout, network drop) is tried
+  once more, alone, after a 15-second cool-down, before it is reported.
+  **Retry failed** is then only needed for real failures.
+
+What it can't do: the `RateLimit-*` headers, which would let it slow down
+*before* being throttled, are only returned to apps using application
+permissions, and this web part runs as the signed-in user. A browser also
+can't set the `User-Agent` header that Microsoft recommends for
+identifying an app's traffic. So the scan reacts to a `429` instead of
+predicting it, and keeps its normal pace low so that it rarely gets one.
+
+If your tenant is already being throttled, stop running scans for now.
+Throttling windows are short, usually minutes. If it lasts for hours,
+something other than this web part is using the tenant's quota: look at
+which apps are calling SharePoint, in the Microsoft 365 admin center.
 
 ### If SharePoint answers 406 "Not Acceptable"
 
@@ -206,9 +269,8 @@ dashboard says how many libraries needed a fallback.
   into 50,000-ID ranges (`$filter=Id gt … and Id le …`), and three readers
   work through them at once. The last range is open-ended, so files added
   during the scan are still read.
-- **Patient with throttling.** A `429`/`503` response waits for
-  `Retry-After`, or backs off up to 5 minutes, and tries again up to 12
-  times. Network failures are retried separately.
+- **Patient with throttling.** See *Throttling: being a good neighbour*
+  above. Network failures are retried separately, a few times.
 - **Cancel is immediate**, even during a throttling wait.
 - **Timeouts.** A page that times out is requested again with a smaller
   page size, down to 500.

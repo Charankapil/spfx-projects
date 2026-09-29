@@ -128,7 +128,67 @@ export class ResultsStore {
     return current || this.loadFile(`${folder}/${this.legacyFileName(scope)}`);
   }
 
+  private partialFileName(scope: ScanScope): string {
+    return `storage-pulse-${scope === 'currentWeb' ? 'site' : 'site-collection'}-inprogress.json`;
+  }
+
+  /**
+   * Writes and deletions are queued, so an older checkpoint can never land
+   * after (and overwrite) a newer one, and the checkpoint is deleted only
+   * after the writes before it have finished.
+   */
+  private queue: Promise<void> = Promise.resolve();
+
+  private enqueue(operation: () => Promise<void>): Promise<void> {
+    const run = this.queue.then(operation);
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  /** Saves the progress of an unfinished scan, separately from the last complete scan that everyone sees. */
+  public savePartial(result: IScanResult): Promise<void> {
+    return this.enqueue(() => this.writeFile(this.partialFileName(result.scope), result));
+  }
+
+  /**
+   * The unfinished scan saved for this scope, if there is one. Anything
+   * unusable is ignored: a checkpoint is a convenience, not something to warn about.
+   */
+  public async loadPartial(scope: ScanScope): Promise<ISavedScan | undefined> {
+    try {
+      const folder = await this.findSiteAssetsFolder();
+      if (!folder) {
+        return undefined;
+      }
+      const saved = await this.loadFile(`${folder}/${this.partialFileName(scope)}`);
+      return saved && saved.result.partial ? saved : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  public deletePartial(scope: ScanScope): Promise<void> {
+    return this.enqueue(async () => {
+      const folder = await this.findSiteAssetsFolder();
+      if (!folder) {
+        return;
+      }
+      const url = `${this.webUrl}/_api/web/GetFileByServerRelativeUrl('${quoteForUrl(`${folder}/${this.partialFileName(scope)}`)}')`;
+      const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+        headers: { 'X-HTTP-Method': 'DELETE', 'IF-MATCH': '*' }
+      });
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`${response.status}: ${await describeError(response)}`);
+      }
+    });
+  }
+
   public async save(result: IScanResult): Promise<void> {
+    await this.queue;
+    await this.writeFile(this.fileName(result.scope), result);
+  }
+
+  private async writeFile(fileName: string, result: IScanResult): Promise<void> {
     let folder = await this.findSiteAssetsFolder();
     if (!folder) {
       const ensure = await this.context.spHttpClient.post(
@@ -148,7 +208,7 @@ export class ResultsStore {
     const body: ISavedScanFile = { schemaVersion: SCHEMA_VERSION, result };
     const response = await this.context.spHttpClient.post(
       `${this.webUrl}/_api/web/GetFolderByServerRelativeUrl('${quoteForUrl(folder)}')` +
-        `/Files/add(url='${this.fileName(result.scope)}',overwrite=true)`,
+        `/Files/add(url='${fileName}',overwrite=true)`,
       SPHttpClient.configurations.v1,
       { body: JSON.stringify(body) }
     );

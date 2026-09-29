@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.2.0
+
+### Fixes
+- **The scan could contribute to tenant-wide throttling.** It ran up to six
+  requests at once with almost no gap, at the same pace all the time. When
+  SharePoint answered `429`, only that request waited; the others kept
+  sending and were refused too. Against a simulated tenant that throttles
+  above 8 requests a second, v2.1.1 sent 26 requests during throttling
+  holds; v2.2 sends none, with a third of the throttles.
+- **Throttling made libraries "fail" and sent you to Retry failed.** After
+  12 throttled retries a request gave up and the library was marked failed.
+  Throttling is now a pause, never a failure.
+
+### Added
+- **Scan speed** setting: Gentle (default), Balanced or Fast. Gentle is
+  about three to four times slower than v2.1.1; see the README.
+- **One request governor for the whole scan.** It spaces requests, caps
+  requests in flight, holds everything on `Retry-After` (with jitter),
+  halves the allowed concurrency on each throttle and raises it again
+  after a run of successes.
+- **Pause and resume.** After an hour of accumulated throttling the scan
+  pauses with its progress saved. Owners' progress is also saved about every
+  minute as the scan runs. **Resume scan** reads only the libraries still
+  unread, and an unfinished scan is offered on the next visit (with
+  **Discard**). Ages stay measured from the original scan start.
+- **Throttling shown as a calm status** in the scan panel: countdown, reduced
+  speed and how many times the scan was slowed, instead of an error.
+- **Automatic second pass** for libraries that failed with a server error,
+  timeout or network drop, after a 15-second cool-down.
+- A test hook and a simulated throttling tenant (a rate limit, and an
+  outage) in the test suite, including a check that nothing is sent while
+  a hold is active.
+
 ## 2.1.1
 
 ### Fixes

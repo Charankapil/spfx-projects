@@ -76,6 +76,85 @@ test('failures are listed with their reason, and Retry failed fixes them', async
   await page.close();
 });
 
+test('throttling shows a calm status, never an error, and the scan finishes with exact totals', async () => {
+  const { page, errors } = await open({ mock: { tenantLimit: { perSecond: 5, retryAfterSec: 2 }, extraLibraries: 8 } });
+  await page.getByRole('button', { name: /Start scan/ }).first().click();
+  await page.getByText('SharePoint asked the scan to slow down').waitFor({ timeout: 60000 });
+  assert.ok(await page.getByText(/Nothing is lost|request\(s\) at a time|Slowed down/).first().isVisible());
+  if (shots) {
+    await page.locator('section[aria-label="Scanning…"]').screenshot({ path: path.join(shots, 'scan-throttled.png') });
+  }
+  await page.getByText('Where the inactive storage is').waitFor({ timeout: 180000 });
+  await page.waitForTimeout(1500);
+  assert.equal(await page.getByRole('heading', { name: 'Scan issues' }).count(), 1); // only the restricted HR site
+  assert.equal(await page.locator('section[aria-label="Scan issues"] li').count(), 1);
+  const bytes = await page.evaluate(() => {
+    const figs = [...document.querySelectorAll('[class*=figureValue]')].map((e) => e.getAttribute('title'));
+    return Number(String(figs[0]).replace(/[^0-9]/g, '')) + Number(String(figs[1]).replace(/[^0-9]/g, ''));
+  });
+  assert.equal(bytes, await page.evaluate(() => window.__sp.expected({}).bytes));
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('long throttling pauses with progress saved; a later visit offers Resume and finishes with exact totals', async () => {
+  const { page, errors } = await open({
+    mock: { outage: { afterRequests: 25, forMs: 6000 }, extraLibraries: 10 },
+    props: { tuning: { throttlePatienceMs: 1500, checkpointEveryMs: 0 } }
+  });
+  await page.getByRole('button', { name: /Start scan/ }).first().click();
+  await page.getByText(/SharePoint is throttling requests, so the scan paused/).waitFor({ timeout: 60000 });
+  // A pause is a warning with a way forward, not an error.
+  assert.equal(await page.getByText(/scan failed/i).count(), 0);
+  assert.ok(await page.getByRole('button', { name: 'Resume scan' }).isVisible());
+  const saved = await page.evaluate(() => Object.keys(window.__sp.files));
+  assert.ok(saved.some((k) => k.endsWith('-inprogress.json')), `checkpoint not saved: ${saved}`);
+  if (shots) {
+    await page.locator('.ms-MessageBar').first().screenshot({ path: path.join(shots, 'scan-paused.png') });
+  }
+
+  // "Closing the tab": the page is rebuilt from what is saved in Site Assets.
+  await page.evaluate(() => window.__sp.endOutage());
+  await page.evaluate(() => window.__remount(true));
+  await page.getByText(/An unfinished scan from/).waitFor({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Resume scan' }).click();
+  await page.getByText('Where the inactive storage is').waitFor({ timeout: 120000 });
+  await page.waitForTimeout(1500);
+  const bytes = await page.evaluate(() => {
+    const figs = [...document.querySelectorAll('[class*=figureValue]')].map((e) => e.getAttribute('title'));
+    return Number(String(figs[0]).replace(/[^0-9]/g, '')) + Number(String(figs[1]).replace(/[^0-9]/g, ''));
+  });
+  assert.equal(bytes, await page.evaluate(() => window.__sp.expected({}).bytes));
+  // The checkpoint is cleaned up once the scan is complete and saved.
+  const after = await page.evaluate(() => Object.keys(window.__sp.files));
+  assert.ok(!after.some((k) => k.endsWith('-inprogress.json')), `checkpoint left behind: ${after}`);
+  assert.ok(after.some((k) => k.endsWith('storage-pulse-site-collection.json')));
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('an unfinished scan can be discarded, and visitors are not offered it', async () => {
+  const { page } = await open({
+    mock: { outage: { afterRequests: 25, forMs: 6000 }, extraLibraries: 6 },
+    props: { tuning: { throttlePatienceMs: 1500, checkpointEveryMs: 0 } }
+  });
+  await page.getByRole('button', { name: /Start scan/ }).first().click();
+  await page.getByRole('button', { name: 'Resume scan' }).waitFor({ timeout: 60000 });
+  await page.evaluate(() => window.__sp.endOutage());
+  // A visitor (not an owner) does not see the owner's unfinished scan.
+  await page.evaluate(() => window.__remount(false));
+  await page.getByText(/Ask a site owner|No scan yet|How much of your storage/).first().waitFor({ timeout: 15000 });
+  assert.equal(await page.getByText(/An unfinished scan from/).count(), 0);
+  // The owner can discard it.
+  await page.evaluate(() => window.__remount(true));
+  await page.getByText(/An unfinished scan from/).waitFor({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await page.getByText(/An unfinished scan from/).waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(300);
+  assert.ok(!(await page.evaluate(() => Object.keys(window.__sp.files))).some((k) => k.endsWith('-inprogress.json')));
+  await page.close();
+});
+
 test('SharePoint answering 406 does not abandon libraries, and the dashboard says so', async () => {
   const { page, errors } = await open({ mock: { notAcceptable: 'orderby' } });
   await scanToEnd(page);

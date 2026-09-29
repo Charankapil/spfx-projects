@@ -21,6 +21,7 @@
         "thresholdMonths": 12,
         "scanPermission": "owners",
         "scanMode": "quick",
+        "scanSpeed": "gentle",
         "includeHidden": false,
         "excludeSystemLibraries": false,
         "excludedLibraries": "",

@@ -54,6 +54,11 @@ function makeItems(count, seed, opts, now) {
  *   extraLibraries  number of extra small libraries (a mix of active and dormant)
  *   notAcceptable   'orderby': item queries with $orderby answer 406 (empty body);
  *                   'both': also the lean Accept header, so only default headers work
+ *   tenantLimit     { perSecond, retryAfterSec }: more than perSecond requests in any second
+ *                   are answered 429 with Retry-After, tenant-wide
+ *   outage          { afterRequests, forMs }: after that many requests SharePoint answers
+ *                   429 for forMs (until endOutage())
+ *   healAfter       (flaky library) failing requests before it recovers on its own
  *   latencyMs       simulated time per request
  *   savedFiles      initial Site Assets files { path: text }
  *   owner           whether the current user manages the web
@@ -67,6 +72,8 @@ export function createMockSharePoint(options = {}) {
     flaky: false,
     poisonItem: false,
     latencyMs: 3,
+    tenantLimit: null,
+    outage: null,
     notAcceptable: '',
     savedFiles: {},
     owner: true,
@@ -104,7 +111,7 @@ export function createMockSharePoint(options = {}) {
     catalog: { id: 'aaaaaaaa-0000-0000-0000-000000000007', title: 'Master Page Gallery', url: `${SITE}/_catalogs/masterpage`, hidden: true, isCatalog: true, items: makeItems(20, 7, { age: oldHeavy, size: (r) => r * MB, prefix: 'm', ext: ['master'] }, now) },
     projects: { id: 'bbbbbbbb-0000-0000-0000-000000000001', title: 'Documents', url: `${SITE}/projects/Shared Documents`, throttleOnce: true, items: makeItems(8300, 8, { age: recent, size: (r) => r * 25 * MB, prefix: 'Plan', ext: ['docx', 'mp4', 'xlsx'] }, now) },
     big: BIG ? { id: 'cccccccc-0000-0000-0000-000000000001', title: 'Scanned Records', url: `${SITE}/projects/Scanned Records`, big: true } : null,
-    flaky: opts.flaky ? { id: 'eeeeeeee-0000-0000-0000-000000000001', title: 'Flaky Library', url: `${SITE}/Flaky Library`, failing: true, items: makeItems(900, 10, { age: recent, size: (r) => r * 5 * MB, prefix: 'f', ext: ['docx'] }, now) } : null,
+    flaky: opts.flaky ? { id: 'eeeeeeee-0000-0000-0000-000000000001', title: 'Flaky Library', url: `${SITE}/Flaky Library`, failing: true, healAfter: typeof opts.flaky === 'number' ? opts.flaky : 0, items: makeItems(900, 10, { age: recent, size: (r) => r * 5 * MB, prefix: 'f', ext: ['docx'] }, now) } : null,
     poison: opts.poisonItem ? { id: 'ffffffff-0000-0000-0000-000000000001', title: 'Poisoned Library', url: `${SITE}/Poisoned Library`, poisonId: 1200, items: makeItems(3000, 11, { age: oldHeavy, size: (r) => r * 5 * MB, prefix: 'p', ext: ['pdf'] }, now) } : null,
     stuck: opts.alwaysThrottle ? { id: 'dddddddd-0000-0000-0000-000000000001', title: 'Busy Library', url: `${SITE}/Busy Library`, alwaysThrottle: true, items: makeItems(100, 9, { age: recent, size: () => MB, prefix: 'b', ext: ['txt'] }, now) } : null
   };
@@ -176,9 +183,51 @@ export function createMockSharePoint(options = {}) {
   }
 
   let notAcceptableCount = 0;
+  // Tenant-style throttling: a 429 puts everyone on hold until Retry-After has passed. A request SENT after
+  // the 429 was issued but before the hold ends is a violation (one already in flight is not).
+  let throttledUntil = 0;
+  let throttleIssuedAt = 0;
+  let violations = 0;
+  let throttles = 0;
+  let requestsSeen = 0;
+  let outageStarted = false;
+  const recentStarts = [];
 
-  function handle(url, method, options) {
+  function throttleCheck(sentAt) {
+    requestsSeen++;
+    const now = Date.now();
+    if (now < throttledUntil) {
+      if (sentAt >= throttleIssuedAt) violations++;
+      return resp(429, 'busy', { 'Retry-After': String(Math.max(1, Math.ceil((throttledUntil - now) / 1000))) });
+    }
+    const limit = opts.tenantLimit;
+    if (limit) {
+      while (recentStarts.length && now - recentStarts[0] > 1000) recentStarts.shift();
+      if (recentStarts.length >= limit.perSecond) {
+        throttles++;
+        throttleIssuedAt = now;
+        throttledUntil = now + limit.retryAfterSec * 1000;
+        return resp(429, 'busy', { 'Retry-After': String(limit.retryAfterSec) });
+      }
+      recentStarts.push(now);
+    }
+    const outage = opts.outage;
+    if (outage && !outageStarted && requestsSeen > outage.afterRequests) {
+      outageStarted = true;
+      throttles++;
+      throttleIssuedAt = now;
+      throttledUntil = now + outage.forMs;
+      return resp(429, 'busy', { 'Retry-After': String(Math.ceil(outage.forMs / 1000)) });
+    }
+    return undefined;
+  }
+
+  function handle(url, method, options, sentAt) {
     log.push(`${method} ${decodeURIComponent(url)}`);
+    if (method === 'GET') {
+      const throttled = throttleCheck(sentAt === undefined ? Date.now() : sentAt);
+      if (throttled) return throttled;
+    }
     const u = new URL(url);
     const apiIdx = u.pathname.indexOf('/_api/');
     const webPath = decodeURIComponent(u.pathname.substring(0, apiIdx));
@@ -224,7 +273,11 @@ export function createMockSharePoint(options = {}) {
         return resp(406, '');
       }
       if (lib.alwaysThrottle) return resp(429, 'slow down', { 'Retry-After': '120' });
-      if (lib.failing && q.get('$orderby') !== 'Id desc') return resp(500, { 'odata.error': { message: { value: 'Server is busy.' } } });
+      if (lib.failing && q.get('$orderby') !== 'Id desc') {
+        lib.failCount = (lib.failCount || 0) + 1;
+        if (lib.healAfter && lib.failCount >= lib.healAfter) lib.failing = false;
+        return resp(500, { 'odata.error': { message: { value: 'Server is busy.' } } });
+      }
       if (lib.throttleOnce) {
         lib.throttleOnce = false;
         return resp(429, 'slow down', { 'Retry-After': '1' });
@@ -291,6 +344,10 @@ export function createMockSharePoint(options = {}) {
       return f ? resp(200, f) : resp(404, 'not found');
     }
     m = api.match(/^web\/GetFileByServerRelativeUrl\('(.+)'\)$/);
+    if (m && method === 'POST' && options && options.headers && options.headers['X-HTTP-Method'] === 'DELETE') {
+      delete files[m[1]];
+      return resp(200, {});
+    }
     if (m) {
       return files[m[1]] ? resp(200, { TimeLastModified: now.toISOString(), ModifiedBy: { Title: 'Megan Bowen' } }) : resp(404, 'not found');
     }
@@ -344,12 +401,13 @@ export function createMockSharePoint(options = {}) {
     spHttpClient: {
       get: (url, cfg, options) => {
         acceptHeaders.add(options && options.headers && options.headers.Accept);
+        const sentAt = Date.now();
         inFlight++;
         maxInFlight = Math.max(maxInFlight, inFlight);
         return new Promise((r) =>
           setTimeout(() => {
             inFlight--;
-            r(handle(url, 'GET', options));
+            r(handle(url, 'GET', options, sentAt));
           }, opts.latencyMs)
         );
       },
@@ -375,6 +433,11 @@ export function createMockSharePoint(options = {}) {
       if (libs.flaky) libs.flaky.failing = false;
     },
     maxInFlight: () => maxInFlight,
-    notAcceptableCount: () => notAcceptableCount
+    notAcceptableCount: () => notAcceptableCount,
+    throttles: () => throttles,
+    violations: () => violations,
+    endOutage: () => {
+      throttledUntil = 0;
+    }
   };
 }
