@@ -26,6 +26,19 @@ export interface ILibraryStorageMetrics {
   fileStreamSize: number;
 }
 
+/**
+ * Files of one extension, split into the dashboard's age bands (see
+ * AGE_BANDS in services/activity.ts). Every inactivity threshold is a band
+ * boundary, so the active / inactive split per type is exact for any
+ * threshold without keeping month-level detail per type.
+ */
+export interface IFileTypeStat {
+  /** Lower-case extension without the dot, "(none)" or "(other)". */
+  extension: string;
+  counts: number[];
+  bytes: number[];
+}
+
 export interface ILibraryResult {
   id: string;
   title: string;
@@ -37,6 +50,8 @@ export interface ILibraryResult {
   files: number;
   bytes: number;
   histogram: IAgeHistogram;
+  /** Size by file type; missing on scans saved before v1.1. */
+  fileTypes?: IFileTypeStat[];
   metrics?: ILibraryStorageMetrics;
   /** Set when the library could not be read, or only part of it could. */
   error?: string;

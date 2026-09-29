@@ -28,6 +28,15 @@ delete.
 - **Storage by time since last modified.** Bars for &lt; 3 months up to
   10+ years. Bars past the chosen period are coloured as inactive. Hover
   or focus a bar to see its size, share and file count.
+- **Storage by file type.** Size, inactive size, share of storage and
+  file count for every file type (`.pdf`, `.mp4`, `.zip` …). Each bar is
+  split into inactive and active, so you can see, for example, that old
+  videos or archives take most of the space. Switch to **By category**
+  (Video & audio, Images, Archives & disk images, PDF, Office documents,
+  Design & CAD, Email, Databases & backups …) for the big picture. The
+  panel also names the type or category holding the most inactive storage.
+  It has its own CSV export with one row per library and file type, ready
+  for a pivot table in Excel.
 - **Where the inactive storage is.** A table by library or by site, sorted
   by inactive size. It shows files, size, inactive size, inactive share,
   when anything in it last changed and, where SharePoint reports it, the
@@ -39,8 +48,9 @@ delete.
 - **Plain-language insights.** For example, how much space cleaning up
   would free, how many libraries are dormant, how much version history
   adds, and whether any site or library could not be read.
-- **CSV export.** One row per library, with the split for the chosen
-  period and the size in each age band.
+- **CSV exports.** Libraries: one row per library, with the split for the
+  chosen period and the size in each age band. File types: one row per
+  library and file type. Largest inactive files: one row per file.
 - **Saved for everyone.** When a site owner runs a scan, the result is
   saved in the site's Site Assets. Anyone who opens the page sees it
   straight away.
@@ -82,8 +92,18 @@ scan as a site collection administrator.
    5,000 items per request, and follows SharePoint's own next-page link.
    Paging by ID works on libraries of any size, with no list view threshold
    error. Folders are skipped. Only numbers are kept: a count and byte total
-   per month of age, plus the 200 largest files older than 3 months. Memory
-   use in the browser therefore stays flat however many files there are.
+   per month of age, the same per file type and age band, plus the 200
+   largest files older than 3 months. Memory use in the browser therefore
+   stays flat however many files there are.
+
+   The file type comes from the end of the file name the scan already
+   reads, so the file-type breakdown adds no requests and no measurable
+   scan time. Every inactivity period on offer is an age-band boundary,
+   so the active / inactive split per file type is exact for any period.
+   Up to 300 distinct extensions are tracked per library. Beyond that,
+   files count as `(other)`, which keeps the saved result small in
+   libraries full of numbered backup files. Files without an extension
+   count as `(none)`.
 3. **Version history, where available.** For each library it reads
    `RootFolder/StorageMetrics`, SharePoint's own storage figure. `TotalSize`
    minus `TotalFileStreamSize` is the space used by version history. If the
@@ -201,6 +221,8 @@ src/webparts/storageActivityAnalyser/
       Dashboard.tsx                      Lays out the panels below
       SplitSummary.tsx                   Active vs inactive figures, split bar, insights
       AgeChart.tsx                       Storage by time since last modified
+      FileTypes.tsx                      Storage by file type / category
+      fileTypeCategories.ts              Extension -> category
       LocationTable.tsx                  By library / by site table, sortable
       LargestFiles.tsx                   Largest inactive files
       format.ts, motion.ts               Formatting and count-up / entrance helpers

@@ -1,5 +1,13 @@
 import { IScanResult } from '../models/IScanResult';
-import { AGE_BANDS, bandTotals, describeAge, newestFileAge, splitByThreshold, thresholdLabel } from './activity';
+import {
+  AGE_BANDS,
+  bandTotals,
+  describeAge,
+  newestFileAge,
+  splitByThreshold,
+  splitFileType,
+  thresholdLabel
+} from './activity';
 
 function csvEscape(value: string): string {
   // Titles and file names come from the site, so a leading = + - @ must not run as a formula in Excel.
@@ -98,4 +106,39 @@ export function exportLargestFilesCsv(result: IScanResult, thresholdMonths: numb
     }
   }
   download(lines, `storage-activity-largest-inactive-files-${stamp(result)}.csv`);
+}
+
+/** One row per library and file type, so the data can be pivoted in Excel by site, library or type. */
+export function exportFileTypesCsv(result: IScanResult, thresholdMonths: number): void {
+  const label = thresholdLabel(thresholdMonths);
+  const lines: string[][] = [
+    [
+      'Site',
+      'Library',
+      'File type',
+      'Files',
+      'Size (bytes)',
+      `Active files (changed in last ${label})`,
+      'Active size (bytes)',
+      `Inactive files (not changed for ${label}+)`,
+      'Inactive size (bytes)'
+    ]
+  ];
+  for (const lib of result.libraries) {
+    for (const stat of lib.fileTypes || []) {
+      const split = splitFileType(stat, thresholdMonths);
+      lines.push([
+        lib.webTitle,
+        lib.title,
+        stat.extension,
+        String(split.totalFiles),
+        String(split.totalBytes),
+        String(split.activeFiles),
+        String(split.activeBytes),
+        String(split.inactiveFiles),
+        String(split.inactiveBytes)
+      ]);
+    }
+  }
+  download(lines, `storage-activity-file-types-${stamp(result)}.csv`);
 }

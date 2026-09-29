@@ -3,6 +3,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 
 import {
   IAgeHistogram,
+  IFileTypeStat,
   ILargeFile,
   ILibraryResult,
   ILibraryStorageMetrics,
@@ -11,7 +12,7 @@ import {
   IWebResult,
   ScanScope
 } from '../models/IScanResult';
-import { ageInMonths, emptyHistogram, MIN_THRESHOLD_MONTHS } from './activity';
+import { ageInMonths, bandIndex, emptyFileTypeStat, emptyHistogram, extensionOf, MIN_THRESHOLD_MONTHS } from './activity';
 import { describeError } from './httpErrors';
 
 /**
@@ -76,6 +77,14 @@ const MAX_PAGE_SIZE = 5000;
 /** A page that fails for a reason other than throttling is retried with fewer items, down to this size. */
 const MIN_PAGE_SIZE = 500;
 const LARGEST_FILES_KEPT = 200;
+/**
+ * Distinct extensions tracked per library. Libraries full of odd names
+ * (numbered backups like .001, .002 ...) would otherwise grow the saved
+ * result without limit; anything past this is counted as "(other)".
+ */
+const MAX_FILE_TYPES_PER_LIBRARY = 300;
+
+type FileTypeMap = Map<string, IFileTypeStat>;
 
 export class ScanCancelledError extends Error {}
 
@@ -364,6 +373,7 @@ export class StorageScanService {
     onProgress: (p: IScanProgress) => void
   ): Promise<void> {
     const ranges = await this.planRanges(library);
+    const types: FileTypeMap = new Map<string, IFileTypeStat>();
     const errors: string[] = [];
     let itemsSeen = 0;
     let nextRange = 0;
@@ -373,7 +383,7 @@ export class StorageScanService {
         const filter = ranges[nextRange++];
         try {
           // Not "itemsSeen += await ...": that reads itemsSeen before the await and loses other readers' counts.
-          const seenInRange = await this.readRange(library, filter, scanStart, largest, progress, onProgress);
+          const seenInRange = await this.readRange(library, filter, scanStart, types, largest, progress, onProgress);
           itemsSeen += seenInRange;
         } catch (err) {
           if (err instanceof ScanCancelledError) {
@@ -392,6 +402,11 @@ export class StorageScanService {
     }
     await Promise.all(readers);
 
+    const fileTypes: IFileTypeStat[] = [];
+    types.forEach((stat) => fileTypes.push(stat));
+    fileTypes.sort((a, b) => b.bytes.reduce((x, y) => x + y, 0) - a.bytes.reduce((x, y) => x + y, 0));
+    library.fileTypes = fileTypes;
+
     if (errors.length > 0) {
       library.error = errors.join(' | ');
       library.partial = library.files > 0;
@@ -409,6 +424,7 @@ export class StorageScanService {
     library: ILibraryResult,
     filter: string | undefined,
     scanStart: Date,
+    types: FileTypeMap,
     largest: ILargeFile[],
     progress: IScanProgress,
     onProgress: (p: IScanProgress) => void
@@ -451,9 +467,26 @@ export class StorageScanService {
         progress.filesRead++;
         progress.bytesRead += bytes;
 
+        const name = item.FileRef ? item.FileRef.substring(item.FileRef.lastIndexOf('/') + 1) : '';
+        let ext = extensionOf(name);
+        let typeStat = types.get(ext);
+        if (!typeStat) {
+          if (types.size >= MAX_FILE_TYPES_PER_LIBRARY) {
+            ext = '(other)';
+            typeStat = types.get(ext);
+          }
+          if (!typeStat) {
+            typeStat = emptyFileTypeStat(ext);
+            types.set(ext, typeStat);
+          }
+        }
+        const band = bandIndex(age);
+        typeStat.counts[band]++;
+        typeStat.bytes[band] += bytes;
+
         if (age >= MIN_THRESHOLD_MONTHS && bytes > 0 && item.FileRef) {
           largest.push({
-            name: item.FileRef.substring(item.FileRef.lastIndexOf('/') + 1),
+            name,
             serverRelativeUrl: item.FileRef,
             bytes,
             modified: item.Modified || '',

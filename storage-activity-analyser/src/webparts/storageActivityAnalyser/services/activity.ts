@@ -1,4 +1,4 @@
-import { AGE_BUCKET_COUNT, IAgeHistogram, ILibraryResult, MAX_AGE_MONTHS } from '../models/IScanResult';
+import { AGE_BUCKET_COUNT, IAgeHistogram, IFileTypeStat, ILibraryResult, MAX_AGE_MONTHS } from '../models/IScanResult';
 
 /** Inactivity thresholds offered in the property pane and on the dashboard. */
 export const THRESHOLD_OPTIONS: number[] = [3, 6, 12, 24, 36, 60];
@@ -144,4 +144,83 @@ export function describeAge(months: number): string {
   const rest = months % 12;
   const yearText = years === 1 ? '1 year' : `${years} years`;
   return rest === 0 ? `${yearText} ago` : `${yearText} ${rest} mo ago`;
+}
+
+/** Index into AGE_BANDS for a file of the given age in months. */
+export function bandIndex(ageMonths: number): number {
+  for (let i = AGE_BANDS.length - 1; i > 0; i--) {
+    if (ageMonths >= AGE_BANDS[i].from) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+export function emptyFileTypeStat(extension: string): IFileTypeStat {
+  return { extension, counts: AGE_BANDS.map(() => 0), bytes: AGE_BANDS.map(() => 0) };
+}
+
+/**
+ * The extension of a file name, lower-case and without the dot. Names with
+ * no dot, or with something after the last dot that does not look like an
+ * extension (too long, spaces), count as "(none)".
+ */
+export function extensionOf(fileName: string): string {
+  const dot = fileName.lastIndexOf('.');
+  if (dot <= 0 || dot === fileName.length - 1) {
+    return '(none)';
+  }
+  const ext = fileName.substring(dot + 1).toLowerCase();
+  return ext.length > 10 || /\s/.test(ext) ? '(none)' : ext;
+}
+
+export interface IFileTypeSplit extends IActivitySplit {
+  extension: string;
+}
+
+export function splitFileType(stat: IFileTypeStat, thresholdMonths: number): IFileTypeSplit {
+  const split: IFileTypeSplit = {
+    extension: stat.extension,
+    activeFiles: 0,
+    activeBytes: 0,
+    inactiveFiles: 0,
+    inactiveBytes: 0,
+    totalFiles: 0,
+    totalBytes: 0
+  };
+  AGE_BANDS.forEach((band, i) => {
+    if (band.from >= thresholdMonths) {
+      split.inactiveFiles += stat.counts[i] || 0;
+      split.inactiveBytes += stat.bytes[i] || 0;
+    } else {
+      split.activeFiles += stat.counts[i] || 0;
+      split.activeBytes += stat.bytes[i] || 0;
+    }
+  });
+  split.totalFiles = split.activeFiles + split.inactiveFiles;
+  split.totalBytes = split.activeBytes + split.inactiveBytes;
+  return split;
+}
+
+/** Adds up the file types of all libraries; undefined when no library has file-type data (older saved scans). */
+export function totalFileTypes(libraries: ILibraryResult[]): IFileTypeStat[] | undefined {
+  const map: { [ext: string]: IFileTypeStat } = {};
+  let any = false;
+  for (const library of libraries) {
+    if (!library.fileTypes) {
+      continue;
+    }
+    any = true;
+    for (const stat of library.fileTypes) {
+      const total = map[stat.extension] || (map[stat.extension] = emptyFileTypeStat(stat.extension));
+      for (let i = 0; i < AGE_BANDS.length; i++) {
+        total.counts[i] += stat.counts[i] || 0;
+        total.bytes[i] += stat.bytes[i] || 0;
+      }
+    }
+  }
+  if (!any) {
+    return undefined;
+  }
+  return Object.keys(map).map((k) => map[k]);
 }

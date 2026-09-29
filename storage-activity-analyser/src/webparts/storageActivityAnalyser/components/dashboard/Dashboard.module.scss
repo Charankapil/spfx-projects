@@ -430,6 +430,52 @@ $card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   text-align: right;
 }
 
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.highlight {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-top: 8px;
+  font-size: 13px;
+  color: $ink-primary;
+}
+
+// File type table: the bar column takes the spare width.
+.barHeader {
+  width: 34%;
+  font-weight: 400 !important;
+}
+
+.barCell {
+  vertical-align: middle !important;
+}
+
+.typeBar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 3px;
+}
+
+.typeIcon {
+  color: $ink-secondary;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.typeName {
+  font-weight: 600;
+  word-break: break-word;
+}
+
 .showAll {
   margin-top: 10px;
 }
