@@ -41,6 +41,11 @@ export interface ILibraryResult {
   /** Set when the library could not be read, or only part of it could. */
   error?: string;
   partial?: boolean;
+  /**
+   * Items the library reports (ItemCount) that the scan did not see, usually
+   * because they have permissions that exclude the person scanning.
+   */
+  unreadItems?: number;
 }
 
 export interface IWebResult {

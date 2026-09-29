@@ -67,7 +67,11 @@ export function exportLibrariesCsv(result: IScanResult, thresholdMonths: number)
       newest === undefined ? '' : describeAge(newest),
       lib.metrics ? String(lib.metrics.totalSize) : '',
       ...AGE_BANDS.map((b) => String(bandTotals(lib.histogram, b).bytes)),
-      lib.error ? `${lib.partial ? 'Partly read: ' : ''}${lib.error}` : ''
+      lib.error
+        ? `${lib.partial ? 'Partly read: ' : ''}${lib.error}`
+        : lib.unreadItems
+        ? `${lib.unreadItems} of ${lib.itemCount} items not visible to the person who ran the scan`
+        : ''
     ]);
   }
   for (const web of result.webs) {

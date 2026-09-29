@@ -84,7 +84,11 @@ export const LocationTable: React.FC<ILocationTableProps> = ({ result, threshold
           lib.histogram,
           thresholdMonths,
           lib.metrics ? Math.max(0, lib.metrics.totalSize - lib.metrics.fileStreamSize) : undefined,
-          lib.error ? `${lib.partial ? 'Only partly read: ' : ''}${lib.error}` : undefined
+          lib.error
+            ? `${lib.partial ? 'Only partly read: ' : ''}${lib.error}`
+            : lib.unreadItems
+            ? `${lib.unreadItems.toLocaleString()} of ${lib.itemCount.toLocaleString()} items were not visible to the person who ran the scan, so they are not counted.`
+            : undefined
         )
       );
     }
@@ -98,7 +102,11 @@ export const LocationTable: React.FC<ILocationTableProps> = ({ result, threshold
           versionBytes = (versionBytes || 0) + Math.max(0, lib.metrics.totalSize - lib.metrics.fileStreamSize);
         }
       }
-      const errors = [web.error, ...libs.filter((l) => l.error).map((l) => `${l.title}: ${l.error}`)].filter(Boolean);
+      const errors = [
+        web.error,
+        ...libs.filter((l) => l.error).map((l) => `${l.title}: ${l.error}`),
+        ...libs.filter((l) => !l.error && l.unreadItems).map((l) => `${l.title}: ${(l.unreadItems || 0).toLocaleString()} items not visible`)
+      ].filter(Boolean);
       return buildRow(
         web.url,
         web.title,

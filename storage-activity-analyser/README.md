@@ -78,11 +78,12 @@ scan as a site collection administrator.
    use storage.
 2. **Read each file's size and last-modified date.** For each library it
    pages through
-   `_api/web/lists(guid'…')/items?$select=FSObjType,Modified,FileRef,FileLeafRef,File/Length&$expand=File&$top=5000`,
+   `_api/web/lists(guid'…')/items?$select=Id,FSObjType,Modified,FileRef,File/Length&$expand=File&$top=5000`,
    5,000 items per request, and follows SharePoint's own next-page link.
    Paging by ID works on libraries of any size, with no list view threshold
    error. Folders are skipped. Only numbers are kept: a count and byte total
-   per month of age, plus the 200 largest files older than 3 months.
+   per month of age, plus the 200 largest files older than 3 months. Memory
+   use in the browser therefore stays flat however many files there are.
 3. **Version history, where available.** For each library it reads
    `RootFolder/StorageMetrics`, SharePoint's own storage figure. `TotalSize`
    minus `TotalFileStreamSize` is the space used by version history. If the
@@ -90,15 +91,42 @@ scan as a site collection administrator.
 4. **Site storage.** `_api/site?$select=Usage` supplies the site collection
    storage figure for context.
 
-**Throttling and failures.** SharePoint `429`/`503` responses are retried
-after the `Retry-After` delay. If a page times out, the scan requests it
-again with a smaller page size (down to 500). If a subsite or library fails,
-it is marked in the table and in the CSV, and the scan continues.
+## Very large libraries (a million files and more)
 
-**How long it takes.** Scan time depends on the number of files: about one
-request per 5,000 files. A site with a few hundred thousand files usually
-takes a few minutes. Very large site collections take longer. Progress
-shows the files and bytes read so far, and **Cancel** stops the scan.
+The scan is built for libraries far beyond the 5,000-item list view
+threshold:
+
+- **Parallel ID ranges.** A library with more than 20,000 items is split
+  into ranges of 50,000 IDs (`$filter=Id gt … and Id le …`). Three readers
+  work through the ranges at once. ID is the list's primary key, so
+  filtering on it is allowed at any size. The last range is open-ended, so
+  files added during the scan are still read.
+- **Lean responses.** Requests ask for `odata.metadata=nometadata`, which
+  drops the per-item OData metadata that SharePoint adds by default.
+- **Patient with throttling.** Long scans are expected to be throttled.
+  Each throttled request (`429`/`503`) waits for `Retry-After`, or backs off
+  up to 5 minutes, and tries again up to 12 times before giving up.
+- **Timeouts.** If a page times out, the scan requests it again with a
+  smaller page size (down to 500).
+- **Failures stay local.** If one ID range fails, the others carry on. The
+  library is marked *only partly read* and keeps everything that was read.
+  If a subsite or library fails, it is marked in the table and in the CSV,
+  and the scan continues.
+- **Nothing missed silently.** If SharePoint returns a full page without a
+  next-page link, the scan continues from the last ID itself. After each
+  library, the number of items read is compared with the library's
+  `ItemCount`. A shortfall, usually items the scanning user cannot see
+  because of item-level permissions, is reported on the dashboard, in the
+  table and in the CSV.
+
+**How long it takes.** Scan time grows with the number of files: about one
+request per 5,000 files, so a million files is about 200 requests, spread
+over three parallel readers. How fast each request returns depends on the
+tenant's load and how much throttling SharePoint applies, so expect
+anything from several minutes to around half an hour for a million-file
+library. Progress shows the files and bytes read so far, and **Cancel**
+stops the scan. Keep the page open until the scan finishes. The results are
+saved only at the end.
 
 ## What the numbers mean
 

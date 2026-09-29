@@ -34,11 +34,12 @@ interface IListListItem {
 }
 
 interface IFileItem {
+  Id?: number;
+  ID?: number;
   FSObjType?: number | string;
   FileSystemObjectType?: number;
   Modified?: string;
   FileRef?: string;
-  FileLeafRef?: string;
   File?: { Length?: number | string } | null;
 }
 
@@ -53,7 +54,23 @@ interface IStorageMetricsResponse {
 }
 
 const REQUEST_GAP_MS = 150;
-const MAX_THROTTLE_RETRIES = 5;
+/**
+ * Throttling is expected on long scans, so a throttled request waits and
+ * tries again for a long time (about half an hour in total) rather than
+ * giving up part-way through a big library.
+ */
+const MAX_THROTTLE_RETRIES = 12;
+const MAX_BACKOFF_SECONDS = 300;
+/**
+ * nometadata drops the per-item odata.type / id / etag / editLink fields
+ * (also on the expanded File), which makes each 5,000-item page much
+ * smaller to download and parse.
+ */
+const JSON_OPTIONS = { headers: { Accept: 'application/json;odata.metadata=nometadata' } };
+/** Libraries with more items than this are split into ID ranges read in parallel. */
+const PARALLEL_ITEM_THRESHOLD = 20000;
+const PARALLEL_READERS = 3;
+const IDS_PER_RANGE = 50000;
 /** The REST items endpoint returns at most 5,000 items per page. */
 const MAX_PAGE_SIZE = 5000;
 /** A page that fails for a reason other than throttling is retried with fewer items, down to this size. */
@@ -107,7 +124,7 @@ export class StorageScanService {
     this.throwIfCancelled();
     let response: SPHttpClientResponse;
     try {
-      response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, JSON_OPTIONS);
     } catch (err) {
       // Network failure or timeout: retry a couple of times before giving up.
       if (attempt < 2) {
@@ -123,7 +140,8 @@ export class StorageScanService {
       }
       const header = response.headers.get('Retry-After');
       const seconds = header ? parseInt(header, 10) : NaN;
-      await this.delay((isNaN(seconds) ? 5 * (attempt + 1) : seconds) * 1000);
+      const backoff = Math.min(MAX_BACKOFF_SECONDS, 5 * Math.pow(2, attempt));
+      await this.delay((isNaN(seconds) ? backoff : Math.min(seconds, MAX_BACKOFF_SECONDS)) * 1000);
       return this.getJson<T>(url, attempt + 1);
     }
 
@@ -300,10 +318,43 @@ export class StorageScanService {
   }
 
   /**
-   * Pages through every item in the library, reading only the size and last
-   * modified date of each file. Folders are skipped. Paging follows
-   * SharePoint's own next link (ordered by ID), which works on libraries of
-   * any size without hitting the list view threshold.
+   * Splits a big library into ID ranges so several readers can page through
+   * it at once. ID is the list's primary key, so filtering on it is allowed
+   * on libraries of any size. Small libraries, or any library whose highest
+   * ID cannot be read, are read as one range.
+   */
+  private async planRanges(library: ILibraryResult): Promise<(string | undefined)[]> {
+    if (library.itemCount <= PARALLEL_ITEM_THRESHOLD) {
+      return [undefined];
+    }
+    let maxId = 0;
+    try {
+      const json = await this.getJson<IItemsPage>(
+        `${library.webUrl}/_api/web/lists(guid'${library.id}')/items?$select=Id&$orderby=Id desc&$top=1`
+      );
+      const top = (json.value || [])[0];
+      maxId = top ? Number(top.Id !== undefined ? top.Id : top.ID) || 0 : 0;
+    } catch (err) {
+      if (err instanceof ScanCancelledError) {
+        throw err;
+      }
+    }
+    if (maxId <= IDS_PER_RANGE) {
+      return [undefined];
+    }
+    const ranges: string[] = [];
+    for (let from = 0; from < maxId; from += IDS_PER_RANGE) {
+      // The last range is open-ended so files added during the scan are not missed.
+      ranges.push(from + IDS_PER_RANGE >= maxId ? `Id gt ${from}` : `Id gt ${from} and Id le ${from + IDS_PER_RANGE}`);
+    }
+    return ranges;
+  }
+
+  /**
+   * Reads every item in the library, keeping only each file's size and last
+   * modified date. Large libraries are read by several readers in parallel,
+   * one ID range each. A range that fails is recorded and the others carry
+   * on, so one bad page does not lose the rest of a million-file library.
    */
   private async readLibrary(
     library: ILibraryResult,
@@ -312,19 +363,78 @@ export class StorageScanService {
     progress: IScanProgress,
     onProgress: (p: IScanProgress) => void
   ): Promise<void> {
+    const ranges = await this.planRanges(library);
+    const errors: string[] = [];
+    let itemsSeen = 0;
+    let nextRange = 0;
+
+    const reader = async (): Promise<void> => {
+      while (nextRange < ranges.length) {
+        const filter = ranges[nextRange++];
+        try {
+          // Not "itemsSeen += await ...": that reads itemsSeen before the await and loses other readers' counts.
+          const seenInRange = await this.readRange(library, filter, scanStart, largest, progress, onProgress);
+          itemsSeen += seenInRange;
+        } catch (err) {
+          if (err instanceof ScanCancelledError) {
+            throw err;
+          }
+          const message = err instanceof Error ? err.message : 'unknown error';
+          if (errors.indexOf(message) < 0) {
+            errors.push(message);
+          }
+        }
+      }
+    };
+    const readers: Promise<void>[] = [];
+    for (let i = 0; i < Math.min(PARALLEL_READERS, ranges.length); i++) {
+      readers.push(reader());
+    }
+    await Promise.all(readers);
+
+    if (errors.length > 0) {
+      library.error = errors.join(' | ');
+      library.partial = library.files > 0;
+    }
+    // ItemCount counts every item, including ones the user cannot see. A
+    // shortfall beyond normal churn during the scan is reported, not hidden.
+    const missing = library.itemCount - itemsSeen;
+    if (!library.error && missing > Math.max(10, library.itemCount * 0.001)) {
+      library.unreadItems = missing;
+    }
+  }
+
+  /** Pages through one ID range (or the whole library); returns how many items, files and folders, it saw. */
+  private async readRange(
+    library: ILibraryResult,
+    filter: string | undefined,
+    scanStart: Date,
+    largest: ILargeFile[],
+    progress: IScanProgress,
+    onProgress: (p: IScanProgress) => void
+  ): Promise<number> {
     const histogram: IAgeHistogram = library.histogram;
-    let next: string | undefined =
+    const base =
       `${library.webUrl}/_api/web/lists(guid'${library.id}')/items` +
-      `?$select=Id,FSObjType,Modified,FileRef,FileLeafRef,File/Length&$expand=File&$top=${MAX_PAGE_SIZE}`;
+      `?$select=Id,FSObjType,Modified,FileRef,File/Length&$expand=File` +
+      (filter ? `&$filter=${encodeURIComponent(filter)}` : '');
+    let next: string | undefined = `${base}&$top=${MAX_PAGE_SIZE}`;
     let pageSize = MAX_PAGE_SIZE;
+    let lastId = 0;
+    let seen = 0;
 
     while (next) {
       this.throwIfCancelled();
       const result: { page: IItemsPage; pageSize: number } = await this.getItemsPage(next, pageSize);
       pageSize = result.pageSize;
       const items = result.page.value || [];
+      seen += items.length;
 
       for (const item of items) {
+        const id = Number(item.Id !== undefined ? item.Id : item.ID) || 0;
+        if (id > lastId) {
+          lastId = id;
+        }
         const type = item.FSObjType !== undefined ? Number(item.FSObjType) : item.FileSystemObjectType;
         // Folders have FSObjType 1; if the type is missing, a folder is the item without a File.
         if (type === 1 || ((type === undefined || isNaN(type)) && !item.File)) {
@@ -343,7 +453,7 @@ export class StorageScanService {
 
         if (age >= MIN_THRESHOLD_MONTHS && bytes > 0 && item.FileRef) {
           largest.push({
-            name: item.FileLeafRef || item.FileRef.substring(item.FileRef.lastIndexOf('/') + 1),
+            name: item.FileRef.substring(item.FileRef.lastIndexOf('/') + 1),
             serverRelativeUrl: item.FileRef,
             bytes,
             modified: item.Modified || '',
@@ -358,10 +468,16 @@ export class StorageScanService {
         largest.sort((a, b) => b.bytes - a.bytes);
         largest.length = LARGEST_FILES_KEPT;
       }
-
       onProgress({ ...progress });
+
       next = result.page['odata.nextLink'] || result.page['@odata.nextLink'];
+      if (!next && items.length >= pageSize && lastId > 0) {
+        // A full page with no next link: continue from the last ID ourselves
+        // rather than silently stopping short.
+        next = `${base}&$skiptoken=${encodeURIComponent(`Paged=TRUE&p_ID=${lastId}`)}&$top=${pageSize}`;
+      }
     }
+    return seen;
   }
 
   public async scan(

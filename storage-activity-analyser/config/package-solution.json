@@ -3,7 +3,7 @@
   "solution": {
     "name": "storage-activity-analyser-client-side-solution",
     "id": "5cff86ca-e33d-4328-b004-90b9c8787d09",
-    "version": "1.0.0.0",
+    "version": "1.0.1.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -28,7 +28,7 @@
         "title": "storage-activity-analyser Feature",
         "description": "The feature that activates elements of the storage-activity-analyser solution.",
         "id": "caefa46b-3f0d-4b4c-878a-14c3fb9244d7",
-        "version": "1.0.0.0"
+        "version": "1.0.1.0"
       }
     ]
   },

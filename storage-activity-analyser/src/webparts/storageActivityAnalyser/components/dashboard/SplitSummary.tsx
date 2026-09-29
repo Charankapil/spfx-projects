@@ -50,6 +50,7 @@ export const SplitSummary: React.FC<ISplitSummaryProps> = ({ result, split, thre
     let dormantLibraries = 0;
     let dormantBytes = 0;
     let failed = 0;
+    let hiddenItems = 0;
     for (const lib of result.libraries) {
       if (lib.metrics) {
         librariesWithMetrics++;
@@ -63,9 +64,10 @@ export const SplitSummary: React.FC<ISplitSummaryProps> = ({ result, split, thre
       if (lib.error) {
         failed++;
       }
+      hiddenItems += lib.unreadItems || 0;
     }
     failed += result.webs.filter((w) => w.error).length;
-    return { versionBytes, librariesWithMetrics, dormantLibraries, dormantBytes, failed };
+    return { versionBytes, librariesWithMetrics, dormantLibraries, dormantBytes, failed, hiddenItems };
   }, [result, thresholdMonths]);
 
   const inactiveShare = split.totalBytes ? split.inactiveBytes / split.totalBytes : 0;
@@ -158,6 +160,14 @@ export const SplitSummary: React.FC<ISplitSummaryProps> = ({ result, split, thre
             <Icon iconName="Warning" className={styles.insightIcon} />
             {facts.failed === 1 ? '1 site or library' : `${facts.failed} sites or libraries`} could not be read fully
             with your access, so the totals may be lower than the real figure. See the table below or the CSV.
+          </li>
+        )}
+        {facts.hiddenItems > 0 && (
+          <li>
+            <Icon iconName="Info" className={styles.insightIcon} />
+            {formatCompact(facts.hiddenItems)} items that SharePoint counts in these libraries were not visible to{' '}
+            {result.scannedBy || 'the person who ran the scan'}, usually because of item-level permissions, so they
+            are not in the totals. A site collection administrator&apos;s scan includes them.
           </li>
         )}
       </ul>
