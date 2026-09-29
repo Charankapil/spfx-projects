@@ -221,6 +221,10 @@ export function sanitizeResult(value: unknown, origin: string): IScanResult | un
           excludedLibraries: Array.isArray(options.excludedLibraries) ? options.excludedLibraries.map((n) => text(n)).slice(0, 100) : []
         }
       : undefined,
+    paging:
+      raw.paging && count(raw.paging.libraries) > 0
+        ? { level: Math.min(2, Math.floor(count(raw.paging.level))), libraries: Math.floor(count(raw.paging.libraries)) }
+        : undefined,
     quickAfterMonths:
       typeof raw.quickAfterMonths === 'number' && isFinite(raw.quickAfterMonths) && raw.quickAfterMonths > 0
         ? Math.floor(raw.quickAfterMonths)

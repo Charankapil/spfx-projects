@@ -76,6 +76,21 @@ test('failures are listed with their reason, and Retry failed fixes them', async
   await page.close();
 });
 
+test('SharePoint answering 406 does not abandon libraries, and the dashboard says so', async () => {
+  const { page, errors } = await open({ mock: { notAcceptable: 'orderby' } });
+  await scanToEnd(page);
+  assert.ok(await page.getByText(/rejected the fastest query form \(HTTP 406\) for \d+ libraries/).isVisible());
+  // Only the truly restricted HR site is listed as an issue, and no library shows a 406.
+  assert.equal(await page.getByText(/406/).count(), 1); // just the note above
+  const totals = await page.evaluate(() => {
+    const figs = [...document.querySelectorAll('[class*=figureValue]')].map((e) => e.getAttribute('title'));
+    return Number(String(figs[0]).replace(/[^0-9]/g, '')) + Number(String(figs[1]).replace(/[^0-9]/g, ''));
+  });
+  assert.equal(totals, await page.evaluate(() => window.__sp.expected({}).bytes));
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 test('a quick scan marks libraries measured as a whole and approximate periods', async () => {
   const { page } = await open({ mock: {} });
   await scanToEnd(page);

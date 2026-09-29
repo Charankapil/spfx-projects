@@ -181,6 +181,21 @@ request:
 Real timings depend on how long SharePoint takes per page and how much it
 throttles.
 
+### If SharePoint answers 406 "Not Acceptable"
+
+SharePoint sometimes rejects a request's format without saying why (the
+error reads "406: no error details returned"). Item queries therefore have
+three forms, tried in order, and the working one is remembered:
+
+1. `$filter=Id gt …` with `$orderby=Id` and a lean `Accept` header (fastest);
+2. the same without `$orderby`;
+3. the same with SharePoint's default `Accept` header.
+
+Forms 2 and 3 rely on SharePoint returning items in ID order when no
+`$orderby` is given, which it does. After each library the items read are
+compared with the library's item count and any shortfall is reported. The
+dashboard says how many libraries needed a fallback.
+
 ### Very large libraries (a million files and more)
 
 - **Paging by ID.** Each request asks for `Id gt <last ID read>`, ordered by

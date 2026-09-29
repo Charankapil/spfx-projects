@@ -52,6 +52,8 @@ function makeItems(count, seed, opts, now) {
  *   throttleRate    fraction of large-library requests answered 429 Retry-After 0
  *   alwaysThrottle  a library that always answers 429 with Retry-After 120
  *   extraLibraries  number of extra small libraries (a mix of active and dormant)
+ *   notAcceptable   'orderby': item queries with $orderby answer 406 (empty body);
+ *                   'both': also the lean Accept header, so only default headers work
  *   latencyMs       simulated time per request
  *   savedFiles      initial Site Assets files { path: text }
  *   owner           whether the current user manages the web
@@ -65,6 +67,7 @@ export function createMockSharePoint(options = {}) {
     flaky: false,
     poisonItem: false,
     latencyMs: 3,
+    notAcceptable: '',
     savedFiles: {},
     owner: true,
     ...options
@@ -172,6 +175,8 @@ export function createMockSharePoint(options = {}) {
     });
   }
 
+  let notAcceptableCount = 0;
+
   function handle(url, method, options) {
     log.push(`${method} ${decodeURIComponent(url)}`);
     const u = new URL(url);
@@ -212,6 +217,11 @@ export function createMockSharePoint(options = {}) {
       if (q.get('$orderby') === 'Id desc') {
         const maxId = lib.big ? BIG - 1 : lib.items.length ? lib.items[lib.items.length - 1].id : 0;
         return resp(200, { value: maxId ? [{ Id: maxId }] : [] });
+      }
+      const lean = !!(options && options.headers && options.headers.Accept);
+      if (opts.notAcceptable && ((q.get('$orderby') && opts.notAcceptable !== 'accept') || (lean && opts.notAcceptable === 'both'))) {
+        notAcceptableCount++;
+        return resp(406, '');
       }
       if (lib.alwaysThrottle) return resp(429, 'slow down', { 'Retry-After': '120' });
       if (lib.failing && q.get('$orderby') !== 'Id desc') return resp(500, { 'odata.error': { message: { value: 'Server is busy.' } } });
@@ -339,7 +349,7 @@ export function createMockSharePoint(options = {}) {
         return new Promise((r) =>
           setTimeout(() => {
             inFlight--;
-            r(handle(url, 'GET'));
+            r(handle(url, 'GET', options));
           }, opts.latencyMs)
         );
       },
@@ -364,6 +374,7 @@ export function createMockSharePoint(options = {}) {
     heal: () => {
       if (libs.flaky) libs.flaky.failing = false;
     },
-    maxInFlight: () => maxInFlight
+    maxInFlight: () => maxInFlight,
+    notAcceptableCount: () => notAcceptableCount
   };
 }

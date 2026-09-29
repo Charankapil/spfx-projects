@@ -1,6 +1,6 @@
 {
   "name": "storage-pulse",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "private": true,
   "engines": {
     "node": ">=16.13.0 <19.0.0"

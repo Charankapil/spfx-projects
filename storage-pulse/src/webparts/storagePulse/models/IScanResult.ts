@@ -115,6 +115,11 @@ export interface IScanResult {
    * approximate for those libraries. Missing on detailed scans.
    */
   quickAfterMonths?: number;
+  /**
+   * Set when SharePoint rejected the fast item query (HTTP 406) for some
+   * libraries and a more conservative form was used for them.
+   */
+  paging?: { level: number; libraries: number };
 }
 
 export interface IScanProgress {

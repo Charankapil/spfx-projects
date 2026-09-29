@@ -101,6 +101,7 @@ declare interface IStoragePulseWebPartStrings {
   BreakdownVersionsHint: string;
   BreakdownOtherHint: string;
   BreakdownAria: string;
+  PagingNote: string;
   QuickNote: string;
   MeasuredWhole: string;
   TypesNotItemised: string;

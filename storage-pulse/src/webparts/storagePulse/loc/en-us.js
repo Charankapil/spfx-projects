@@ -116,6 +116,8 @@ define([], function () {
     BreakdownOtherHint: 'Recycle bins, libraries not scanned (hidden, skipped or unreadable), lists and attachments.',
     BreakdownAria: 'Site collection storage: {parts}',
 
+    PagingNote: 'SharePoint rejected the fastest query form (HTTP 406) for {count} libraries, so a more conservative form was used to read them. The results are complete; those libraries just took longer.',
+
     // Quick scan and issues
     QuickNote: 'Quick scan: {count} libraries with no changes for {period} or more ({size}) were measured as a whole from SharePoint\u2019s storage metrics. The split is exact for \u201cInactive after\u201d up to {period}; for longer periods those libraries count by the date of their last change. They are not broken down by file type or included in the largest files.',
     MeasuredWhole: 'measured as a whole',

@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.1.1
+
+### Fixes
+- **HTTP 406 ("Not Acceptable") on item queries abandoned whole
+  libraries.** SharePoint rejects the format of a request without saying
+  which part it dislikes, and it did so on the first item request of many
+  libraries in one tenant (54 of 181). The scan treated any 4xx as final, so
+  those libraries were skipped entirely and the totals were understated.
+  Item queries now fall back in order:
+  1. `$filter` on `Id` plus `$orderby=Id`, lean `Accept` header (fastest);
+  2. the same without `$orderby`;
+  3. the same with SharePoint's default `Accept` header.
+
+  The working form is learned within a few libraries, so the wasted
+  requests stay a small constant. The dashboard notes how many libraries
+  needed a fallback. A 406 that survives all three forms is reported as a
+  real failure with a clear message.
+- The highest-ID lookup for large libraries also retries with the default
+  header, and otherwise reads the library as one range instead of failing.
+
+**After upgrading:** open the page and click **Retry failed**. It re-reads
+only the libraries that failed in the last scan.
+
 ## 2.1.0
 
 ### Fixes

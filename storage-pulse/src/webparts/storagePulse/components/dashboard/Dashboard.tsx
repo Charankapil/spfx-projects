@@ -48,6 +48,9 @@ export const Dashboard: React.FC<IDashboardProps> = ({ result, thresholdMonths }
       <FileTypes result={result} thresholdMonths={thresholdMonths} />
       <LocationTable result={result} thresholdMonths={thresholdMonths} />
       <LargestFiles result={result} thresholdMonths={thresholdMonths} />
+      {result.paging && (
+        <p className={styles.footnote}>{format(strings.PagingNote, { count: result.paging.libraries })}</p>
+      )}
       <p className={styles.footnote}>{strings.Footnote}</p>
     </div>
   );

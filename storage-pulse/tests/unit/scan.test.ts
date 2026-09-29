@@ -123,6 +123,33 @@ test('SharePoint error messages are read from nometadata responses', async () =>
   assert.equal(await describeError(response as never), 'Access denied.');
 });
 
+test('SharePoint answering 406 to the fast query falls back and still reads every file', async () => {
+  for (const mode of ['orderby', 'both']) {
+    const { sp, result } = await scan({ notAcceptable: mode, bigItems: 90000, extraLibraries: 40 });
+    const expected = sp.expected(BASE);
+    assert.deepEqual(totals(result), { files: expected.files, bytes: expected.bytes }, `mode ${mode}`);
+    // Only the restricted HR site fails: no library is abandoned because of a 406.
+    assert.deepEqual(
+      result.libraries.filter((l) => l.error).map((l) => l.title),
+      [],
+      `mode ${mode}`
+    );
+    assert.equal(result.paging && result.paging.level, mode === 'both' ? 2 : 1, `mode ${mode}`);
+    // Once a few libraries have learned it, later ones start at the working level instead of failing
+    // first: the wasted requests stay a small constant however many libraries there are.
+    assert.ok(result.libraries.length > 45);
+    assert.ok(sp.notAcceptableCount() <= 20, `${sp.notAcceptableCount()} 406s in mode ${mode}`);
+    // The big library still gets its item IDs (default header) or is read as one range; either way it is complete.
+    const big = result.libraries.find((l) => l.title === 'Scanned Records')!;
+    assert.equal(big.unreadItems, expected.hidden, `mode ${mode}`);
+  }
+});
+
+test('a scan with no 406 reports no compatibility paging', async () => {
+  const { result } = await scan({});
+  assert.equal(result.paging, undefined);
+});
+
 test('quick scan measures dormant libraries as a whole and agrees with a detailed scan', async () => {
   const detailed = await scan({});
   const quick = await scan({}, { quickAfterMonths: 12 });

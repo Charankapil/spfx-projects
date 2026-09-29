@@ -100,6 +100,20 @@ const MAX_BACKOFF_SECONDS = 300;
  * smaller to download and parse.
  */
 const JSON_OPTIONS = { headers: { Accept: 'application/json;odata.metadata=nometadata' } };
+/**
+ * Item queries come in three forms, tried in this order when SharePoint
+ * answers 406 "Not Acceptable" (it rejects a request's format, and which
+ * part it dislikes can differ between libraries and tenants):
+ *   0  fast:            $filter Id + $orderby=Id, lean Accept header
+ *   1  no ordering:     $filter Id only, lean Accept header
+ *   2  default headers: $filter Id only, SharePoint's default Accept header
+ * Levels 1 and 2 rely on SharePoint returning items in ID order when no
+ * $orderby is given (as it does), and the items read are checked against the
+ * library's item count afterwards.
+ */
+const MAX_PAGING_LEVEL = 2;
+/** After this many libraries needed a fallback, later libraries start at that level. */
+const LEVEL_LEARN_AFTER = 3;
 /** Libraries read at the same time. Most of a scan of many small libraries is per-library overhead. */
 const LIBRARY_CONCURRENCY = 4;
 /** Readers per large library (one ID range each). */
@@ -169,6 +183,9 @@ export function describeFailure(err: unknown): string {
     if (err.status === 401 || err.status === 403) {
       return `Access denied (${message})`;
     }
+    if (err.status === 406) {
+      return `SharePoint rejected the request format on every form tried (${message})`;
+    }
     if (err.status === 404) {
       return `Not found - it may have been deleted during the scan (${message})`;
     }
@@ -205,6 +222,10 @@ export class StorageScanService {
   /** Pending waits, so Cancel can end a long throttling back-off at once instead of after it. */
   private waiters: (() => void)[] = [];
   private inFlight = 0;
+  /** Item query level new libraries start at, raised once several libraries needed a fallback. */
+  private pagingFloor = 0;
+  private fallbackLibraries = 0;
+  private highestLevelUsed = 0;
   private slotQueue: { resolve: () => void; reject: (e: Error) => void }[] = [];
 
   constructor(private context: WebPartContext) {}
@@ -224,6 +245,9 @@ export class StorageScanService {
     this.waiters = [];
     this.slotQueue = [];
     this.inFlight = 0;
+    this.pagingFloor = 0;
+    this.fallbackLibraries = 0;
+    this.highestLevelUsed = 0;
   }
 
   private throwIfCancelled(): void {
@@ -275,18 +299,22 @@ export class StorageScanService {
   }
 
   /** GET with SharePoint throttling (429/503) handled by waiting for Retry-After. The slot is not held while waiting. */
-  private async getJson<T>(url: string, throttleAttempt = 0, networkAttempt = 0): Promise<T> {
+  private async getJson<T>(url: string, throttleAttempt = 0, networkAttempt = 0, lean = true): Promise<T> {
     await this.acquireSlot();
     let response: SPHttpClientResponse;
     try {
-      response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, JSON_OPTIONS);
+      response = await this.context.spHttpClient.get(
+        url,
+        SPHttpClient.configurations.v1,
+        lean ? JSON_OPTIONS : undefined
+      );
     } catch (err) {
       this.releaseSlot();
       this.throwIfCancelled();
       // Network failure or timeout (no response at all): retry with its own counter.
       if (networkAttempt < MAX_NETWORK_RETRIES) {
         await this.delay(2000 * (networkAttempt + 1));
-        return this.getJson<T>(url, throttleAttempt, networkAttempt + 1);
+        return this.getJson<T>(url, throttleAttempt, networkAttempt + 1, lean);
       }
       throw err;
     }
@@ -314,7 +342,7 @@ export class StorageScanService {
       const seconds = header ? parseInt(header, 10) : NaN;
       const backoff = Math.min(MAX_BACKOFF_SECONDS, 5 * Math.pow(2, throttleAttempt));
       await this.delay((isNaN(seconds) || seconds < 0 ? backoff : Math.min(seconds, MAX_BACKOFF_SECONDS)) * 1000);
-      return this.getJson<T>(url, throttleAttempt + 1, networkAttempt);
+      return this.getJson<T>(url, throttleAttempt + 1, networkAttempt, lean);
     }
     if (failure) {
       throw failure;
@@ -504,18 +532,23 @@ export class StorageScanService {
 
   /** The library's highest item ID, or undefined if it cannot be read. */
   private async getMaxId(library: ILibraryResult): Promise<number | undefined> {
-    try {
-      const json = await this.getJson<IItemsPage>(
-        `${library.webUrl}/_api/web/lists(guid'${library.id}')/items?$select=Id&$orderby=Id desc&$top=1`
-      );
-      const top = (json.value || [])[0];
-      return top ? Number(top.Id !== undefined ? top.Id : top.ID) || 0 : 0;
-    } catch (err) {
-      if (err instanceof ScanCancelledError) {
-        throw err;
+    const url = `${library.webUrl}/_api/web/lists(guid'${library.id}')/items?$select=Id&$orderby=Id desc&$top=1`;
+    // Lean header first, then SharePoint's default one; without a highest ID the library is simply read in one range.
+    for (const lean of [true, false]) {
+      try {
+        const json = await this.getJson<IItemsPage>(url, 0, 0, lean);
+        const top = (json.value || [])[0];
+        return top ? Number(top.Id !== undefined ? top.Id : top.ID) || 0 : 0;
+      } catch (err) {
+        if (err instanceof ScanCancelledError) {
+          throw err;
+        }
+        if (!(err instanceof HttpError) || err.status !== 406) {
+          return undefined;
+        }
       }
-      return undefined;
     }
+    return undefined;
   }
 
   /**
@@ -594,6 +627,8 @@ export class StorageScanService {
     const ranges = this.planRanges(library, maxId ? await maxId : undefined);
     const types: FileTypeMap = new Map<string, IFileTypeStat>();
     const errors: string[] = [];
+    // Shared by all readers of this library: once one range learns a form SharePoint accepts, the others use it too.
+    const paging = { level: this.pagingFloor };
     let itemsSeen = 0;
     let skippedBatches = 0;
     let nextRange = 0;
@@ -602,7 +637,7 @@ export class StorageScanService {
       while (nextRange < ranges.length) {
         const range = ranges[nextRange++];
         // Not "itemsSeen += await ...": that reads itemsSeen before the await and loses other readers' counts.
-        const outcome = await this.readRange(library, range, lastId, scanStart, types, largest, progress, onProgress);
+        const outcome = await this.readRange(library, range, lastId, paging, scanStart, types, largest, progress, onProgress);
         itemsSeen += outcome.seen;
         skippedBatches += outcome.skipped;
         outcome.errors.forEach((e) => {
@@ -617,6 +652,15 @@ export class StorageScanService {
       readers.push(reader());
     }
     await Promise.all(readers);
+
+    if (paging.level > this.pagingFloor) {
+      this.fallbackLibraries++;
+      this.highestLevelUsed = Math.max(this.highestLevelUsed, paging.level);
+      console.info(`[Storage Pulse] SharePoint rejected the fast item query for "${library.title}" (406); read it with compatibility level ${paging.level}.`);
+      if (this.fallbackLibraries >= LEVEL_LEARN_AFTER) {
+        this.pagingFloor = Math.max(this.pagingFloor, this.highestLevelUsed);
+      }
+    }
 
     const fileTypes: IFileTypeStat[] = [];
     types.forEach((stat) => fileTypes.push(stat));
@@ -647,6 +691,7 @@ export class StorageScanService {
     library: ILibraryResult,
     range: IIdRange,
     lastId: () => Promise<number | undefined>,
+    paging: { level: number },
     scanStart: Date,
     types: FileTypeMap,
     largest: ILargeFile[],
@@ -665,15 +710,22 @@ export class StorageScanService {
     for (;;) {
       this.throwIfCancelled();
       const filter = `Id gt ${cursor}${range.to !== undefined ? ` and Id le ${range.to}` : ''}`;
+      const level = paging.level;
       const url =
         `${itemsUrl}?$select=Id,FSObjType,Modified,FileRef,File/Length&$expand=File` +
-        `&$filter=${encodeURIComponent(filter)}&$orderby=Id&$top=${pageSize}`;
+        `&$filter=${encodeURIComponent(filter)}${level === 0 ? '&$orderby=Id' : ''}&$top=${pageSize}`;
       let items: IFileItem[];
       try {
-        items = (await this.getJson<IItemsPage>(url)).value || [];
+        items = (await this.getJson<IItemsPage>(url, 0, 0, level < MAX_PAGING_LEVEL)).value || [];
       } catch (err) {
         if (err instanceof ScanCancelledError) {
           throw err;
+        }
+        // 406 rejects the request's format, so a smaller page would not help: try the next, more
+        // conservative form of the query from the same place. Another reader may already have.
+        if (err instanceof HttpError && err.status === 406 && level < MAX_PAGING_LEVEL) {
+          paging.level = Math.max(paging.level, level + 1);
+          continue;
         }
         // Server errors and timeouts may pass with a smaller page; a 4xx will not.
         const retryable = !(err instanceof HttpError) || (err.status >= 500 && err.status !== 503);
@@ -874,8 +926,18 @@ export class StorageScanService {
         excludeSystemLibraries: options.excludeSystemLibraries,
         excludedLibraries: options.excludedLibraries
       },
-      quickAfterMonths: options.quickAfterMonths
+      quickAfterMonths: options.quickAfterMonths,
+      paging: this.pagingSummary()
     };
+  }
+
+  /** How many libraries needed a more conservative query form, for the dashboard note. */
+  private pagingSummary(previous?: { level: number; libraries: number }): { level: number; libraries: number } | undefined {
+    const libraries = this.fallbackLibraries + (previous ? previous.libraries : 0);
+    if (libraries === 0) {
+      return undefined;
+    }
+    return { level: Math.max(this.highestLevelUsed, previous ? previous.level : 0), libraries };
   }
 
   /**
@@ -964,7 +1026,8 @@ export class StorageScanService {
       webs,
       libraries: kept.concat(toRead),
       largestOldFiles: this.finishLargest(largest),
-      scannedBy: this.context.pageContext.user.displayName
+      scannedBy: this.context.pageContext.user.displayName,
+      paging: this.pagingSummary(previous.paging)
     };
   }
 }
