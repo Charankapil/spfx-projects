@@ -1,10 +1,11 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
   "solution": {
-    "name": "work-boards-client-side-solution",
+    "name": "Work Boards",
     "id": "6748e64b-5f1a-4913-9117-cef8b096d6a9",
-    "version": "0.1.0.0",
+    "version": "0.1.1.0",
     "includeClientSideAssets": true,
+    "iconPath": "assets/work-boards-icon.png",
     "skipFeatureDeployment": false,
     "isDomainIsolated": false,
     "developer": {
@@ -30,11 +31,11 @@
         "title": "Work Boards",
         "description": "Adds the Work Boards web part to this site.",
         "id": "f4eff9d0-2e10-44b3-90d4-8182483be338",
-        "version": "0.1.0.0"
+        "version": "0.1.1.0"
       }
     ]
   },
   "paths": {
-    "zippedPackage": "solution/work-boards.sppkg"
+    "zippedPackage": "solution/work-boards-webpart.sppkg"
   }
 }

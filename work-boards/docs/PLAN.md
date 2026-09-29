@@ -249,7 +249,7 @@ features that need them, through new migrations.
 
 ### 5.1 Package
 
-- One solution: `work-boards.sppkg`, SPFx 1.23 (latest GA at time of
+- One solution: `work-boards-webpart.sppkg` (shown as **Work Boards** in the App Catalog, with its own icon), SPFx 1.23 (latest GA at time of
   writing), Node 22, React 17, Fluent UI 8. No other runtime libraries.
 - `skipFeatureDeployment: false`, so the app is available only on the sites
   where a site owner adds it (**Settings > Add an app**). This matches the
@@ -458,7 +458,7 @@ work-boards/
                                activity, mentions, csv, ids (+ test/)
     models/                    Types, templates, colours
   docs/                        This plan, wireframes, screenshots
-  releases/work-boards.sppkg
+  releases/work-boards-webpart.sppkg
 ```
 
 Runtime libraries: only React 17 and Fluent UI 8, both provided by SPFx. Drag

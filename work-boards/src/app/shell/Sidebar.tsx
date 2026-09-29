@@ -4,6 +4,7 @@ import styles from '../WorkBoards.module.scss';
 import { useApp } from '../AppContext';
 import { Route } from '../router';
 import { IBoard } from '../../models/types';
+import { Logo } from '../common/Logo';
 
 export function Sidebar(props: { route: Route; onNewBoard: () => void }): JSX.Element {
   const app = useApp();
@@ -30,7 +31,7 @@ export function Sidebar(props: { route: Route; onNewBoard: () => void }): JSX.El
   return (
     <nav className={styles.sidebar} aria-label="Work Boards">
       <div className={styles.brand}>
-        <span className={styles.brandMark}><Icon iconName="BacklogBoard" /></span>
+        <Logo size={24} />
         <span className={styles.navLabel}>{app.siteTitle}</span>
       </div>
       <button type="button" className={`${styles.navItem} ${props.route.page === 'home' ? styles.navItemActive : ''}`} onClick={() => app.navigate({ page: 'home' })}>

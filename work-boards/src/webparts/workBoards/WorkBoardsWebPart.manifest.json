@@ -21,7 +21,7 @@
     "group": { "default": "Advanced" },
     "title": { "default": "Work Boards" },
     "description": { "default": "Boards, items, Kanban and timelines for team and project work, stored in this site's lists." },
-    "officeFabricIconFontName": "BacklogBoard",
+    "iconImageUrl": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA5NiA5NiI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJ3Yi1iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzJmNGJkMCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzZhM2ZkNiIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSI5NiIgaGVpZ2h0PSI5NiIgcng9IjIyIiBmaWxsPSJ1cmwoI3diLWJnKSIvPjxnIGZpbGw9IiNmZmZmZmYiPjxyZWN0IHg9IjE3IiB5PSIxOCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjI0IiByeD0iNSIvPjxyZWN0IHg9IjE3IiB5PSI0NiIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE2IiByeD0iNSIgZmlsbC1vcGFjaXR5PSIwLjU1Ii8+PHJlY3QgeD0iMzkiIHk9IjE4IiB3aWR0aD0iMTgiIGhlaWdodD0iMzgiIHJ4PSI1Ii8+PHJlY3QgeD0iNjEiIHk9IjE4IiB3aWR0aD0iMTgiIGhlaWdodD0iMTQiIHJ4PSI1Ii8+PHJlY3QgeD0iNjEiIHk9IjM2IiB3aWR0aD0iMTgiIGhlaWdodD0iMjIiIHJ4PSI1IiBmaWxsLW9wYWNpdHk9IjAuNTUiLz48cmVjdCB4PSIxNyIgeT0iNjgiIHdpZHRoPSI2MiIgaGVpZ2h0PSIxMCIgcng9IjUiIGZpbGwtb3BhY2l0eT0iMC4yNSIvPjwvZz48cmVjdCB4PSIxNyIgeT0iNjgiIHdpZHRoPSI0MCIgaGVpZ2h0PSIxMCIgcng9IjUiIGZpbGw9IiMwMGM4NzUiLz48L3N2Zz4=",
     "properties": {
       "fillPage": true
     }

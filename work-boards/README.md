@@ -1,3 +1,5 @@
+<img src="docs/brand/work-boards-wordmark.svg" alt="Work Boards" height="56">
+
 # Work Boards
 
 **Team and project work in SharePoint: boards, Kanban and timelines, in lists your
@@ -56,7 +58,7 @@ all apply as they do to any other list.
 Work Boards is deployed to **the sites you choose**. It does not appear on every site.
 
 1. **Upload the package.** Download
-   [`releases/work-boards.sppkg`](releases/work-boards.sppkg) and upload it to your
+   [`releases/work-boards-webpart.sppkg`](releases/work-boards-webpart.sppkg) and upload it to your
    tenant App Catalog (or a site collection App Catalog). When SharePoint asks,
    choose **Deploy**. There are no API permissions to approve.
 2. **Add the app to a site.** On each site that should use Work Boards, a site owner
@@ -123,7 +125,7 @@ Requirements: Node 22 (see `engines` in `package.json`).
 
 ```bash
 npm install
-npm run build     # lint, compile, unit tests, then package sharepoint/solution/work-boards.sppkg
+npm run build     # lint, compile, unit tests, then package sharepoint/solution/work-boards-webpart.sppkg
 npm start         # local workbench against a SharePoint site
 ```
 
@@ -134,6 +136,8 @@ npm start         # local workbench against a SharePoint site
 - `src/engine/` – pure logic with unit tests: field mapping, filters and sorting,
   ordering, dates, activity diff, mentions, CSV
 - `src/models/` – types, board templates, colours
+- `docs/brand/` – the logo (SVG, PNG and wordmark). The App Catalog icon is
+  `sharepoint/assets/work-boards-icon.png`; the Teams icons are in `teams/`
 
 Unit tests (`npm run build` runs them) cover the engine, routing, permissions and
 the setup migrations against an in-memory fake of the SharePoint API. The UI was

@@ -3,6 +3,7 @@ import { PrimaryButton, MessageBar, MessageBarType, Icon, Spinner, SpinnerSize }
 import styles from '../WorkBoards.module.scss';
 import { SpClient } from '../../services/SpClient';
 import { MIGRATIONS, runMigrations, ISetupStatus } from '../../services/Provisioner';
+import { Logo } from '../common/Logo';
 
 type StepState = 'pending' | 'running' | 'done' | 'error';
 
@@ -20,7 +21,7 @@ export function Setup(props: { sp: SpClient; siteTitle: string; status: ISetupSt
   if (!status.canSetup) {
     return (
       <div className={styles.setup}>
-        <h1 className={styles.pageTitle}><Icon iconName="BacklogBoard" /> Work Boards</h1>
+        <h1 className={styles.pageTitle} style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Logo size={32} /> Work Boards</h1>
         <MessageBar messageBarType={MessageBarType.warning}>
           {upgrading
             ? 'Work Boards on this site needs a quick update before it can be used. Ask a site owner to open this page to run it.'
@@ -50,7 +51,7 @@ export function Setup(props: { sp: SpClient; siteTitle: string; status: ISetupSt
 
   return (
     <div className={styles.setup}>
-      <h1 className={styles.pageTitle}><Icon iconName="BacklogBoard" /> {upgrading ? 'Update Work Boards' : 'Set up Work Boards'}</h1>
+      <h1 className={styles.pageTitle} style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Logo size={32} /> {upgrading ? 'Update Work Boards' : 'Set up Work Boards'}</h1>
       <p style={{ margin: 0 }}>
         {upgrading
           ? `This version of Work Boards needs a few changes on ${props.siteTitle}. Your boards and items are not touched.`
