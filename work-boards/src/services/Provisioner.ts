@@ -84,7 +84,7 @@ async function readMetaRow(sp: SpClient): Promise<IMetaRow | null> {
     const rows = await sp.get<{ value: IMetaRow[] }>(`web/lists(guid'${list.Id}')/items?$select=Id,WB_Version&$filter=Title eq 'schema'&$top=1`);
     return rows.value[0] || null;
   } catch (e) {
-    if (e instanceof SpError && e.status === 400) {
+    if (e instanceof SpError && (e.status === 400 || e.isNotFound)) {
       // WB_Version field not created yet (setup interrupted).
       return null;
     }

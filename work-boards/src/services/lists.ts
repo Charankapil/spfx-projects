@@ -64,16 +64,12 @@ export async function ensureList(sp: SpClient, title: string, options: IEnsureLi
   return list;
 }
 
+/** Ask for matching fields rather than one field by name, so a missing field is an empty answer, not an error. */
 export async function fieldExists(sp: SpClient, listId: string, internalName: string): Promise<boolean> {
-  try {
-    await sp.get(`web/lists(guid'${listId}')/fields/getbyinternalnameortitle(${odataString(internalName)})?$select=InternalName`);
-    return true;
-  } catch (e) {
-    if (e instanceof SpError && e.isNotFound) {
-      return false;
-    }
-    throw e;
-  }
+  const res = await sp.get<{ value: { InternalName: string }[] }>(
+    `web/lists(guid'${listId}')/fields?$select=InternalName&$filter=InternalName eq ${odataString(internalName)}`
+  );
+  return res.value.length > 0;
 }
 
 function xmlUnescape(value: string): string {

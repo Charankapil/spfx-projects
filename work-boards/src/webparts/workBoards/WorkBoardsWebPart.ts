@@ -36,7 +36,8 @@ export default class WorkBoardsWebPart extends BaseClientSideWebPart<IWorkBoards
       sp: this.sp,
       siteTitle: this.context.pageContext.web.title,
       fullPage: this.properties.fillPage !== false && this.displayMode === DisplayMode.Read,
-      themeVars: this.themeVars
+      themeVars: this.themeVars,
+      version: this.context.manifest.version
     });
     ReactDom.render(element, this.domElement);
   }

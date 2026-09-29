@@ -34,11 +34,17 @@ class FakeSp {
       }
       return { Id: list.Id, Title: m[1] };
     }
+    m = /^web\/lists\(guid'([^']+)'\)\/fields\?.*InternalName eq '([^']+)'/.exec(path);
+    if (m) {
+      const list = this.byId(m[1]);
+      return { value: list.fields.indexOf(decodeURIComponent(m[2])) < 0 ? [] : [{ InternalName: m[2] }] };
+    }
     m = /^web\/lists\(guid'([^']+)'\)\/fields\/getbyinternalnameortitle\('([^']+)'\)/.exec(path);
     if (m) {
       const list = this.byId(m[1]);
       if (list.fields.indexOf(decodeURIComponent(m[2])) < 0) {
-        throw new SpError('Field not found', 404, '');
+        // Real SharePoint does not answer 404 here.
+        throw new SpError(`Column '${m[2]}' does not exist. It may have been deleted by another user.`, 500, '-1, System.ArgumentException');
       }
       return { InternalName: m[2] };
     }
@@ -46,7 +52,7 @@ class FakeSp {
     if (m) {
       const list = this.byId(m[1]);
       if (list.fields.indexOf('WB_Version') < 0) {
-        throw new SpError('Column WB_Version does not exist', 400, '');
+        throw new SpError("Column 'WB_Version' does not exist. It may have been deleted by another user.", 500, '-1, System.ArgumentException');
       }
       return { value: list.items.filter(i => i.Title === 'schema') };
     }

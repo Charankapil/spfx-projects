@@ -6,7 +6,7 @@ import { Route } from '../router';
 import { IBoard } from '../../models/types';
 import { Logo } from '../common/Logo';
 
-export function Sidebar(props: { route: Route; onNewBoard: () => void }): JSX.Element {
+export function Sidebar(props: { route: Route; version?: string; onNewBoard: () => void }): JSX.Element {
   const app = useApp();
   const [filter, setFilter] = React.useState('');
   const [showArchived, setShowArchived] = React.useState(false);
@@ -81,6 +81,7 @@ export function Sidebar(props: { route: Route; onNewBoard: () => void }): JSX.El
           <Icon iconName="Archive" /> <span className={styles.navLabel}>{showArchived ? 'Show active boards' : 'Show archived boards'}</span>
         </button>
       )}
+      {props.version && <span className={`${styles.small} ${styles.muted}`} style={{ padding: '8px 8px 0' }}>Work Boards v{props.version}</span>}
     </nav>
   );
 }

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { PrimaryButton, MessageBar, MessageBarType, Icon, Spinner, SpinnerSize } from '@fluentui/react';
 import styles from '../WorkBoards.module.scss';
-import { SpClient } from '../../services/SpClient';
+import { SpClient, SpError } from '../../services/SpClient';
 import { MIGRATIONS, runMigrations, ISetupStatus } from '../../services/Provisioner';
 import { Logo } from '../common/Logo';
 
@@ -11,12 +11,13 @@ type StepState = 'pending' | 'running' | 'done' | 'error';
  * First-run setup and later upgrades. Runs the numbered migrations as the signed-in site owner.
  * Every step checks before it creates, so running it again after a failure is safe.
  */
-export function Setup(props: { sp: SpClient; siteTitle: string; status: ISetupStatus; onDone: () => void }): JSX.Element {
+export function Setup(props: { sp: SpClient; siteTitle: string; version?: string; status: ISetupStatus; onDone: () => void }): JSX.Element {
   const { status } = props;
   const upgrading = status.installedVersion > 0;
   const [states, setStates] = React.useState<StepState[]>(MIGRATIONS.map(m => (m.version <= status.installedVersion ? 'done' : 'pending')));
   const [running, setRunning] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [detail, setDetail] = React.useState('');
 
   if (!status.canSetup) {
     return (
@@ -43,6 +44,7 @@ export function Setup(props: { sp: SpClient; siteTitle: string; status: ISetupSt
       });
     } catch (e) {
       setError((e as Error).message + ' You can run setup again; finished steps are skipped.');
+      setDetail(e instanceof SpError && e.request ? `${e.status} on ${e.request}` : '');
       setRunning(false);
       return;
     }
@@ -61,6 +63,7 @@ export function Setup(props: { sp: SpClient; siteTitle: string; status: ISetupSt
         Nothing leaves this site: no app registration, no Microsoft Graph permissions and no external services.
       </p>
       {error && <MessageBar messageBarType={MessageBarType.error}>{error}</MessageBar>}
+      {error && detail && <span className={`${styles.small} ${styles.muted}`} style={{ wordBreak: 'break-all' }}>Failed request: {detail}</span>}
       <div className={styles.steps}>
         {MIGRATIONS.map((m, i) => (
           <div key={m.version} className={styles.step}>
@@ -74,6 +77,7 @@ export function Setup(props: { sp: SpClient; siteTitle: string; status: ISetupSt
       <div>
         <PrimaryButton text={running ? 'Working…' : upgrading ? 'Update now' : 'Set up'} disabled={running} onClick={() => { run().catch(() => undefined); }} />
       </div>
+      {props.version && <span className={`${styles.small} ${styles.muted}`}>Work Boards version {props.version}</span>}
     </div>
   );
 }

@@ -5,11 +5,14 @@ import type { SPHttpClient, SPHttpClientConfiguration, SPHttpClientResponse, ISP
 export class SpError extends Error {
   public readonly status: number;
   public readonly code: string;
+  /** The failing request, for example "GET /_api/web/lists(...)". Shown in setup errors to help diagnose problems. */
+  public readonly request: string;
 
-  constructor(message: string, status: number, code: string) {
+  constructor(message: string, status: number, code: string, request: string = '') {
     super(message);
     this.status = status;
     this.code = code;
+    this.request = request;
     // Keep instanceof working when compiled to ES5.
     Object.setPrototypeOf(this, SpError.prototype);
   }
@@ -22,8 +25,9 @@ export class SpError extends Error {
     return this.status === 412;
   }
 
+  /** SharePoint answers a missing list, field or item with 404, but some endpoints use other statuses with a "does not exist" message. */
   public get isNotFound(): boolean {
-    return this.status === 404;
+    return this.status === 404 || /does not exist/i.test(this.message);
   }
 
   public get isAccessDenied(): boolean {
@@ -140,11 +144,11 @@ export class SpClient {
         await wait(delay);
         continue;
       }
-      throw await SpClient.toError(res);
+      throw await SpClient.toError(res, method, url, this.webUrl);
     }
   }
 
-  private static async toError(res: SPHttpClientResponse): Promise<SpError> {
+  private static async toError(res: SPHttpClientResponse, method: string, url: string, webUrl: string): Promise<SpError> {
     let message = res.statusText || 'Request failed';
     let code = '';
     try {
@@ -155,7 +159,7 @@ export class SpClient {
     } catch {
       // Body was not JSON.
     }
-    return new SpError(String(message), res.status, String(code));
+    return new SpError(String(message), res.status, String(code), `${method} ${url.replace(webUrl, '')}`);
   }
 }
 

@@ -29,6 +29,8 @@ export interface IAppProps {
   startBoardId?: number;
   /** --wb-* colour variables from the SharePoint theme of the web part's section. */
   themeVars?: { [name: string]: string };
+  /** Package version, shown so people can tell which build is running. */
+  version?: string;
 }
 
 /** Colour variables used by the styles. Copied to <body> so dialogs, panels and callouts (rendered outside the app) get them too. */
@@ -125,7 +127,7 @@ export function App(props: IAppProps): JSX.Element {
     return (
       <div className={rootClass} ref={rootRef} style={props.themeVars as React.CSSProperties}>
         <div className={styles.main}>
-          <Setup sp={props.sp} siteTitle={props.siteTitle} status={phase.status} onDone={() => { start().catch(() => undefined); }} />
+          <Setup sp={props.sp} siteTitle={props.siteTitle} version={props.version} status={phase.status} onDone={() => { start().catch(() => undefined); }} />
         </div>
       </div>
     );
@@ -162,7 +164,7 @@ export function App(props: IAppProps): JSX.Element {
   return (
     <AppContext.Provider value={ctx}>
       <div className={rootClass} ref={rootRef} style={props.themeVars as React.CSSProperties}>
-        <Sidebar route={route} onNewBoard={() => setNewBoardOpen(true)} />
+        <Sidebar route={route} version={props.version} onNewBoard={() => setNewBoardOpen(true)} />
         {route.page === 'home' && <div className={styles.main}><Home onNewBoard={() => setNewBoardOpen(true)} /></div>}
         {route.page === 'mywork' && <div className={styles.main}><MyWork /></div>}
         {route.page === 'board' && <BoardPage key={route.boardId} boardId={route.boardId} view={route.view} itemId={route.itemId} />}
