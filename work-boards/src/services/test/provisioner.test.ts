@@ -66,8 +66,10 @@ class FakeSp {
     }
     let m = /^web\/lists\(guid'([^']+)'\)\/fields\/createfieldasxml$/.exec(path);
     if (m) {
-      const name = /Name="([^"]+)"/.exec(body.parameters.SchemaXml);
-      this.byId(m[1]).fields.push((name as RegExpExecArray)[1]);
+      // Real SharePoint: with the internal name hint (Options 8) the internal name comes from DisplayName, not Name.
+      const xml: string = body.parameters.SchemaXml;
+      const source = body.parameters.Options === 8 ? /DisplayName="([^"]+)"/ : /Name="([^"]+)"/;
+      this.byId(m[1]).fields.push((source.exec(xml) as RegExpExecArray)[1]);
       return {};
     }
     m = /^web\/lists\(guid'([^']+)'\)\/items$/.exec(path);
@@ -85,6 +87,9 @@ class FakeSp {
     let m = /^web\/lists\(guid'([^']+)'\)$/.exec(path);
     if (m) {
       Object.assign(this.byId(m[1]).settings, body);
+      return '';
+    }
+    if (/^web\/lists\(guid'([^']+)'\)\/fields\//.test(path)) {
       return '';
     }
     m = /^web\/lists\(guid'([^']+)'\)\/items\((\d+)\)$/.exec(path);
@@ -114,6 +119,10 @@ describe('provisioner', () => {
 
     expect(Object.keys(fake.lists).sort()).toEqual(['WB_Boards', 'WB_Meta', 'WB_UserPrefs']);
     expect(fake.lists.WB_Boards.fields).toEqual(expect.arrayContaining(['WB_Key', 'WB_Config', 'WB_BoardOwners', 'WB_Privacy']));
+    // Fields exist under their WB_ internal names (the bug was creating "Version" instead of "WB_Version").
+    expect(fake.lists.WB_Meta.fields).toEqual(expect.arrayContaining(['WB_Version', 'WB_Settings']));
+    expect(fake.lists.WB_Meta.fields).not.toContain('Version');
+    expect(fake.lists.WB_UserPrefs.fields).toContain('WB_Prefs');
     expect(fake.lists.WB_UserPrefs.settings).toEqual(expect.objectContaining({ ReadSecurity: 2, WriteSecurity: 2, Hidden: true }));
     expect(fake.lists.WB_Meta.items).toEqual([expect.objectContaining({ Title: 'schema', WB_Version: SCHEMA_VERSION })]);
     expect(progress[progress.length - 1]).toBe(`${MIGRATIONS.length - 1}:done`);

@@ -76,18 +76,44 @@ export async function fieldExists(sp: SpClient, listId: string, internalName: st
   }
 }
 
-/** Options 8 = AddFieldInternalNameHint (use Name as the internal name). */
+function xmlUnescape(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * Create a field with the given internal name.
+ *
+ * Options 8 (AddFieldInternalNameHint) makes SharePoint take the internal name from the field's
+ * DisplayName, not from Name. So the field is created with DisplayName set to the internal name,
+ * then renamed to its friendly title. A failed rename is harmless: the internal name is what the
+ * app uses.
+ */
 export async function ensureField(sp: SpClient, listId: string, internalName: string, schemaXml: string): Promise<void> {
   if (await fieldExists(sp, listId, internalName)) {
     return;
   }
+  const match = /DisplayName="([^"]*)"/.exec(schemaXml);
+  const friendly = match ? xmlUnescape(match[1]) : internalName;
+  const xml = match ? schemaXml.replace(match[0], `DisplayName="${internalName}"`) : schemaXml;
   await sp.post(`web/lists(guid'${listId}')/fields/createfieldasxml`, {
     parameters: {
       __metadata: { type: 'SP.XmlSchemaFieldCreationInformation' },
-      SchemaXml: schemaXml,
+      SchemaXml: xml,
       Options: 8
     }
   });
+  if (friendly !== internalName) {
+    try {
+      await renameField(sp, listId, internalName, friendly);
+    } catch {
+      // Cosmetic only.
+    }
+  }
 }
 
 export async function deleteField(sp: SpClient, listId: string, internalName: string): Promise<void> {
