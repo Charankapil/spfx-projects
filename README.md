@@ -11,3 +11,9 @@ A collection of SharePoint Framework (SPFx) web part solutions.
   SharePoint REST/Search APIs — no Azure AD app registration or client id
   required. See its own [README](./filetype-analyser/README.md) for setup,
   architecture and deployment details.
+- [`work-boards`](./work-boards) — *(planning)* A monday.com-style work
+  management app (boards, groups, items, Kanban, timeline, automations,
+  dashboards, forms) that runs in SharePoint Online and provisions its own
+  lists. No app registration, client id or Graph permissions. See the
+  [plan](./work-boards/docs/PLAN.md) and
+  [wireframes](./work-boards/docs/wireframes.html).

@@ -1,0 +1,563 @@
+<title>Work Boards Wireframes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single reading column for the plan, with wide wireframe "screens" that scroll sideways inside their own frames on small screens. */
+:root{
+  --bg:#f5f6f8; --paper:#ffffff; --ink:#1d2330; --muted:#5d6678; --line:#d9dde5; --wire:#eef0f4; --wire2:#e2e6ed;
+  --accent:#3651c9; --accent-soft:#e6eafb;
+  --s-done:#2f9e6a; --s-work:#e39b2d; --s-stuck:#d8544b; --s-none:#a3aab8; --s-blue:#4a7bd6; --s-purple:#8a63cf;
+  --on-status:#ffffff;
+  --display:"Schibsted Grotesk",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12151c; --paper:#1a1f29; --ink:#e7eaf1; --muted:#9aa3b5; --line:#2e3544; --wire:#222835; --wire2:#2b3242;
+  --accent:#8ea2ff; --accent-soft:#252d4d;
+  --s-done:#2f8c60; --s-work:#c9892a; --s-stuck:#c24d45; --s-none:#5b6374; --s-blue:#3f6bbd; --s-purple:#7654b5; --on-status:#ffffff;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12151c; --paper:#1a1f29; --ink:#e7eaf1; --muted:#9aa3b5; --line:#2e3544; --wire:#222835; --wire2:#2b3242;
+  --accent:#8ea2ff; --accent-soft:#252d4d;
+  --s-done:#2f8c60; --s-work:#c9892a; --s-stuck:#c24d45; --s-none:#5b6374; --s-blue:#3f6bbd; --s-purple:#7654b5; --on-status:#ffffff;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;padding:0 16px}
+.page{max-width:1120px;margin:0 auto;padding-block:40px 80px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,5vw,44px);font-weight:800;letter-spacing:-.02em;line-height:1.1}
+h2{font-size:26px;font-weight:700;letter-spacing:-.01em}
+h3{font-size:17px;font-weight:700}
+p{margin:0}
+.lede{max-width:66ch;color:var(--muted);font-size:17px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+header.top{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-family:var(--mono);font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--paper)}
+.chip.ok{border-color:var(--s-done);color:var(--s-done)}
+nav.jump{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:10px;border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap}
+nav.jump a{display:inline-block;margin-right:14px;color:var(--muted);text-decoration:none;font-size:13px;font-weight:500}
+nav.jump a:hover,nav.jump a:focus-visible{color:var(--accent)}
+section{display:grid;gap:16px;padding-top:44px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:6px;align-content:start;min-width:0}
+.card p{color:var(--muted);font-size:14px}
+.tablewrap{overflow-x:auto;background:var(--paper);border:1px solid var(--line);border-radius:8px}
+table.data{border-collapse:collapse;width:100%;font-size:14px;min-width:620px}
+table.data th,table.data td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+table.data th{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+table.data tr:last-child td{border-bottom:0}
+code{font-family:var(--mono);font-size:.88em;background:var(--wire);padding:1px 5px;border-radius:4px}
+.ph{display:inline-block;font-family:var(--mono);font-size:12px;font-weight:500;padding:1px 8px;border-radius:4px;color:var(--on-status)}
+.ph1{background:var(--s-done)}.ph2{background:var(--s-blue)}.ph3{background:var(--s-purple)}
+
+/* Architecture diagram */
+.arch{overflow-x:auto;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px}
+.arch svg{display:block;min-width:820px;width:100%;height:auto}
+.arch text{font-family:var(--body);fill:var(--ink)}
+.arch .m{font-family:var(--mono);fill:var(--muted)}
+
+/* Wireframes */
+.wf{display:grid;gap:12px}
+.wf-head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline}
+.wf-head p{color:var(--muted);font-size:14px;max-width:70ch}
+.frame-scroll{overflow-x:auto;border-radius:10px;border:1px solid var(--line);background:var(--paper)}
+.frame{min-width:900px;font-size:12.5px;color:var(--ink);position:relative}
+.suite{height:30px;background:var(--wire2);display:flex;align-items:center;gap:10px;padding:0 12px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.suite .dot{width:14px;height:14px;border-radius:3px;background:var(--line)}
+.suite .search{margin-left:auto;margin-right:auto;width:280px;height:18px;border-radius:4px;background:var(--paper);border:1px solid var(--line)}
+.app{display:grid;grid-template-columns:190px 1fr;min-height:420px}
+.side{border-right:1px solid var(--line);padding:12px 10px;display:grid;gap:4px;align-content:start;background:var(--wire)}
+.side .it{padding:5px 8px;border-radius:5px;display:flex;gap:8px;align-items:center}
+.side .it.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.side .lbl{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:10px 8px 2px}
+.ico{width:12px;height:12px;border-radius:3px;background:var(--line);flex:none}
+.main{padding:14px 18px;display:grid;gap:12px;align-content:start;min-width:0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{border:1px solid var(--line);border-radius:5px;padding:4px 10px;background:var(--paper);font-size:12px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--paper);font-weight:600}
+.tab{padding:5px 10px;border-bottom:2px solid transparent;color:var(--muted)}
+.tab.on{border-color:var(--accent);color:var(--ink);font-weight:600}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line)}
+.bar{height:8px;border-radius:4px;background:var(--wire2)}
+.av{width:20px;height:20px;border-radius:50%;background:var(--wire2);border:1px solid var(--line);display:inline-grid;place-items:center;font-size:9px;font-weight:600;color:var(--muted);flex:none}
+.st{display:block;text-align:center;color:var(--on-status);font-weight:500;padding:5px 4px;font-size:11.5px}
+.done{background:var(--s-done)}.work{background:var(--s-work)}.stuck{background:var(--s-stuck)}.none{background:var(--s-none)}.blue{background:var(--s-blue)}.purple{background:var(--s-purple)}
+.grp{display:grid;gap:0}
+.grp-title{display:flex;gap:8px;align-items:center;font-weight:700;font-size:13.5px;padding:4px 0}
+.grid{display:grid;grid-template-columns:6px 26px minmax(200px,2fr) 90px 110px 90px 130px 90px 36px;border-top:1px solid var(--line)}
+.grid>div{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:5px 8px;display:flex;align-items:center;gap:6px;min-height:31px}
+.grid>div.cell-st{padding:0}
+.grid>div.cell-st .st{width:100%;height:100%;display:grid;place-items:center}
+.grid .h{color:var(--muted);font-size:11px;justify-content:center}
+.grid .edge{padding:0;border-right:0}
+.grid .sum{background:var(--wire);color:var(--muted)}
+.mini{display:flex;height:14px;width:100%;border-radius:3px;overflow:hidden}
+.tl{height:14px;border-radius:7px;background:var(--accent);width:100%;opacity:.85}
+.note{display:inline-grid;vertical-align:middle;margin:0 4px;width:18px;height:18px;flex:none;border-radius:50%;background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:11px;font-weight:600;display:grid;place-items:center}
+ol.notes{margin:0;padding-left:22px;display:grid;gap:4px;color:var(--muted);font-size:14px;max-width:80ch}
+ol.notes b{color:var(--ink);font-weight:600}
+
+/* Kanban */
+.kan{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.lane{background:var(--wire);border-radius:6px;display:grid;gap:8px;padding:0 0 10px;align-content:start}
+.lane .st{border-radius:6px 6px 0 0;text-align:left;padding:7px 10px}
+.kc{background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:8px;margin:0 8px;display:grid;gap:6px}
+/* Item panel */
+.overlay{position:absolute;inset:30px 0 0 auto;width:470px;background:var(--paper);border-left:1px solid var(--line);box-shadow:-12px 0 24px -12px rgba(0,0,0,.25);padding:14px 16px;display:grid;gap:12px;align-content:start}
+.dim{opacity:.45}
+.upd{border:1px solid var(--line);border-radius:6px;padding:10px;display:grid;gap:6px}
+.editor{border:1px solid var(--accent);border-radius:6px;min-height:60px;padding:8px;color:var(--muted)}
+/* Timeline */
+.gantt{display:grid;grid-template-columns:200px 1fr;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.gantt .l{border-right:1px solid var(--line)}
+.gantt .l div,.gantt .r .gr{height:30px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 10px;gap:6px}
+.gantt .r{position:relative;background-image:linear-gradient(to right,var(--line) 1px,transparent 1px);background-size:calc(100%/14) 100%}
+.gantt .days{display:grid;grid-template-columns:repeat(14,1fr);font-family:var(--mono);font-size:10px;color:var(--muted);height:30px;align-items:center;text-align:center;border-bottom:1px solid var(--line);background:var(--paper)}
+.gbar{position:absolute;height:16px;border-radius:8px;color:var(--on-status);font-size:10px;padding:0 8px;display:flex;align-items:center;white-space:nowrap}
+.today{position:absolute;top:0;bottom:0;width:2px;background:var(--s-stuck)}
+/* Dashboard */
+.dash{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.w{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:12px;display:grid;gap:8px;align-content:start}
+.w .big{font-family:var(--display);font-size:30px;font-weight:800}
+.w.span2{grid-column:span 2}
+.bars{display:flex;align-items:flex-end;gap:10px;height:110px;border-bottom:1px solid var(--line);padding:0 6px}
+.bars span{flex:1;border-radius:3px 3px 0 0}
+/* Automations */
+.recipe{border:1px solid var(--line);border-radius:8px;padding:16px;font-size:16px;line-height:2.1;background:var(--paper)}
+.slot{display:inline-block;border-bottom:2px solid var(--accent);color:var(--accent);font-weight:600;padding:0 4px;line-height:1.4}
+.rule{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:6px;padding:9px 12px;background:var(--paper)}
+.tog{width:30px;height:16px;border-radius:8px;background:var(--s-done);position:relative;flex:none}
+.tog::after{content:"";position:absolute;right:2px;top:2px;width:12px;height:12px;border-radius:50%;background:var(--paper)}
+.tog.off{background:var(--s-none)}.tog.off::after{right:auto;left:2px}
+/* Setup */
+.steps{display:grid;gap:6px}
+.step{display:flex;gap:10px;align-items:center;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
+.check{width:16px;height:16px;border-radius:50%;flex:none;display:grid;place-items:center;color:var(--on-status);font-size:10px}
+.field{display:grid;gap:4px}
+.field .inp{height:30px;border:1px solid var(--line);border-radius:5px;background:var(--paper);padding:0 8px;display:flex;align-items:center;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){nav.jump a{transition:color .15s}}
+</style>
+
+<div class="page">
+<header class="top">
+  <span class="eyebrow">monday.com replacement · SharePoint Online · SPFx</span>
+  <h1>Work Boards</h1>
+  <p class="lede">Plan and wireframes for a work management app that runs inside SharePoint Online. It covers the monday.com features teams use every day, keeps all data in SharePoint lists on the site, and needs no app registration, client ID or Microsoft Graph permissions.</p>
+  <div class="chips">
+    <span class="chip ok">No app registration</span>
+    <span class="chip ok">No Graph permissions</span>
+    <span class="chip ok">Sets up its own lists</span>
+    <span class="chip">SPFx 1.23 · React 17 · Fluent UI 8 · PnPjs 4</span>
+    <span class="chip">Status: plan for review</span>
+  </div>
+</header>
+
+<nav class="jump" aria-label="Sections">
+  <a href="#architecture">Architecture</a><a href="#data">Data model</a><a href="#coverage">Coverage</a><a href="#wf-home">Home</a><a href="#wf-table">Board table</a><a href="#wf-kanban">Kanban</a><a href="#wf-item">Item panel</a><a href="#wf-timeline">Timeline</a><a href="#wf-dash">Dashboard</a><a href="#wf-auto">Automations</a><a href="#wf-setup">Setup</a><a href="#wf-form">Form</a><a href="#phases">Phases</a><a href="#questions">Questions</a>
+</nav>
+
+<section id="architecture">
+  <span class="eyebrow">How it works</span>
+  <h2>Architecture</h2>
+  <p class="lede">One SPFx package, deployed from the App Catalog. Each site collection becomes a workspace. The web part talks only to the site's own <code>/_api</code>, through SPFx's built-in <code>SPHttpClient</code>, as the signed-in user.</p>
+  <div class="arch">
+    <svg viewBox="0 0 1000 440" role="img" aria-label="Architecture: SPFx web parts call SharePoint REST on the current site, which holds hidden lists per workspace and per board">
+      <rect x="10" y="10" width="980" height="420" rx="10" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+      <text x="28" y="36" font-size="13" font-weight="600">SharePoint Online site collection = one workspace</text>
+      <rect x="28" y="52" width="560" height="232" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="44" y="76" font-size="13" font-weight="600">SPFx bundle (runs in the browser, as the signed-in user)</text>
+      <g font-size="12">
+        <rect x="44" y="88" width="528" height="34" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="56" y="110">Web parts: Work Boards app · Board embed · Dashboard · Form · (Teams tab)</text>
+        <rect x="44" y="130" width="528" height="34" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="56" y="152">Views: table · kanban · calendar · timeline · chart · files · item panel · wizards</text>
+        <rect x="44" y="172" width="528" height="34" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="56" y="194">Services: boards · items · updates · views · inbox · import/export · permissions</text>
+        <rect x="44" y="214" width="258" height="56" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="56" y="236">Automation engine</text>
+        <text x="56" y="256" class="m" font-size="11">event rules · lazy scheduler</text>
+        <rect x="314" y="214" width="258" height="56" rx="5" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="326" y="236">Provisioner + change poller</text>
+        <text x="326" y="256" class="m" font-size="11">migrations · ETags · GetChanges</text>
+      </g>
+      <rect x="620" y="52" width="352" height="232" rx="8" fill="var(--wire)" stroke="var(--line)"/>
+      <text x="636" y="76" font-size="13" font-weight="600">Hidden lists on the site</text>
+      <g font-size="11.5" class="m">
+        <text x="636" y="100" class="m">WB_Meta · schema version</text>
+        <text x="636" y="120" class="m">WB_Boards · registry + config JSON</text>
+        <text x="636" y="140" class="m">WB_Board_&lt;KEY&gt; · items (one per board)</text>
+        <text x="636" y="160" class="m">WB_Board_&lt;KEY&gt;_Updates · comments</text>
+        <text x="636" y="180" class="m">WB_Views · WB_Dashboards</text>
+        <text x="636" y="200" class="m">WB_Automations · WB_Forms</text>
+        <text x="636" y="220" class="m">WB_FormInbox · add + read own</text>
+        <text x="636" y="240" class="m">WB_UserPrefs · read/edit own rows</text>
+        <text x="636" y="260" class="m">WB_Templates · library</text>
+      </g>
+      <line x1="588" y1="168" x2="616" y2="168" stroke="var(--accent)" stroke-width="2"/>
+      <polygon points="616,163 624,168 616,173" fill="var(--accent)"/>
+      <text x="566" y="300" font-size="11" class="m">PnPjs → SPHttpClient → /_api  ($batch, RenderListDataAsStream)</text>
+      <rect x="28" y="318" width="944" height="94" rx="8" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+      <text x="44" y="342" font-size="13" font-weight="600">Deliberately not used</text>
+      <text x="44" y="364" font-size="12">✕ Entra ID app registration / client ID   ✕ Microsoft Graph   ✕ AadHttpClient   ✕ webApiPermissionRequests</text>
+      <text x="44" y="386" font-size="12">✕ PnP PowerShell setup (needs its own app registration)   ✕ SP SendEmail REST API (being retired)</text>
+      <text x="44" y="404" font-size="11" class="m">Optional add-on: Power Automate flow template for email digests (standard connectors).</text>
+    </svg>
+  </div>
+  <div class="cols">
+    <div class="card"><h3>One list per board</h3><p>Every column is a real SharePoint field. Filtering, sorting and indexes happen on the server, private boards are list permissions, and Excel and Power BI can read the data directly.</p></div>
+    <div class="card"><h3>Activity log for free</h3><p>List versioning records every field change with who and when. The item panel reads it to show "Status: Working on it → Done".</p></div>
+    <div class="card"><h3>Private by design</h3><p>Everything runs as the signed-in user. The Inbox is computed from lists they can read, so no central notification list can leak private boards.</p></div>
+    <div class="card"><h3>Sets itself up</h3><p>A site owner opens the page and clicks "Set up". Numbered migrations create and later upgrade every list. They are safe to re-run.</p></div>
+  </div>
+</section>
+
+<section id="data">
+  <span class="eyebrow">Mapping</span>
+  <h2>monday.com concepts in SharePoint</h2>
+  <div class="tablewrap"><table class="data">
+    <thead><tr><th>monday.com</th><th>Work Boards</th><th>Stored as</th></tr></thead>
+    <tbody>
+      <tr><td>Workspace</td><td>Workspace</td><td>The site collection</td></tr>
+      <tr><td>Board</td><td>Board</td><td>Hidden list <code>WB_Board_&lt;KEY&gt;</code> + row in <code>WB_Boards</code></td></tr>
+      <tr><td>Group</td><td>Group</td><td>Board config JSON + indexed <code>WB_GroupId</code> on each item</td></tr>
+      <tr><td>Item / Subitem</td><td>Item / Subitem</td><td>List item / list item with <code>WB_ParentId</code></td></tr>
+      <tr><td>Column (Status, People, Date, Timeline…)</td><td>Column</td><td>Real field <code>WB_c_xxxxxx</code> (Choice, User, DateTime…) + colours in config</td></tr>
+      <tr><td>Updates</td><td>Updates</td><td>Companion list <code>WB_Board_&lt;KEY&gt;_Updates</code></td></tr>
+      <tr><td>Files column</td><td>Files</td><td>Item attachments</td></tr>
+      <tr><td>Activity log</td><td>Activity</td><td>SharePoint version history</td></tr>
+      <tr><td>Automations</td><td>Automations</td><td><code>WB_Automations</code>, run by the client-side engine</td></tr>
+      <tr><td>Main / private board</td><td>Main / private board</td><td>Inherited / unique list permissions</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="coverage">
+  <span class="eyebrow">Scope</span>
+  <h2>Feature coverage by phase</h2>
+  <div class="tablewrap"><table class="data">
+    <thead><tr><th>Area</th><th>Features</th><th>Phase</th></tr></thead>
+    <tbody>
+      <tr><td>Structure</td><td>Workspaces, folders, boards, groups, items, subitems, templates, archive</td><td><span class="ph ph1">1</span></td></tr>
+      <tr><td>Columns</td><td>Status, Priority, Text, Long text, Numbers, Date, People, Dropdown, Checkbox, Link, Email, Phone, Tags, Files</td><td><span class="ph ph1">1</span></td></tr>
+      <tr><td>Views</td><td>Table with inline edit and drag and drop, Kanban, filter, sort, search, group by</td><td><span class="ph ph1">1</span></td></tr>
+      <tr><td>Item card</td><td>Updates with @mentions and replies, files, activity log</td><td><span class="ph ph1">1</span></td></tr>
+      <tr><td>People</td><td>My Work, favourites, near-live refresh, Excel import and export, main and private boards</td><td><span class="ph ph1">1</span></td></tr>
+      <tr><td>Views</td><td>Calendar, timeline/Gantt with dependencies, chart, files gallery, saved views</td><td><span class="ph ph2">2</span></td></tr>
+      <tr><td>Columns</td><td>Timeline, Dependency, Rating, Progress, Last updated, Creation log, Item ID</td><td><span class="ph ph2">2</span></td></tr>
+      <tr><td>Work</td><td>Inbox, event automations, dashboards, forms, embed web parts</td><td><span class="ph ph2">2</span></td></tr>
+      <tr><td>Extras</td><td>Date and recurring automations, formula, time tracking, connect and mirror boards, workload, Teams tab, email digest, full migration tool</td><td><span class="ph ph3">3</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="lede">Phases 1 and 2 cover about 80% of commonly used monday.com features. Phase 3 brings it to about 90%. Not planned: monday.com AI, the integrations marketplace (Power Automate covers most of it), WorkDocs, native mobile apps and live cursors.</p>
+</section>
+
+<!-- ============ WIREFRAMES ============ -->
+
+<section id="wf-home" class="wf">
+  <span class="eyebrow">Wireframe 1 of 9</span>
+  <div class="wf-head"><h2>Workspace home</h2><p>What people see when they open the Work Boards page on a site.</p></div>
+  <div class="frame-scroll"><div class="frame">
+    <div class="suite"><span class="dot"></span>SharePoint · Marketing<span class="search"></span><span class="av">JS</span></div>
+    <div class="app">
+      <div class="side">
+        <div class="it on"><span class="ico"></span>Home<span class="note">1</span></div>
+        <div class="it"><span class="ico"></span>My Work</div>
+        <div class="it"><span class="ico"></span>Inbox <span class="ph ph2" style="margin-left:auto">4</span></div>
+        <div class="it"><span class="ico"></span>Dashboards</div>
+        <div class="lbl">Favourites</div>
+        <div class="it"><span class="ico done"></span>Q4 Campaign</div>
+        <div class="it"><span class="ico blue"></span>Content Calendar</div>
+        <div class="lbl">Boards</div>
+        <div class="it">▾ Campaigns</div>
+        <div class="it" style="padding-left:22px"><span class="ico"></span>Q4 Campaign</div>
+        <div class="it" style="padding-left:22px"><span class="ico"></span>Product Launch</div>
+        <div class="it">▸ Operations</div>
+        <div class="it"><span class="ico"></span>Agency Requests 🔒</div>
+        <div class="it" style="color:var(--accent)">+ New board</div>
+      </div>
+      <div class="main">
+        <div class="row"><h3 style="font-size:20px">Good morning, Jordan</h3><span style="margin-left:auto" class="btn">Import from Excel</span><span class="btn pri">+ New board</span></div>
+        <div class="row" style="gap:12px;align-items:stretch">
+          <div class="w" style="flex:1"><span style="color:var(--muted)">Due this week</span><span class="big">7</span></div>
+          <div class="w" style="flex:1"><span style="color:var(--muted)">Overdue</span><span class="big" style="color:var(--s-stuck)">2</span></div>
+          <div class="w" style="flex:1"><span style="color:var(--muted)">New mentions</span><span class="big">4</span></div>
+        </div>
+        <h3>My Work<span class="note">2</span></h3>
+        <div class="tablewrap"><table class="data" style="font-size:12.5px;min-width:0">
+          <thead><tr><th>Item</th><th>Board</th><th>Status</th><th>Due</th></tr></thead>
+          <tbody>
+            <tr><td>Finalise landing page copy</td><td>Q4 Campaign</td><td><span class="ph" style="background:var(--s-work)">Working on it</span></td><td style="color:var(--s-stuck)">Yesterday</td></tr>
+            <tr><td>Approve social assets</td><td>Content Calendar</td><td><span class="ph" style="background:var(--s-stuck)">Stuck</span></td><td>Today</td></tr>
+            <tr><td>Brief the agency</td><td>Agency Requests</td><td><span class="ph" style="background:var(--s-none)">Not started</span></td><td>Thu 2 Oct</td></tr>
+          </tbody>
+        </table></div>
+        <h3>Recent boards</h3>
+        <div class="row" style="gap:10px">
+          <div class="card" style="flex:1"><b>Q4 Campaign</b><div class="mini"><span class="done" style="flex:5"></span><span class="work" style="flex:3"></span><span class="stuck" style="flex:1"></span><span class="none" style="flex:2"></span></div></div>
+          <div class="card" style="flex:1"><b>Product Launch</b><div class="mini"><span class="done" style="flex:2"></span><span class="work" style="flex:4"></span><span class="none" style="flex:4"></span></div></div>
+          <div class="card" style="flex:1"><b>Content Calendar</b><div class="mini"><span class="done" style="flex:7"></span><span class="work" style="flex:1"></span><span class="none" style="flex:1"></span></div></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <ol class="notes">
+    <li><b>Sidebar</b> lists boards in folders. A lock marks private boards. Only boards the user can access appear, because SharePoint trims the list.</li>
+    <li><b>My Work</b> pulls items where the user is in a People column, across every board in one <code>$batch</code> call, sorted by due date.</li>
+  </ol>
+</section>
+
+<section id="wf-table" class="wf">
+  <span class="eyebrow">Wireframe 2 of 9</span>
+  <div class="wf-head"><h2>Board: main table</h2><p>The screen people will use most. Inline edits, colour-coded status cells, collapsible groups and a summary row under each group.</p></div>
+  <div class="frame-scroll"><div class="frame">
+    <div class="suite"><span class="dot"></span>SharePoint · Marketing<span class="search"></span><span class="av">JS</span></div>
+    <div class="main" style="padding:14px 18px">
+      <div class="row"><h3 style="font-size:20px">Q4 Campaign</h3><span style="color:var(--muted)">☆</span><span style="margin-left:auto" class="av">AK</span><span class="av" style="margin-left:-8px">MR</span><span class="av" style="margin-left:-8px">+5</span><span class="btn">Invite</span><span class="btn">Automations · 3</span><span class="btn">⋯</span></div>
+      <div class="tabs"><span class="note">1</span><span class="tab on">Main table</span><span class="tab">Kanban</span><span class="tab">Timeline</span><span class="tab">Calendar</span><span class="tab">Chart</span><span class="tab">+</span></div>
+      <div class="row"><span class="note">2</span><span class="btn pri">New item ▾</span><span class="btn">🔍 Search</span><span class="btn">Person</span><span class="btn">Filter · 1</span><span class="btn">Sort</span><span class="btn">Hide</span><span class="btn">Group by</span><span class="btn" style="margin-left:auto">Export</span></div>
+
+      <div class="grp">
+        <div class="grp-title" style="color:var(--s-blue)">▾ In progress <span style="color:var(--muted);font-weight:400">4 items</span></div>
+        <div class="grid">
+          <div class="edge blue"></div><div class="h">☐</div><div class="h" style="justify-content:flex-start">Item</div><div class="h">Owner</div><div class="h">Status<span class="note">3</span></div><div class="h">Priority</div><div class="h">Timeline</div><div class="h">Budget</div><div class="h">+</div>
+
+          <div class="edge blue"></div><div>☐</div><div>▸ Finalise landing page copy <span style="margin-left:auto;color:var(--muted)">💬 3</span></div><div><span class="av">JS</span></div><div class="cell-st"><span class="st work">Working on it</span></div><div class="cell-st"><span class="st stuck">High</span></div><div><div class="tl"></div></div><div style="justify-content:flex-end">$4,000</div><div></div>
+
+          <div class="edge blue"></div><div>☐</div><div style="padding-left:24px;color:var(--muted)">↳ Legal review</div><div><span class="av">MR</span></div><div class="cell-st"><span class="st done">Done</span></div><div class="cell-st"><span class="st none"></span></div><div><div class="tl" style="width:40%"></div></div><div></div><div></div>
+
+          <div class="edge blue"></div><div>☐</div><div>Approve social assets <span style="margin-left:auto;color:var(--muted)">💬 1</span></div><div><span class="av">AK</span></div><div class="cell-st"><span class="st stuck">Stuck</span></div><div class="cell-st"><span class="st work">Medium</span></div><div><div class="tl" style="width:60%;margin-left:30%"></div></div><div style="justify-content:flex-end">$1,200</div><div></div>
+
+          <div class="edge blue"></div><div>☐</div><div>Book paid search</div><div><span class="av">LP</span></div><div class="cell-st"><span class="st done">Done</span></div><div class="cell-st"><span class="st blue">Low</span></div><div><div class="tl" style="width:50%"></div></div><div style="justify-content:flex-end">$9,500</div><div></div>
+
+          <div class="edge"></div><div></div><div style="color:var(--muted)">+ Add item</div><div></div><div></div><div></div><div></div><div></div><div></div>
+          <div class="edge"></div><div class="sum"></div><div class="sum"><span class="note">4</span></div><div class="sum"></div><div class="sum" style="padding:6px"><div class="mini"><span class="done" style="flex:2"></span><span class="work" style="flex:1"></span><span class="stuck" style="flex:1"></span></div></div><div class="sum" style="padding:6px"><div class="mini"><span class="stuck" style="flex:1"></span><span class="work" style="flex:1"></span><span class="blue" style="flex:1"></span></div></div><div class="sum" style="justify-content:center">1 Oct – 24 Oct</div><div class="sum" style="justify-content:flex-end;font-weight:600;color:var(--ink)">$14,700</div><div class="sum"></div>
+        </div>
+      </div>
+      <div class="grp">
+        <div class="grp-title" style="color:var(--s-done)">▸ Done <span style="color:var(--muted);font-weight:400">12 items</span></div>
+      </div>
+      <div class="grp-title" style="color:var(--muted);font-weight:500">+ Add new group</div>
+    </div>
+  </div></div>
+  <ol class="notes">
+    <li><b>View tabs</b> are saved views stored in <code>WB_Views</code>. People can also keep personal views.</li>
+    <li><b>Toolbar</b>: search, person filter, filters, sort and grouping. Filters on indexed fields run on the server.</li>
+    <li><b>Status cells</b> open a label picker with colours. Board owners can edit the labels, which updates the Choice field.</li>
+    <li><b>Group summary row</b> shows the status mix, date span and totals. Drag items between groups or reorder them, and only the moved item is saved.</li>
+  </ol>
+</section>
+
+<section id="wf-kanban" class="wf">
+  <span class="eyebrow">Wireframe 3 of 9</span>
+  <div class="wf-head"><h2>Board: Kanban</h2><p>Lanes come from any Status or Dropdown column. Dragging a card sets that column and fires automations.</p></div>
+  <div class="frame-scroll"><div class="frame">
+    <div class="suite"><span class="dot"></span>SharePoint · Marketing<span class="search"></span><span class="av">JS</span></div>
+    <div class="main">
+      <div class="tabs"><span class="tab">Main table</span><span class="tab on">Kanban</span><span class="tab">Timeline</span><span class="tab">Calendar</span><span class="tab">Chart</span></div>
+      <div class="row"><span class="btn">Lanes by: Status ▾</span><span class="btn">Card fields: Owner, Priority, Due</span></div>
+      <div class="kan">
+        <div class="lane"><span class="st none">Not started · 3</span>
+          <div class="kc"><b>Brief the agency</b><div class="row"><span class="av">LP</span><span class="ph" style="background:var(--s-work)">Medium</span><span style="margin-left:auto;color:var(--muted)">2 Oct</span></div></div>
+          <div class="kc"><b>Plan webinar</b><div class="row"><span class="av">AK</span><span style="margin-left:auto;color:var(--muted)">9 Oct</span></div></div>
+        </div>
+        <div class="lane"><span class="st work">Working on it · 2</span>
+          <div class="kc"><b>Finalise landing page copy</b><div class="row"><span class="av">JS</span><span class="ph" style="background:var(--s-stuck)">High</span><span style="margin-left:auto;color:var(--s-stuck)">Yesterday</span></div><div class="bar" style="background:linear-gradient(to right,var(--s-done) 50%,var(--wire2) 50%)"></div><span style="color:var(--muted)">1 of 2 subitems</span></div>
+        </div>
+        <div class="lane"><span class="st stuck">Stuck · 1</span>
+          <div class="kc" style="border:2px dashed var(--accent)"><b>Approve social assets</b><div class="row"><span class="av">AK</span><span class="ph" style="background:var(--s-work)">Medium</span></div></div>
+        </div>
+        <div class="lane"><span class="st done">Done · 12</span>
+          <div class="kc"><b>Book paid search</b><div class="row"><span class="av">LP</span></div></div>
+          <div class="kc dim"><b>Audience research</b></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section id="wf-item" class="wf">
+  <span class="eyebrow">Wireframe 4 of 9</span>
+  <div class="wf-head"><h2>Item panel</h2><p>Opens from the right over any view. Deep link: <code>…/WorkBoards.aspx#/board/MKT/item/142</code>.</p></div>
+  <div class="frame-scroll"><div class="frame" style="min-height:660px">
+    <div class="suite"><span class="dot"></span>SharePoint · Marketing<span class="search"></span><span class="av">JS</span></div>
+    <div class="main dim"><h3 style="font-size:20px">Q4 Campaign</h3><div class="tabs"><span class="tab on">Main table</span><span class="tab">Kanban</span></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar" style="width:70%"></div><div class="bar"></div><div class="bar" style="width:80%"></div></div>
+    <div class="overlay">
+      <div class="row"><span style="color:var(--muted);font-family:var(--mono)">MKT-142</span><span style="margin-left:auto" class="btn">⋯</span><span class="btn">✕</span></div>
+      <h3 style="font-size:19px">Finalise landing page copy</h3>
+      <div class="row" style="gap:6px"><span class="av">JS</span><span class="ph" style="background:var(--s-work)">Working on it</span><span class="ph" style="background:var(--s-stuck)">High</span><span style="color:var(--muted)">1 Oct → 8 Oct</span></div>
+      <div class="tabs"><span class="note">1</span><span class="tab on">Updates · 3</span><span class="tab">Files · 2</span><span class="tab">Activity</span><span class="tab">Details</span></div>
+      <div class="editor">Write an update… type @ to mention someone</div>
+      <div class="upd"><div class="row"><span class="av">MR</span><b>Maya R.</b><span style="color:var(--muted);margin-left:auto">2h</span></div><span><span style="color:var(--accent)">@Jordan S.</span> legal is happy with v3, just the pricing line to fix.</span><div class="row" style="color:var(--muted)">👍 2 · Reply</div>
+        <div class="upd" style="margin-left:20px"><div class="row"><span class="av">JS</span><b>Jordan S.</b><span style="color:var(--muted);margin-left:auto">1h</span></div><span>Fixed, uploaded v4.</span></div>
+      </div>
+      <div class="upd" style="background:var(--wire)"><span style="font-family:var(--mono);font-size:11px;color:var(--muted)"><span class="note">2</span>ACTIVITY (from version history)</span>
+        <div class="row" style="font-size:12px"><span class="av">JS</span>Status <span class="ph" style="background:var(--s-none)">Not started</span> → <span class="ph" style="background:var(--s-work)">Working on it</span><span style="margin-left:auto;color:var(--muted)">Mon</span></div>
+        <div class="row" style="font-size:12px"><span class="av">⚙</span>Automation moved item to <b>In progress</b><span style="margin-left:auto;color:var(--muted)">Mon</span></div>
+      </div>
+    </div>
+  </div></div>
+  <ol class="notes">
+    <li><b>Updates</b> are rich text, sanitised, with @mentions, replies and likes. Mentions feed the Inbox.</li>
+    <li><b>Activity</b> comes straight from SharePoint versioning. Nothing extra is stored.</li>
+  </ol>
+</section>
+
+<section id="wf-timeline" class="wf">
+  <span class="eyebrow">Wireframe 5 of 9 · phase 2</span>
+  <div class="wf-head"><h2>Timeline / Gantt</h2><p>Drag bars to reschedule, drag edges to resize, draw arrows to add dependencies. Reads a Timeline column or a pair of dates.</p></div>
+  <div class="frame-scroll"><div class="frame">
+    <div class="suite"><span class="dot"></span>SharePoint · Marketing<span class="search"></span><span class="av">JS</span></div>
+    <div class="main">
+      <div class="tabs"><span class="tab">Main table</span><span class="tab">Kanban</span><span class="tab on">Timeline</span><span class="tab">Calendar</span></div>
+      <div class="row"><span class="btn">Days · <b>Weeks</b> · Months</span><span class="btn">Colour by: Status</span><span class="btn">Today</span></div>
+      <div class="gantt">
+        <div class="l">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">ITEM</div>
+          <div><b style="color:var(--s-blue)">In progress</b></div>
+          <div>Audience research</div><div>Finalise landing page copy</div><div>Approve social assets</div><div>Book paid search</div><div>Launch</div>
+        </div>
+        <div class="r">
+          <div class="days"><span>29</span><span>30</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span></div>
+          <div class="gr"></div><div class="gr"></div><div class="gr"></div><div class="gr"></div><div class="gr"></div><div class="gr"></div>
+          <div class="gbar done" style="top:67px;left:0;width:21%">Done</div>
+          <div class="gbar work" style="top:97px;left:14.3%;width:50%">Working on it</div>
+          <div class="gbar stuck" style="top:127px;left:28.6%;width:28.6%">Stuck</div>
+          <div class="gbar done" style="top:157px;left:57%;width:21.4%">Done</div>
+          <div class="gbar purple" style="top:187px;left:78.6%;width:7.2%">◆</div>
+          <div class="today" style="left:21.4%"></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section id="wf-dash" class="wf">
+  <span class="eyebrow">Wireframe 6 of 9 · phase 2</span>
+  <div class="wf-head"><h2>Dashboard</h2><p>Widgets across one or more boards. The same dashboard can be added to any SharePoint page with the Dashboard web part.</p></div>
+  <div class="frame-scroll"><div class="frame">
+    <div class="suite"><span class="dot"></span>SharePoint · Marketing<span class="search"></span><span class="av">JS</span></div>
+    <div class="main">
+      <div class="row"><h3 style="font-size:20px">Marketing overview</h3><span class="btn" style="margin-left:auto">Boards: Q4 Campaign, Product Launch, Content Calendar</span><span class="btn">+ Add widget</span></div>
+      <div class="dash">
+        <div class="w"><span style="color:var(--muted)">Open items</span><span class="big">48</span></div>
+        <div class="w"><span style="color:var(--muted)">Overdue</span><span class="big" style="color:var(--s-stuck)">6</span></div>
+        <div class="w"><span style="color:var(--muted)">Budget used</span><span class="big">$62.4k</span></div>
+        <div class="w"><span style="color:var(--muted)">Done this month</span><span class="big" style="color:var(--s-done)">31</span></div>
+        <div class="w span2"><span style="color:var(--muted)">Items by status and board</span>
+          <div class="bars"><span class="done" style="height:80%"></span><span class="work" style="height:45%"></span><span class="stuck" style="height:12%"></span><span class="done" style="height:40%"></span><span class="work" style="height:70%"></span><span class="stuck" style="height:20%"></span><span class="done" style="height:95%"></span><span class="work" style="height:15%"></span><span class="stuck" style="height:5%"></span></div>
+          <div class="row" style="justify-content:space-around;color:var(--muted);font-size:11px"><span>Q4 Campaign</span><span>Product Launch</span><span>Content Calendar</span></div>
+        </div>
+        <div class="w span2"><span style="color:var(--muted)">Workload (items per person)</span>
+          <div class="row"><span class="av">JS</span><div class="mini" style="flex:1"><span class="done" style="flex:3"></span><span class="work" style="flex:5"></span><span class="stuck" style="flex:1"></span><span style="flex:3"></span></div></div>
+          <div class="row"><span class="av">AK</span><div class="mini" style="flex:1"><span class="done" style="flex:6"></span><span class="work" style="flex:2"></span><span style="flex:4"></span></div></div>
+          <div class="row"><span class="av">MR</span><div class="mini" style="flex:1"><span class="done" style="flex:2"></span><span class="work" style="flex:8"></span><span class="stuck" style="flex:2"></span></div></div>
+          <div class="row"><span class="av">LP</span><div class="mini" style="flex:1"><span class="done" style="flex:4"></span><span class="work" style="flex:1"></span><span style="flex:7"></span></div></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section id="wf-auto" class="wf">
+  <span class="eyebrow">Wireframe 7 of 9 · phase 2</span>
+  <div class="wf-head"><h2>Automations</h2><p>Sentence-style recipes, the same way monday.com builds them. Each blank opens a picker.</p></div>
+  <div class="frame-scroll"><div class="frame">
+    <div class="suite"><span class="dot"></span>SharePoint · Marketing<span class="search"></span><span class="av">JS</span></div>
+    <div class="main" style="grid-template-columns:1fr 1fr;gap:18px">
+      <div style="display:grid;gap:10px;align-content:start">
+        <div class="row"><h3>Q4 Campaign · Automations</h3><span class="btn pri" style="margin-left:auto">+ New automation</span></div>
+        <div class="rule"><span class="tog"></span>When <b>Status</b> changes to <b>Done</b>, move item to <b>Done</b></div>
+        <div class="rule"><span class="tog"></span>When an item is created, assign <b>creator</b> as <b>Owner</b></div>
+        <div class="rule"><span class="tog"></span>When <b>Status</b> changes to <b>Stuck</b>, notify <b>Owner</b></div>
+        <div class="rule"><span class="tog off"></span>When <b>Due date</b> arrives and Status is not Done, notify <b>Owner</b> <span class="ph ph3">3</span></div>
+        <span style="color:var(--muted);font-size:12px">Runs as the person who made the change. Last 24 hours: 41 runs, 0 errors.</span>
+      </div>
+      <div style="display:grid;gap:10px;align-content:start">
+        <h3>New automation</h3>
+        <div class="recipe">When <span class="slot">Status</span> changes to <span class="slot">Stuck</span>,<br>and only if <span class="slot">Priority</span> is <span class="slot">High</span>,<br>notify <span class="slot">Owner</span> and <span class="slot">Maya R.</span><br>and move item to group <span class="slot">Needs attention</span>.</div>
+        <div class="row"><span class="btn">+ Add condition</span><span class="btn">+ Add action</span><span class="btn pri" style="margin-left:auto">Create automation</span></div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section id="wf-setup" class="wf">
+  <span class="eyebrow">Wireframe 8 of 9</span>
+  <div class="wf-head"><h2>First-run setup</h2><p>Shown to a site owner the first time the web part runs on a site. Other users see a message asking them to contact a site owner.</p></div>
+  <div class="frame-scroll"><div class="frame">
+    <div class="suite"><span class="dot"></span>SharePoint · Finance<span class="search"></span><span class="av">DO</span></div>
+    <div class="main" style="grid-template-columns:1.1fr 1fr;gap:28px;padding:24px 28px">
+      <div style="display:grid;gap:12px;align-content:start">
+        <h3 style="font-size:22px">Set up Work Boards on this site</h3>
+        <p style="color:var(--muted)">This creates hidden lists on <b style="color:var(--ink)">Finance</b> to store boards, views, automations and settings. It takes about a minute. People with access to this site will be able to use boards. You can make boards private later.</p>
+        <div class="field"><span>Starter boards (optional)</span><div class="row"><span class="btn">☑ Project tracker</span><span class="btn">☐ Requests</span><span class="btn">☐ Content calendar</span></div></div>
+        <div class="field"><span>Import monday.com Excel exports (optional)</span><div class="inp">Drop .xlsx files here or browse</div></div>
+        <div class="field"><span>Add a "Work Boards" page to site navigation</span><div class="row"><span class="tog"></span>Yes</div></div>
+        <div class="row"><span class="btn pri">Set up</span><span class="btn">Cancel</span></div>
+      </div>
+      <div class="steps">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">PROGRESS · SCHEMA v1</span>
+        <div class="step"><span class="check done">✓</span>001 · Site columns and "WB Work Item" content type</div>
+        <div class="step"><span class="check done">✓</span>002 · WB_Meta, WB_Boards</div>
+        <div class="step"><span class="check done">✓</span>003 · WB_Views, WB_UserPrefs (own rows only)</div>
+        <div class="step"><span class="check work">…</span>004 · WB_Automations, WB_Dashboards</div>
+        <div class="step" style="color:var(--muted)"><span class="check none"></span>005 · WB_Forms, WB_FormInbox</div>
+        <div class="step" style="color:var(--muted)"><span class="check none"></span>006 · WB_Templates library</div>
+        <div class="step" style="color:var(--muted)"><span class="check none"></span>Starter board: Project tracker</div>
+        <span style="color:var(--muted);font-size:12px">Each step checks before it creates, so you can run setup again safely if it stops.</span>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section id="wf-form" class="wf">
+  <span class="eyebrow">Wireframe 9 of 9 · phase 2</span>
+  <div class="wf-head"><h2>Request form</h2><p>A form for a board, placed on any page with the Form web part. People submitting do not need access to the board.</p></div>
+  <div class="frame-scroll"><div class="frame">
+    <div class="suite"><span class="dot"></span>SharePoint · Marketing · Request design work<span class="search"></span><span class="av">TK</span></div>
+    <div class="main" style="grid-template-columns:1fr 1fr;gap:28px;padding:24px 28px">
+      <div style="display:grid;gap:12px;align-content:start;max-width:420px">
+        <h3 style="font-size:22px">Request design work</h3>
+        <p style="color:var(--muted)">The design team reviews new requests every morning.</p>
+        <div class="field"><span>What do you need? *</span><div class="inp">Banner for the October newsletter</div></div>
+        <div class="field"><span>Type</span><div class="inp">Email graphic ▾</div></div>
+        <div class="field"><span>Needed by</span><div class="inp">10 Oct 2026</div></div>
+        <div class="field"><span>Attachments</span><div class="inp">brief.docx ✓</div></div>
+        <div class="row"><span class="btn pri">Submit</span></div>
+      </div>
+      <div style="display:grid;gap:10px;align-content:start">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">HOW A SUBMISSION FLOWS</span>
+        <div class="step">1 · Saved to <code>WB_FormInbox</code>. Submitters can add and read only their own entries.</div>
+        <div class="step">2 · A board member sees "3 new requests" on the board.</div>
+        <div class="step">3 · Accept creates the item in the chosen group and fires "item created" automations.</div>
+        <div class="step">4 · The submitter can check the status of their own request.</div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section id="phases">
+  <span class="eyebrow">Delivery</span>
+  <h2>Phases</h2>
+  <div class="cols">
+    <div class="card"><span class="ph" style="background:var(--s-none)">0 · Discovery</span><p>List the organisation's boards, column types, automations and integrations in monday.com. Confirm the priorities.</p></div>
+    <div class="card"><span class="ph ph1">1 · Core</span><p>Setup wizard, boards, groups, items, subitems, core columns, table and Kanban, item panel, My Work, templates, Excel import and export, private boards. Pilot with one or two teams.</p></div>
+    <div class="card"><span class="ph ph2">2 · Parity</span><p>Calendar, timeline, saved views, charts, Inbox, automations, dashboards, forms, embed web parts. About 80% coverage, then a wider rollout.</p></div>
+    <div class="card"><span class="ph ph3">3 · Extras</span><p>Date and recurring automations, formula, time tracking, connected boards, workload, Teams tab, email digests, full migration. About 90% coverage, then cancel monday.com.</p></div>
+  </div>
+</section>
+
+<section id="questions">
+  <span class="eyebrow">Before building</span>
+  <h2>Questions for you</h2>
+  <ol class="notes" style="font-size:15px">
+    <li>Roughly how many people and boards use monday.com today, and which features matter most: automations, dashboards, forms, integrations or time tracking?</li>
+    <li>Deploy to every site (tenant-wide) or only chosen sites (site collection App Catalog)?</li>
+    <li>Is an optional Power Automate flow acceptable for email notifications, with the in-app Inbox as the main channel?</li>
+    <li>Migrate current items only, or updates and files as well?</li>
+    <li>Do external guests use your monday.com boards?</li>
+    <li>Keep the name "Work Boards", or use your own?</li>
+  </ol>
+</section>
+</div>
