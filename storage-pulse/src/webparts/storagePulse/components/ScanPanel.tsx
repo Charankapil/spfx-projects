@@ -23,6 +23,8 @@ function readable(url: string): string {
   }
 }
 
+const RATE_WINDOW_MS = 60000;
+
 const STEPS = [strings.ScanStepDiscover, strings.ScanStepRead, strings.ScanStepAnalyse, strings.ScanStepSave];
 
 /** Live view of a running scan: radar, step tracker, progress and speed / time-left figures. */
@@ -31,6 +33,7 @@ export const ScanPanel: React.FC<IScanPanelProps> = ({ progress, isSaving }) => 
   const startedAt = useRef(Date.now());
   const readStartedAt = useRef<number | undefined>(undefined);
   const lastAnnounced = useRef(-1);
+  const rateSamples = useRef<{ t: number; items: number }[]>([]);
   const [announcement, setAnnouncement] = useState('');
 
   useEffect(() => {
@@ -54,8 +57,19 @@ export const ScanPanel: React.FC<IScanPanelProps> = ({ progress, isSaving }) => 
   const reading = progress.phase === 'reading-files';
   const fraction =
     reading && progress.itemsExpected > 0 ? Math.min(1, progress.itemsRead / progress.itemsExpected) : undefined;
+  // Speed over the last minute, not the whole run: the first libraries are
+  // mostly per-library overhead and would make the estimate far too long.
+  const samples = rateSamples.current;
+  if (reading && (samples.length === 0 || samples[samples.length - 1].items !== progress.itemsRead)) {
+    samples.push({ t: Date.now(), items: progress.itemsRead });
+  }
+  while (samples.length > 2 && now - samples[1].t > RATE_WINDOW_MS) {
+    samples.shift();
+  }
+  const first = samples[0];
+  const windowSeconds = first ? (now - first.t) / 1000 : 0;
   const readSeconds = readStartedAt.current ? (now - readStartedAt.current) / 1000 : 0;
-  const rate = readSeconds >= 3 ? progress.itemsRead / readSeconds : 0;
+  const rate = readSeconds >= 5 && windowSeconds > 0 ? (progress.itemsRead - first.items) / windowSeconds : 0;
   const remaining = Math.max(0, progress.itemsExpected - progress.itemsRead);
   const eta = rate > 0 && progress.itemsRead >= 1000 ? (remaining / rate) * 1000 : undefined;
 

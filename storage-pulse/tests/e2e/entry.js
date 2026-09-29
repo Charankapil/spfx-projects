@@ -17,6 +17,7 @@ function render(extra) {
     scope: 'siteCollection',
     thresholdMonths: 12,
     scanPermission: 'owners',
+    scanMode: 'quick',
     includeHidden: false,
     excludeSystemLibraries: false,
     excludedLibraries: [],

@@ -43,3 +43,21 @@ export function cssModules() {
     }
   };
 }
+
+/** Points imports of src/webparts/** at the compiled lib/webparts/**.js from the SPFx build. */
+export function compiledLib() {
+  const src = path.join(PROJECT, 'src', 'webparts') + path.sep;
+  const lib = path.join(PROJECT, 'lib', 'webparts') + path.sep;
+  return {
+    name: 'compiled-lib',
+    setup(build) {
+      build.onResolve({ filter: /src\/webparts\// }, (args) => {
+        const absolute = path.resolve(args.resolveDir, args.path).replace(/\.tsx?$/, '');
+        if (absolute.indexOf(src) !== 0) {
+          return undefined;
+        }
+        return { path: lib + absolute.substring(src.length) + '.js' };
+      });
+    }
+  };
+}

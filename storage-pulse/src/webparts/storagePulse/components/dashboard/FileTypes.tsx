@@ -101,6 +101,11 @@ export const FileTypes: React.FC<IFileTypesProps> = ({ result, thresholdMonths }
       });
   }, [splits, view]);
 
+  const notItemised = useMemo(() => {
+    const measured = result.libraries.filter((l) => l.measuredAsWhole);
+    return { count: measured.length, bytes: measured.reduce((sum, l) => sum + l.bytes, 0) };
+  }, [result]);
+
   const sorted = useMemo(() => rows.slice().sort((a, b) => b.split[sortKey] - a.split[sortKey]), [rows, sortKey]);
 
   if (!splits) {
@@ -134,6 +139,11 @@ export const FileTypes: React.FC<IFileTypesProps> = ({ result, thresholdMonths }
         <div>
           <h3 className={styles.cardTitle}>{strings.TypesTitle}</h3>
           <div className={styles.cardSubtitle}>{format(strings.TypesSubtitle, { period })}</div>
+          {notItemised.count > 0 && (
+            <div className={styles.cardSubtitle}>
+              {format(strings.TypesNotItemised, { size: formatBytes(notItemised.bytes), count: notItemised.count })}
+            </div>
+          )}
           {biggestInactive && biggestInactive.split.inactiveBytes > 0 && (
             <div className={styles.highlight}>
               <Icon iconName="Lightbulb" className={styles.insightIcon} />

@@ -14,7 +14,7 @@ import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 
 import * as strings from 'StoragePulseWebPartStrings';
 import { StoragePulse } from './components/StoragePulse';
-import { IStoragePulseProps, IStoragePulseTheme, ScanPermission } from './components/IStoragePulseProps';
+import { IStoragePulseProps, IStoragePulseTheme, ScanMode, ScanPermission } from './components/IStoragePulseProps';
 import { format, thresholdLabel } from './components/text';
 import { ScanScope } from './models/IScanResult';
 import { DEFAULT_THRESHOLD_MONTHS, THRESHOLD_OPTIONS } from './services/activity';
@@ -24,6 +24,7 @@ export interface IStoragePulseWebPartProps {
   scope: ScanScope;
   thresholdMonths: number;
   scanPermission: ScanPermission;
+  scanMode: ScanMode;
   includeHidden: boolean;
   excludeSystemLibraries: boolean;
   /** One library title or URL name per line. */
@@ -100,6 +101,8 @@ export default class StoragePulseWebPart extends BaseClientSideWebPart<IStorageP
       scope: this.properties.scope === 'currentWeb' ? 'currentWeb' : 'siteCollection',
       thresholdMonths: THRESHOLD_OPTIONS.indexOf(threshold) >= 0 ? threshold : DEFAULT_THRESHOLD_MONTHS,
       scanPermission: this.properties.scanPermission === 'everyone' ? 'everyone' : 'owners',
+      // Pages added before v2.1 have no scan mode set; they get the quick scan too.
+      scanMode: this.properties.scanMode === 'detailed' ? 'detailed' : 'quick',
       includeHidden: this.properties.includeHidden === true,
       excludeSystemLibraries: this.properties.excludeSystemLibraries === true,
       excludedLibraries: (this.properties.excludedLibraries || '')
@@ -156,6 +159,13 @@ export default class StoragePulseWebPart extends BaseClientSideWebPart<IStorageP
                   options: [
                     { key: 'siteCollection', text: strings.ScopeSiteCollection },
                     { key: 'currentWeb', text: strings.ScopeCurrentWeb }
+                  ]
+                }),
+                PropertyPaneDropdown('scanMode', {
+                  label: strings.ScanModeLabel,
+                  options: [
+                    { key: 'quick', text: strings.ScanModeQuick },
+                    { key: 'detailed', text: strings.ScanModeDetailed }
                   ]
                 }),
                 PropertyPaneToggle('includeHidden', {

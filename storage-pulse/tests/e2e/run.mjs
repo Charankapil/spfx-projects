@@ -55,6 +55,40 @@ test('owner scan: totals match, results are saved, "saved by" comes from SharePo
   await page.close();
 });
 
+test('failures are listed with their reason, and Retry failed fixes them', async () => {
+  const { page, errors } = await open({ mock: { flaky: true } });
+  await scanToEnd(page);
+  await page.getByRole('heading', { name: 'Scan issues' }).waitFor();
+  assert.ok(await page.getByText(/Flaky Library/).first().isVisible());
+  assert.ok(await page.getByText(/server error or timed out/).first().isVisible());
+  // The summary no longer blames access.
+  assert.equal(await page.getByText(/with your access/).count(), 0);
+  if (shots) {
+    await page.locator('section[aria-label="Scan issues"]').screenshot({ path: path.join(shots, 'scan-issues.png') });
+  }
+  await page.evaluate(() => window.__sp.heal());
+  await page.getByRole('button', { name: /Retry failed/ }).click();
+  await page.getByText(/Retried the parts that failed/).waitFor({ timeout: 60000 });
+  // Only the restricted HR site is left (it really is inaccessible).
+  assert.ok(await page.getByText(/1 still could not be read/).isVisible());
+  assert.equal(await page.locator('section[aria-label="Scan issues"] li').count(), 1);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('a quick scan marks libraries measured as a whole and approximate periods', async () => {
+  const { page } = await open({ mock: {} });
+  await scanToEnd(page);
+  assert.ok(await page.getByText(/Quick scan: \d+ libraries/).isVisible());
+  assert.ok(await page.getByText(/measured as a whole/).first().isVisible());
+  assert.ok(await page.getByText(/Where the site collection storage goes/).isVisible());
+  await page.getByRole('combobox').click();
+  assert.ok(await page.getByRole('option', { name: '2 years (approx.)' }).isVisible());
+  assert.ok(await page.getByRole('option', { name: '6 months', exact: true }).isVisible());
+  await page.keyboard.press('Escape');
+  await page.close();
+});
+
 test('a tampered results file cannot inject script links', async () => {
   const { page: seed } = await open({ mock: {} });
   await scanToEnd(seed);
@@ -115,12 +149,19 @@ test('old results show the stale banner', async () => {
 test('Cancel stops a scan straight away during throttling', async () => {
   const { page } = await open({ mock: { alwaysThrottle: true } });
   await page.getByRole('button', { name: 'Start scan' }).first().click();
-  await page.waitForFunction(() => /Busy Library/.test(document.body.innerText), null, { timeout: 30000 });
+  // Wait until the always-throttled library has been asked for items (the scan is now in its 120 s wait).
+  await page.waitForFunction(
+    () => window.__sp.log.some((l) => l.indexOf("dddddddd-0000-0000-0000-000000000001')/items?$select=Id,FSObjType") >= 0),
+    null,
+    { timeout: 30000 }
+  );
   await page.waitForTimeout(500);
   const t0 = Date.now();
   await page.getByRole('button', { name: 'Cancel' }).click();
-  await page.getByText('Scan cancelled').waitFor({ timeout: 5000 });
+  await page.getByText('Scan cancelled. Any previous results are still shown.').waitFor({ timeout: 5000 });
   assert.ok(Date.now() - t0 < 2000);
+  // A cancel is not a failure: no half-finished results or "issues" appear.
+  assert.equal(await page.getByRole('heading', { name: 'Scan issues' }).count(), 0);
   if (shots) {
     // (the scan panel itself is captured in the dark-mode test)
   }
@@ -128,10 +169,10 @@ test('Cancel stops a scan straight away during throttling', async () => {
 });
 
 test('dark mode and phone width render without horizontal scrolling', async () => {
-  const { page, errors } = await open({ mock: { bigItems: 60000 }, props: { theme: { isDark: true } } });
+  const { page, errors } = await open({ mock: { bigItems: 150000, extraLibraries: 20 }, props: { theme: { isDark: true } } });
   await page.getByRole('button', { name: 'Start scan' }).first().click();
   await page.waitForFunction(() => /Items read/i.test(document.body.innerText), null, { timeout: 30000 });
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(700);
   if (shots) {
     await page.locator('section[aria-label="Scanning…"]').screenshot({ path: path.join(shots, 'scan-panel-dark.png') });
   }

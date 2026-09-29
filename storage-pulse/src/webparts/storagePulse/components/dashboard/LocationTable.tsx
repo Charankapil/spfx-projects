@@ -76,7 +76,7 @@ export const LocationTable: React.FC<ILocationTableProps> = ({ result, threshold
         buildRow(
           `${lib.webUrl}|${lib.id}`,
           lib.title,
-          lib.webTitle,
+          lib.measuredAsWhole ? `${lib.webTitle} · ${strings.MeasuredWhole}` : lib.webTitle,
           lib.url,
           lib.histogram,
           thresholdMonths,

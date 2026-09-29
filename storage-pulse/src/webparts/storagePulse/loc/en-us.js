@@ -19,6 +19,9 @@ define([], function () {
     ScanPermissionLabel: 'Who can run a scan',
     ScanPermissionOwners: 'Site owners and site collection admins',
     ScanPermissionEveryone: 'Everyone who can open the page (their scans are shown only to them)',
+    ScanModeLabel: 'How to scan',
+    ScanModeQuick: 'Quick: measure libraries with no recent changes as a whole (recommended for large sites)',
+    ScanModeDetailed: 'Detailed: read every file',
     StaleAfterLabel: 'Warn when results are older than (days, 0 = never)',
     AboutText: 'Storage Pulse {version}. Runs with the signed-in user’s own SharePoint permissions: no app registration and no API permissions.',
 
@@ -37,6 +40,10 @@ define([], function () {
     RunNewScan: 'Run new scan',
     Cancel: 'Cancel',
     ExportCsv: 'Export CSV',
+    RetryFailed: 'Retry failed ({count})',
+    QuickScanTag: 'quick scan',
+    DetailedScanTag: 'detailed scan',
+    ApproxSuffix: ' (approx.)',
 
     // Messages
     ScanCancelled: 'Scan cancelled. Any previous results are still shown.',
@@ -46,6 +53,8 @@ define([], function () {
     SaveFailed: 'The scan finished, but the results could not be saved for other people ({error}). They are shown here until you leave the page.',
     LoadFailed: 'The last saved scan could not be loaded ({error}). Run a new scan to replace it.',
     StaleResults: 'These results are {days} days old, so files may have changed since.',
+    RetryAllRead: 'Retried the parts that failed. Everything was read this time.',
+    RetrySomeLeft: 'Retried the parts that failed. {count} still could not be read; see Scan issues.',
     StaleResultsCanScan: 'These results are {days} days old. Run a new scan to refresh them.',
 
     // Scan panel
@@ -92,10 +101,30 @@ define([], function () {
     InsightDormantOne: '1 library has had no file changed for {period} or more ({size}). It is marked “Dormant” below.',
     InsightDormantMany: '{count} libraries have had no file changed for {period} or more ({size}). They are marked “Dormant” below.',
     InsightVersions: 'Version history takes a further {size} in the libraries SharePoint reported it for. It is not in the figures above; lower version limits can reduce it.',
-    InsightFailedOne: '1 site or library could not be read fully with your access, so the totals may be lower than the real figure. See the tables below or the CSV.',
-    InsightFailedMany: '{count} sites or libraries could not be read fully with your access, so the totals may be lower than the real figure. See the tables below or the CSV.',
+    InsightFailedOne: '1 site or library could not be read completely, so the totals may be lower than the real figure. The reason is listed under \u201cScan issues\u201d below.',
+    InsightFailedMany: '{count} sites or libraries could not be read completely, so the totals may be lower than the real figure. The reasons are listed under \u201cScan issues\u201d below.',
     InsightHidden: '{count} items that SharePoint counts in these libraries were not visible to {name}, usually because of item-level permissions, so they are not in the totals. A site collection administrator’s scan includes them.',
     TheScanner: 'the person who ran the scan',
+
+    // Storage breakdown
+    BreakdownTitle: 'Where the site collection storage goes',
+    BreakdownActive: 'Active files',
+    BreakdownInactive: 'Inactive files',
+    BreakdownVersions: 'Version history',
+    BreakdownOther: 'Other',
+    BreakdownVersionsHint: 'Older versions of files. {dormant} of it is in libraries with no changes for {period} or more.',
+    BreakdownOtherHint: 'Recycle bins, libraries not scanned (hidden, skipped or unreadable), lists and attachments.',
+    BreakdownAria: 'Site collection storage: {parts}',
+
+    // Quick scan and issues
+    QuickNote: 'Quick scan: {count} libraries with no changes for {period} or more ({size}) were measured as a whole from SharePoint\u2019s storage metrics. The split is exact for \u201cInactive after\u201d up to {period}; for longer periods those libraries count by the date of their last change. They are not broken down by file type or included in the largest files.',
+    MeasuredWhole: 'measured as a whole',
+    TypesNotItemised: '{size} in {count} libraries measured as a whole (quick scan) is not broken down by file type.',
+    IssuesTitle: 'Scan issues',
+    IssuesSubtitle: 'These sites and libraries could not be read completely. \u201cRetry failed\u201d reads only these again.',
+    IssueKindSite: 'Site',
+    IssueKindLibrary: 'Library',
+    IssueHidden: '{hidden} of {total} items were not visible to the person who ran the scan (item-level permissions), so they are not counted.',
 
     // Age chart
     AgeTitle: 'Storage by time since last modified',

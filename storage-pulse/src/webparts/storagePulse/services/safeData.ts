@@ -124,6 +124,18 @@ function library(raw: ILibraryResult, origin: string): ILibraryResult | undefine
   };
   if (raw.metrics) {
     lib.metrics = { totalSize: count(raw.metrics.totalSize), fileStreamSize: count(raw.metrics.fileStreamSize) };
+    if (raw.metrics.fileCount !== undefined) {
+      lib.metrics.fileCount = count(raw.metrics.fileCount);
+    }
+    if (isDate(raw.metrics.lastModified)) {
+      lib.metrics.lastModified = raw.metrics.lastModified;
+    }
+  }
+  if (raw.measuredAsWhole && isDate(raw.measuredAsWhole.lastChange)) {
+    lib.measuredAsWhole = {
+      lastChange: raw.measuredAsWhole.lastChange,
+      dormantMonths: Math.min(MAX_AGE_MONTHS, Math.floor(count(raw.measuredAsWhole.dormantMonths)))
+    };
   }
   if (raw.error) {
     lib.error = text(raw.error);
@@ -208,6 +220,10 @@ export function sanitizeResult(value: unknown, origin: string): IScanResult | un
           excludeSystemLibraries: options.excludeSystemLibraries === true,
           excludedLibraries: Array.isArray(options.excludedLibraries) ? options.excludedLibraries.map((n) => text(n)).slice(0, 100) : []
         }
-      : undefined
+      : undefined,
+    quickAfterMonths:
+      typeof raw.quickAfterMonths === 'number' && isFinite(raw.quickAfterMonths) && raw.quickAfterMonths > 0
+        ? Math.floor(raw.quickAfterMonths)
+        : undefined
   };
 }

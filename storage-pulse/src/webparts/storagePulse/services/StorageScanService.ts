@@ -35,10 +35,12 @@ interface IListListItem {
   Hidden?: boolean;
   IsCatalog?: boolean;
   BaseTemplate?: number;
+  /** Last time a person changed anything in the list (not system updates). */
+  LastItemUserModifiedDate?: string;
   RootFolder: { ServerRelativeUrl: string };
 }
 
-/** Which libraries a scan reads; set by the site owner in the web part properties. */
+/** Which libraries a scan reads, and how; set by the site owner in the web part properties. */
 export interface IScanOptions {
   scope: ScanScope;
   /** Also read hidden libraries, such as the Preservation Hold Library. Catalogs (_catalogs/*) are always skipped. */
@@ -47,6 +49,12 @@ export interface IScanOptions {
   excludeSystemLibraries: boolean;
   /** Library titles or URL names to skip, compared case-insensitively. */
   excludedLibraries: string[];
+  /**
+   * Quick scan: libraries nobody has changed for at least this many months are
+   * measured as a whole from SharePoint's storage metrics (one request)
+   * instead of file by file. Undefined for a detailed scan.
+   */
+  quickAfterMonths?: number;
 }
 
 /** URL names of the libraries SharePoint creates for the site itself rather than for people's files. */
@@ -65,15 +73,18 @@ interface IFileItem {
 
 interface IItemsPage {
   value?: IFileItem[];
-  'odata.nextLink'?: string;
-  '@odata.nextLink'?: string;
 }
 
 interface IStorageMetricsResponse {
-  StorageMetrics?: { TotalSize?: number | string; TotalFileStreamSize?: number | string };
+  StorageMetrics?: {
+    TotalSize?: number | string;
+    TotalFileStreamSize?: number | string;
+    TotalFileCount?: number | string;
+    LastModified?: string;
+  };
 }
 
-const REQUEST_GAP_MS = 150;
+const REQUEST_GAP_MS = 100;
 /**
  * Throttling is expected on long scans, so a throttled request waits and
  * tries again for a long time (about half an hour in total) rather than
@@ -89,14 +100,21 @@ const MAX_BACKOFF_SECONDS = 300;
  * smaller to download and parse.
  */
 const JSON_OPTIONS = { headers: { Accept: 'application/json;odata.metadata=nometadata' } };
+/** Libraries read at the same time. Most of a scan of many small libraries is per-library overhead. */
+const LIBRARY_CONCURRENCY = 4;
+/** Readers per large library (one ID range each). */
+const PARALLEL_READERS = 3;
+/** Requests in flight at once across the whole scan, to stay friendly to SharePoint's throttling. */
+const MAX_CONCURRENT_REQUESTS = 6;
 /** Libraries with more items than this are split into ID ranges read in parallel. */
 const PARALLEL_ITEM_THRESHOLD = 20000;
-const PARALLEL_READERS = 3;
 const IDS_PER_RANGE = 50000;
 /** The REST items endpoint returns at most 5,000 items per page. */
 const MAX_PAGE_SIZE = 5000;
 /** A page that fails for a reason other than throttling is retried with fewer items, down to this size. */
 const MIN_PAGE_SIZE = 500;
+/** After a batch still fails at the smallest size it is skipped; a range gives up after this many skips. */
+const MAX_SKIPPED_BATCHES = 20;
 const LARGEST_FILES_KEPT = 200;
 /**
  * Distinct extensions tracked per library. Libraries full of odd names
@@ -107,12 +125,65 @@ const MAX_FILE_TYPES_PER_LIBRARY = 300;
 
 type FileTypeMap = Map<string, IFileTypeStat>;
 
-export class ScanCancelledError extends Error {}
+/*
+ * The SPFx build compiles to ES5, where a subclass of Error loses its
+ * prototype: `instanceof ScanCancelledError` would always be false and a
+ * cancel (or an HTTP status) would be mistaken for some other failure. Both
+ * classes therefore restore their prototype explicitly.
+ */
+function restorePrototype(instance: object, prototype: object): void {
+  // Object.setPrototypeOf exists in every browser SharePoint supports; the ES5 typings just do not declare it.
+  (Object as unknown as { setPrototypeOf(o: object, p: object): object }).setPrototypeOf(instance, prototype);
+}
 
-class HttpError extends Error {
-  constructor(public status: number, message: string) {
+export class ScanCancelledError extends Error {
+  constructor(message: string) {
     super(message);
+    restorePrototype(this, ScanCancelledError.prototype);
+    this.name = 'ScanCancelledError';
   }
+}
+
+export class HttpError extends Error {
+  public status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    restorePrototype(this, HttpError.prototype);
+    this.name = 'HttpError';
+    this.status = status;
+  }
+}
+
+/**
+ * Says why a request failed in terms a site owner can act on. A site
+ * collection admin can still see these: throttling, timeouts and SharePoint
+ * refusing a query are not permission problems.
+ */
+export function describeFailure(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (err instanceof HttpError) {
+    if (err.status === 429 || err.status === 503) {
+      return `SharePoint kept throttling the requests (${message})`;
+    }
+    if (err.status === 401 || err.status === 403) {
+      return `Access denied (${message})`;
+    }
+    if (err.status === 404) {
+      return `Not found - it may have been deleted during the scan (${message})`;
+    }
+    if (/threshold/i.test(message)) {
+      return `SharePoint refused the query because of the list view threshold (${message})`;
+    }
+    if (err.status >= 500) {
+      return `SharePoint returned a server error or timed out (${message})`;
+    }
+    return message;
+  }
+  if (/fetch|network/i.test(message)) {
+    return `The network connection dropped (${message})`;
+  }
+  return message;
 }
 
 function toNumber(value: number | string | undefined | null): number {
@@ -123,17 +194,18 @@ function toNumber(value: number | string | undefined | null): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
-function setPageSize(url: string, size: number): string {
-  if (/([?&](\$|%24)top=)\d+/i.test(url)) {
-    return url.replace(/([?&](\$|%24)top=)\d+/i, `$1${size}`);
-  }
-  return `${url}${url.indexOf('?') >= 0 ? '&' : '?'}$top=${size}`;
+/** One ID window of a library: items with from < Id <= to (to undefined = open-ended). */
+interface IIdRange {
+  from: number;
+  to?: number;
 }
 
 export class StorageScanService {
   private cancelled = false;
   /** Pending waits, so Cancel can end a long throttling back-off at once instead of after it. */
   private waiters: (() => void)[] = [];
+  private inFlight = 0;
+  private slotQueue: { resolve: () => void; reject: (e: Error) => void }[] = [];
 
   constructor(private context: WebPartContext) {}
 
@@ -142,6 +214,16 @@ export class StorageScanService {
     const waiters = this.waiters;
     this.waiters = [];
     waiters.forEach((wake) => wake());
+    const queued = this.slotQueue;
+    this.slotQueue = [];
+    queued.forEach((q) => q.reject(new ScanCancelledError('Scan cancelled.')));
+  }
+
+  private reset(): void {
+    this.cancelled = false;
+    this.waiters = [];
+    this.slotQueue = [];
+    this.inFlight = 0;
   }
 
   private throwIfCancelled(): void {
@@ -166,13 +248,41 @@ export class StorageScanService {
     });
   }
 
-  /** GET with SharePoint throttling (429/503) handled by waiting for Retry-After. */
-  private async getJson<T>(url: string, throttleAttempt = 0, networkAttempt = 0): Promise<T> {
+  /** Waits for one of the MAX_CONCURRENT_REQUESTS slots. */
+  private acquireSlot(): Promise<void> {
     this.throwIfCancelled();
+    if (this.inFlight < MAX_CONCURRENT_REQUESTS) {
+      this.inFlight++;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve, reject) => {
+      this.slotQueue.push({
+        resolve: () => {
+          this.inFlight++;
+          resolve();
+        },
+        reject
+      });
+    });
+  }
+
+  private releaseSlot(): void {
+    this.inFlight--;
+    const next = this.slotQueue.shift();
+    if (next) {
+      next.resolve();
+    }
+  }
+
+  /** GET with SharePoint throttling (429/503) handled by waiting for Retry-After. The slot is not held while waiting. */
+  private async getJson<T>(url: string, throttleAttempt = 0, networkAttempt = 0): Promise<T> {
+    await this.acquireSlot();
     let response: SPHttpClientResponse;
     try {
       response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, JSON_OPTIONS);
     } catch (err) {
+      this.releaseSlot();
+      this.throwIfCancelled();
       // Network failure or timeout (no response at all): retry with its own counter.
       if (networkAttempt < MAX_NETWORK_RETRIES) {
         await this.delay(2000 * (networkAttempt + 1));
@@ -180,11 +290,25 @@ export class StorageScanService {
       }
       throw err;
     }
+
+    let body: T | undefined;
+    let failure: HttpError | undefined;
+    try {
+      if (response.ok) {
+        body = (await response.json()) as T;
+      } else if (response.status !== 429 && response.status !== 503) {
+        const detail = await describeError(response);
+        console.error(`[Storage Pulse] ${response.status} from ${url}: ${detail}`);
+        failure = new HttpError(response.status, `${response.status}: ${detail}`);
+      }
+    } finally {
+      this.releaseSlot();
+    }
     this.throwIfCancelled();
 
     if (response.status === 429 || response.status === 503) {
       if (throttleAttempt >= MAX_THROTTLE_RETRIES) {
-        throw new HttpError(response.status, 'SharePoint throttled this request too many times. Try again later.');
+        throw new HttpError(response.status, `${response.status}: throttled ${MAX_THROTTLE_RETRIES} times in a row`);
       }
       const header = response.headers.get('Retry-After');
       const seconds = header ? parseInt(header, 10) : NaN;
@@ -192,20 +316,20 @@ export class StorageScanService {
       await this.delay((isNaN(seconds) || seconds < 0 ? backoff : Math.min(seconds, MAX_BACKOFF_SECONDS)) * 1000);
       return this.getJson<T>(url, throttleAttempt + 1, networkAttempt);
     }
-
-    if (!response.ok) {
-      const detail = await describeError(response);
-      console.error(`[Storage Pulse] ${response.status} from ${url}: ${detail}`);
-      throw new HttpError(response.status, `${response.status}: ${detail}`);
+    if (failure) {
+      throw failure;
     }
-
     await this.delay(REQUEST_GAP_MS);
-    return (await response.json()) as T;
+    return body as T;
+  }
+
+  private get origin(): string {
+    return new URL(this.context.pageContext.site.absoluteUrl).origin;
   }
 
   private toAbsoluteUrl(serverRelativeUrl: string): string {
     // ServerRelativeUrl comes back unencoded; encode it so "#" or "%" in a name cannot break the URL.
-    return `${new URL(this.context.pageContext.site.absoluteUrl).origin}${encodePath(serverRelativeUrl)}`;
+    return `${this.origin}${encodePath(serverRelativeUrl)}`;
   }
 
   /** Site collection storage as SharePoint reports it; readable by anyone who can read the site. */
@@ -252,14 +376,15 @@ export class StorageScanService {
   }
 
   /**
-   * Every visible document library (BaseType 1): Documents, Site Assets,
-   * Site Pages, Style Library, custom libraries and so on - they all count
-   * towards the site's storage.
+   * Every document library (BaseType 1) the options allow: Documents, Site
+   * Assets, Site Pages, custom libraries and so on - they all count towards
+   * the site's storage.
    */
   private async getLibraries(webUrl: string, options: IScanOptions): Promise<IListListItem[]> {
     const json = await this.getJson<{ value?: IListListItem[] }>(
       `${webUrl}/_api/web/lists?$filter=BaseType eq 1` +
-        `&$select=Id,Title,ItemCount,Hidden,IsCatalog,BaseTemplate,RootFolder/ServerRelativeUrl&$expand=RootFolder`
+        `&$select=Id,Title,ItemCount,Hidden,IsCatalog,BaseTemplate,LastItemUserModifiedDate,RootFolder/ServerRelativeUrl` +
+        `&$expand=RootFolder`
     );
     const excluded = options.excludedLibraries.map((n) => n.trim().toLowerCase()).filter((n) => n.length > 0);
     return (json.value || []).filter((list) => {
@@ -282,18 +407,25 @@ export class StorageScanService {
     });
   }
 
-  /** Library storage including version history. Not every user can read it, so failure is not an error. */
+  /**
+   * SharePoint's own storage figures for the whole library: size with and
+   * without version history, file count and the most recent change anywhere
+   * in it. Not every user can read them, so failure is not an error.
+   */
   private async getStorageMetrics(webUrl: string, listId: string): Promise<ILibraryStorageMetrics | undefined> {
     try {
       const json = await this.getJson<IStorageMetricsResponse>(
         `${webUrl}/_api/web/lists(guid'${listId}')/RootFolder?$select=StorageMetrics&$expand=StorageMetrics`
       );
-      if (!json.StorageMetrics) {
+      const m = json.StorageMetrics;
+      if (!m) {
         return undefined;
       }
       return {
-        totalSize: toNumber(json.StorageMetrics.TotalSize),
-        fileStreamSize: toNumber(json.StorageMetrics.TotalFileStreamSize)
+        totalSize: toNumber(m.TotalSize),
+        fileStreamSize: toNumber(m.TotalFileStreamSize),
+        fileCount: m.TotalFileCount === undefined ? undefined : toNumber(m.TotalFileCount),
+        lastModified: m.LastModified
       };
     } catch (err) {
       if (err instanceof ScanCancelledError) {
@@ -301,6 +433,21 @@ export class StorageScanService {
       }
       return undefined;
     }
+  }
+
+  private newLibrary(list: IListListItem, webUrl: string, webTitle: string): ILibraryResult & { lastUserChange?: string } {
+    return {
+      id: list.Id,
+      title: list.Title,
+      webTitle,
+      webUrl,
+      url: this.toAbsoluteUrl(list.RootFolder.ServerRelativeUrl),
+      itemCount: list.ItemCount,
+      files: 0,
+      bytes: 0,
+      histogram: emptyHistogram(),
+      lastUserChange: list.LastItemUserModifiedDate
+    };
   }
 
   private async discoverWebs(
@@ -328,20 +475,10 @@ export class StorageScanService {
       if (err instanceof ScanCancelledError) {
         throw err;
       }
-      errors.push(`Libraries: ${err instanceof Error ? err.message : 'unknown error'}`);
+      errors.push(`Libraries: ${describeFailure(err)}`);
     }
     for (const list of lists) {
-      libraries.push({
-        id: list.Id,
-        title: list.Title,
-        webTitle: title,
-        webUrl,
-        url: this.toAbsoluteUrl(list.RootFolder.ServerRelativeUrl),
-        itemCount: list.ItemCount,
-        files: 0,
-        bytes: 0,
-        histogram: emptyHistogram()
-      });
+      libraries.push(this.newLibrary(list, webUrl, title));
       progress.itemsExpected += list.ItemCount;
     }
     progress.librariesFound = libraries.length;
@@ -354,83 +491,89 @@ export class StorageScanService {
       if (err instanceof ScanCancelledError) {
         throw err;
       }
-      errors.push(`Subsites: ${err instanceof Error ? err.message : 'unknown error'}`);
+      errors.push(`Subsites: ${describeFailure(err)}`);
     }
     if (errors.length > 0) {
       web.error = errors.join(' | ');
     }
 
     for (const sub of subwebs) {
-      await this.discoverWebs(
-        this.toAbsoluteUrl(sub.ServerRelativeUrl),
-        sub.Title,
-        webs,
-        libraries,
-        options,
-        progress,
-        onProgress
-      );
+      await this.discoverWebs(this.toAbsoluteUrl(sub.ServerRelativeUrl), sub.Title, webs, libraries, options, progress, onProgress);
     }
   }
 
-  /**
-   * Reads one page of items, halving the page size on failures other than
-   * throttling (very large pages can time out on busy libraries).
-   */
-  private async getItemsPage(url: string, pageSize: number): Promise<{ page: IItemsPage; pageSize: number }> {
-    let size = pageSize;
-    for (;;) {
-      try {
-        const page = await this.getJson<IItemsPage>(setPageSize(url, size));
-        return { page, pageSize: size };
-      } catch (err) {
-        const retryable = err instanceof HttpError ? err.status >= 500 && err.status !== 503 : !(err instanceof ScanCancelledError);
-        if (!retryable || size <= MIN_PAGE_SIZE) {
-          throw err;
-        }
-        size = Math.max(MIN_PAGE_SIZE, Math.floor(size / 2));
-      }
-    }
-  }
-
-  /**
-   * Splits a big library into ID ranges so several readers can page through
-   * it at once. ID is the list's primary key, so filtering on it is allowed
-   * on libraries of any size. Small libraries, or any library whose highest
-   * ID cannot be read, are read as one range.
-   */
-  private async planRanges(library: ILibraryResult): Promise<(string | undefined)[]> {
-    if (library.itemCount <= PARALLEL_ITEM_THRESHOLD) {
-      return [undefined];
-    }
-    let maxId = 0;
+  /** The library's highest item ID, or undefined if it cannot be read. */
+  private async getMaxId(library: ILibraryResult): Promise<number | undefined> {
     try {
       const json = await this.getJson<IItemsPage>(
         `${library.webUrl}/_api/web/lists(guid'${library.id}')/items?$select=Id&$orderby=Id desc&$top=1`
       );
       const top = (json.value || [])[0];
-      maxId = top ? Number(top.Id !== undefined ? top.Id : top.ID) || 0 : 0;
+      return top ? Number(top.Id !== undefined ? top.Id : top.ID) || 0 : 0;
     } catch (err) {
       if (err instanceof ScanCancelledError) {
         throw err;
       }
+      return undefined;
     }
-    if (maxId <= IDS_PER_RANGE) {
-      return [undefined];
+  }
+
+  /**
+   * Splits a library into ID ranges so several readers can page through it
+   * at once. ID is the list's primary key, so filtering on it is allowed on
+   * libraries of any size. The last range is open-ended so files added during
+   * the scan are not missed.
+   */
+  private planRanges(library: ILibraryResult, maxId: number | undefined): IIdRange[] {
+    if (library.itemCount <= PARALLEL_ITEM_THRESHOLD || !maxId || maxId <= IDS_PER_RANGE) {
+      return [{ from: 0 }];
     }
-    const ranges: string[] = [];
+    const ranges: IIdRange[] = [];
     for (let from = 0; from < maxId; from += IDS_PER_RANGE) {
-      // The last range is open-ended so files added during the scan are not missed.
-      ranges.push(from + IDS_PER_RANGE >= maxId ? `Id gt ${from}` : `Id gt ${from} and Id le ${from + IDS_PER_RANGE}`);
+      ranges.push(from + IDS_PER_RANGE >= maxId ? { from } : { from, to: from + IDS_PER_RANGE });
     }
     return ranges;
   }
 
   /**
+   * Quick scan shortcut: a library nobody has changed for at least the quick
+   * threshold is measured from its storage metrics. SharePoint updates the
+   * list's LastItemUserModifiedDate (and the metrics' LastModified) on any
+   * change by a person, so every file in it is at least that old.
+   */
+  private measureAsWhole(
+    library: ILibraryResult & { lastUserChange?: string },
+    metrics: ILibraryStorageMetrics | undefined,
+    scanStart: Date,
+    quickAfterMonths: number | undefined
+  ): boolean {
+    if (quickAfterMonths === undefined || !metrics || metrics.fileCount === undefined || !library.lastUserChange) {
+      return false;
+    }
+    const dates = [library.lastUserChange, metrics.lastModified]
+      .map((d) => (d ? new Date(d) : undefined))
+      .filter((d): d is Date => !!d && !isNaN(d.getTime()));
+    if (dates.length === 0) {
+      return false;
+    }
+    const lastChange = new Date(Math.max(...dates.map((d) => d.getTime())));
+    const dormantMonths = ageInMonths(lastChange, scanStart);
+    if (dormantMonths < quickAfterMonths) {
+      return false;
+    }
+    library.files = metrics.fileCount;
+    library.bytes = metrics.fileStreamSize;
+    library.histogram.counts[dormantMonths] += metrics.fileCount;
+    library.histogram.bytes[dormantMonths] += metrics.fileStreamSize;
+    library.measuredAsWhole = { lastChange: lastChange.toISOString(), dormantMonths };
+    return true;
+  }
+
+  /**
    * Reads every item in the library, keeping only each file's size and last
    * modified date. Large libraries are read by several readers in parallel,
-   * one ID range each. A range that fails is recorded and the others carry
-   * on, so one bad page does not lose the rest of a million-file library.
+   * one ID range each. A batch that keeps failing is skipped and recorded;
+   * the rest of the library is still read.
    */
   private async readLibrary(
     library: ILibraryResult,
@@ -439,28 +582,34 @@ export class StorageScanService {
     progress: IScanProgress,
     onProgress: (p: IScanProgress) => void
   ): Promise<void> {
-    const ranges = await this.planRanges(library);
+    // The highest ID is only needed to split big libraries, or to skip past a bad batch.
+    let maxId: Promise<number | undefined> | undefined =
+      library.itemCount > PARALLEL_ITEM_THRESHOLD ? this.getMaxId(library) : undefined;
+    const lastId = (): Promise<number | undefined> => {
+      if (!maxId) {
+        maxId = this.getMaxId(library);
+      }
+      return maxId;
+    };
+    const ranges = this.planRanges(library, maxId ? await maxId : undefined);
     const types: FileTypeMap = new Map<string, IFileTypeStat>();
     const errors: string[] = [];
     let itemsSeen = 0;
+    let skippedBatches = 0;
     let nextRange = 0;
 
     const reader = async (): Promise<void> => {
       while (nextRange < ranges.length) {
-        const filter = ranges[nextRange++];
-        try {
-          // Not "itemsSeen += await ...": that reads itemsSeen before the await and loses other readers' counts.
-          const seenInRange = await this.readRange(library, filter, scanStart, types, largest, progress, onProgress);
-          itemsSeen += seenInRange;
-        } catch (err) {
-          if (err instanceof ScanCancelledError) {
-            throw err;
+        const range = ranges[nextRange++];
+        // Not "itemsSeen += await ...": that reads itemsSeen before the await and loses other readers' counts.
+        const outcome = await this.readRange(library, range, lastId, scanStart, types, largest, progress, onProgress);
+        itemsSeen += outcome.seen;
+        skippedBatches += outcome.skipped;
+        outcome.errors.forEach((e) => {
+          if (errors.indexOf(e) < 0) {
+            errors.push(e);
           }
-          const message = err instanceof Error ? err.message : 'unknown error';
-          if (errors.indexOf(message) < 0) {
-            errors.push(message);
-          }
-        }
+        });
       }
     };
     const readers: Promise<void>[] = [];
@@ -475,7 +624,9 @@ export class StorageScanService {
     library.fileTypes = fileTypes;
 
     if (errors.length > 0) {
-      library.error = errors.join(' | ');
+      library.error =
+        (skippedBatches > 0 ? `${skippedBatches} batch(es) of up to ${MIN_PAGE_SIZE} items could not be read. ` : '') +
+        errors.join(' | ');
       library.partial = library.files > 0;
     }
     // ItemCount counts every item, including ones the user cannot see. A
@@ -486,38 +637,78 @@ export class StorageScanService {
     }
   }
 
-  /** Pages through one ID range (or the whole library); returns how many items, files and folders, it saw. */
+  /**
+   * Pages through one ID range in ID order, using the last ID of each page as
+   * the cursor for the next (no reliance on next links). A page that fails is
+   * retried with fewer items; if even the smallest batch fails, that batch of
+   * IDs is skipped and recorded so one bad item cannot stop the library.
+   */
   private async readRange(
     library: ILibraryResult,
-    filter: string | undefined,
+    range: IIdRange,
+    lastId: () => Promise<number | undefined>,
     scanStart: Date,
     types: FileTypeMap,
     largest: ILargeFile[],
     progress: IScanProgress,
     onProgress: (p: IScanProgress) => void
-  ): Promise<number> {
+  ): Promise<{ seen: number; skipped: number; errors: string[] }> {
     const histogram: IAgeHistogram = library.histogram;
-    const base =
-      `${library.webUrl}/_api/web/lists(guid'${library.id}')/items` +
-      `?$select=Id,FSObjType,Modified,FileRef,File/Length&$expand=File` +
-      (filter ? `&$filter=${encodeURIComponent(filter)}` : '');
-    let next: string | undefined = `${base}&$top=${MAX_PAGE_SIZE}`;
+    const itemsUrl = `${library.webUrl}/_api/web/lists(guid'${library.id}')/items`;
+    const errors: string[] = [];
+    let cursor = range.from;
     let pageSize = MAX_PAGE_SIZE;
-    let lastId = 0;
     let seen = 0;
+    let skipped = 0;
+    let successes = 0;
 
-    while (next) {
+    for (;;) {
       this.throwIfCancelled();
-      const result: { page: IItemsPage; pageSize: number } = await this.getItemsPage(next, pageSize);
-      pageSize = result.pageSize;
-      const items = result.page.value || [];
+      const filter = `Id gt ${cursor}${range.to !== undefined ? ` and Id le ${range.to}` : ''}`;
+      const url =
+        `${itemsUrl}?$select=Id,FSObjType,Modified,FileRef,File/Length&$expand=File` +
+        `&$filter=${encodeURIComponent(filter)}&$orderby=Id&$top=${pageSize}`;
+      let items: IFileItem[];
+      try {
+        items = (await this.getJson<IItemsPage>(url)).value || [];
+      } catch (err) {
+        if (err instanceof ScanCancelledError) {
+          throw err;
+        }
+        // Server errors and timeouts may pass with a smaller page; a 4xx will not.
+        const retryable = !(err instanceof HttpError) || (err.status >= 500 && err.status !== 503);
+        successes = 0;
+        if (retryable && pageSize > MIN_PAGE_SIZE) {
+          pageSize = Math.max(MIN_PAGE_SIZE, Math.floor(pageSize / 2));
+          continue;
+        }
+        const reason = describeFailure(err);
+        if (errors.indexOf(reason) < 0) {
+          errors.push(reason);
+        }
+        // Skip this batch of IDs and carry on, unless it keeps happening or there is nothing left.
+        skipped++;
+        const end = range.to !== undefined ? range.to : await lastId();
+        if (!retryable || skipped >= MAX_SKIPPED_BATCHES || end === undefined || cursor + MIN_PAGE_SIZE >= end) {
+          break;
+        }
+        cursor += MIN_PAGE_SIZE;
+        continue;
+      }
+
       seen += items.length;
       progress.itemsRead += items.length;
-
+      const fullPage = items.length >= pageSize;
+      // One slow page should not slow the rest of the library: after a few
+      // successes in a row, try bigger pages again.
+      if (++successes >= 3 && pageSize < MAX_PAGE_SIZE) {
+        pageSize = Math.min(MAX_PAGE_SIZE, pageSize * 2);
+        successes = 0;
+      }
       for (const item of items) {
         const id = Number(item.Id !== undefined ? item.Id : item.ID) || 0;
-        if (id > lastId) {
-          lastId = id;
+        if (id > cursor) {
+          cursor = id;
         }
         const type = item.FSObjType !== undefined ? Number(item.FSObjType) : item.FileSystemObjectType;
         // Folders have FSObjType 1; if the type is missing, a folder is the item without a File.
@@ -564,34 +755,67 @@ export class StorageScanService {
           });
         }
       }
-
       if (largest.length > LARGEST_FILES_KEPT * 2) {
         largest.sort((a, b) => b.bytes - a.bytes);
         largest.length = LARGEST_FILES_KEPT;
       }
       onProgress({ ...progress });
 
-      next = result.page['odata.nextLink'] || result.page['@odata.nextLink'];
-      if (!next && items.length >= pageSize && lastId > 0) {
-        // A full page with no next link: continue from the last ID ourselves
-        // rather than silently stopping short.
-        next = `${base}&$skiptoken=${encodeURIComponent(`Paged=TRUE&p_ID=${lastId}`)}&$top=${pageSize}`;
+      if (!fullPage) {
+        break;
       }
     }
-    return seen;
+    return { seen, skipped, errors };
   }
 
-  public async scan(options: IScanOptions, onProgress: (p: IScanProgress) => void): Promise<IScanResult> {
-    const scope = options.scope;
-    this.cancelled = false;
-    this.waiters = [];
-    const scanStart = new Date();
-    const rootUrl =
-      scope === 'currentWeb' ? this.context.pageContext.web.absoluteUrl : this.context.pageContext.site.absoluteUrl;
+  /** Reads a set of libraries, LIBRARY_CONCURRENCY at a time. */
+  private async readLibraries(
+    libraries: ILibraryResult[],
+    options: IScanOptions,
+    scanStart: Date,
+    largest: ILargeFile[],
+    progress: IScanProgress,
+    onProgress: (p: IScanProgress) => void
+  ): Promise<void> {
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < libraries.length) {
+        const library = libraries[next++] as ILibraryResult & { lastUserChange?: string };
+        this.throwIfCancelled();
+        progress.currentItem = library.url;
+        onProgress({ ...progress });
+        library.metrics = await this.getStorageMetrics(library.webUrl, library.id);
+        if (this.measureAsWhole(library, library.metrics, scanStart, options.quickAfterMonths)) {
+          progress.itemsRead += library.itemCount;
+          progress.filesRead += library.files;
+          progress.bytesRead += library.bytes;
+        } else {
+          try {
+            await this.readLibrary(library, scanStart, largest, progress, onProgress);
+          } catch (err) {
+            if (err instanceof ScanCancelledError) {
+              throw err;
+            }
+            library.error = describeFailure(err);
+            library.partial = library.files > 0;
+          }
+        }
+        delete library.lastUserChange;
+        progress.librariesDone++;
+        onProgress({ ...progress });
+      }
+    };
+    const workers: Promise<void>[] = [];
+    for (let i = 0; i < Math.min(LIBRARY_CONCURRENCY, libraries.length); i++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+  }
 
-    const progress: IScanProgress = {
+  private newProgress(currentItem: string): IScanProgress {
+    return {
       phase: 'starting',
-      currentItem: rootUrl,
+      currentItem,
       websFound: 0,
       librariesFound: 0,
       librariesDone: 0,
@@ -600,6 +824,22 @@ export class StorageScanService {
       filesRead: 0,
       bytesRead: 0
     };
+  }
+
+  private finishLargest(largest: ILargeFile[]): ILargeFile[] {
+    largest.sort((a, b) => b.bytes - a.bytes);
+    largest.length = Math.min(largest.length, LARGEST_FILES_KEPT);
+    return largest;
+  }
+
+  public async scan(options: IScanOptions, onProgress: (p: IScanProgress) => void): Promise<IScanResult> {
+    this.reset();
+    const scope = options.scope;
+    const scanStart = new Date();
+    const rootUrl =
+      scope === 'currentWeb' ? this.context.pageContext.web.absoluteUrl : this.context.pageContext.site.absoluteUrl;
+
+    const progress = this.newProgress(rootUrl);
     onProgress({ ...progress });
 
     const storagePromise = this.getSiteStorage();
@@ -612,26 +852,7 @@ export class StorageScanService {
 
     progress.phase = 'reading-files';
     const largest: ILargeFile[] = [];
-    for (const library of libraries) {
-      this.throwIfCancelled();
-      progress.currentItem = library.url;
-      onProgress({ ...progress });
-      try {
-        await this.readLibrary(library, scanStart, largest, progress, onProgress);
-      } catch (err) {
-        if (err instanceof ScanCancelledError) {
-          throw err;
-        }
-        library.error = err instanceof Error ? err.message : 'unknown error';
-        library.partial = library.files > 0;
-      }
-      library.metrics = await this.getStorageMetrics(library.webUrl, library.id);
-      progress.librariesDone++;
-      onProgress({ ...progress });
-    }
-
-    largest.sort((a, b) => b.bytes - a.bytes);
-    largest.length = Math.min(largest.length, LARGEST_FILES_KEPT);
+    await this.readLibraries(libraries, options, scanStart, largest, progress, onProgress);
 
     const siteStorageBytes = await storagePromise;
     progress.phase = 'completed';
@@ -644,7 +865,7 @@ export class StorageScanService {
       siteStorageBytes,
       webs,
       libraries,
-      largestOldFiles: largest,
+      largestOldFiles: this.finishLargest(largest),
       scanStartedAt: scanStart.toISOString(),
       scanCompletedAt: new Date().toISOString(),
       scannedBy: this.context.pageContext.user.displayName,
@@ -652,7 +873,98 @@ export class StorageScanService {
         includeHidden: options.includeHidden,
         excludeSystemLibraries: options.excludeSystemLibraries,
         excludedLibraries: options.excludedLibraries
+      },
+      quickAfterMonths: options.quickAfterMonths
+    };
+  }
+
+  /**
+   * Scans again only what failed last time: libraries with an error, and the
+   * libraries and subsites of sites whose listing failed. Ages stay measured
+   * from the original scan's start, so the merged result is consistent.
+   */
+  public async retryFailed(previous: IScanResult, options: IScanOptions, onProgress: (p: IScanProgress) => void): Promise<IScanResult> {
+    this.reset();
+    const scanStart = new Date(previous.scanStartedAt);
+    const quick = { ...options, quickAfterMonths: previous.quickAfterMonths };
+    const progress = this.newProgress(previous.rootUrl);
+    progress.phase = 'discovering';
+    onProgress({ ...progress });
+
+    const webs = previous.webs.map((w) => ({ ...w }));
+    const knownLibraries = new Set(previous.libraries.map((l) => `${l.webUrl}|${l.id}`));
+    const knownWebs = new Set(webs.map((w) => w.url));
+    const toRead: ILibraryResult[] = [];
+
+    // Failed libraries start again from scratch.
+    const failedKeys = new Set(previous.libraries.filter((l) => l.error).map((l) => `${l.webUrl}|${l.id}`));
+    const kept = previous.libraries.filter((l) => !failedKeys.has(`${l.webUrl}|${l.id}`));
+    for (const lib of previous.libraries.filter((l) => failedKeys.has(`${l.webUrl}|${l.id}`))) {
+      toRead.push({
+        id: lib.id,
+        title: lib.title,
+        webTitle: lib.webTitle,
+        webUrl: lib.webUrl,
+        url: lib.url,
+        itemCount: lib.itemCount,
+        files: 0,
+        bytes: 0,
+        histogram: emptyHistogram()
+      });
+      progress.itemsExpected += lib.itemCount;
+    }
+
+    // Sites whose library list or subsites could not be read are listed again.
+    for (const web of webs.filter((w) => w.error)) {
+      const errors: string[] = [];
+      try {
+        for (const list of await this.getLibraries(web.url, options)) {
+          if (!knownLibraries.has(`${web.url}|${list.Id}`)) {
+            toRead.push(this.newLibrary(list, web.url, web.title));
+            progress.itemsExpected += list.ItemCount;
+          }
+        }
+      } catch (err) {
+        if (err instanceof ScanCancelledError) {
+          throw err;
+        }
+        errors.push(`Libraries: ${describeFailure(err)}`);
       }
+      try {
+        for (const sub of await this.getSubwebs(web.url)) {
+          const url = this.toAbsoluteUrl(sub.ServerRelativeUrl);
+          if (!knownWebs.has(url)) {
+            const added: IWebResult[] = [];
+            await this.discoverWebs(url, sub.Title, added, toRead, options, progress, onProgress);
+            added.forEach((w) => {
+              knownWebs.add(w.url);
+              webs.push(w);
+            });
+          }
+        }
+      } catch (err) {
+        if (err instanceof ScanCancelledError) {
+          throw err;
+        }
+        errors.push(`Subsites: ${describeFailure(err)}`);
+      }
+      web.error = errors.length ? errors.join(' | ') : undefined;
+    }
+    progress.librariesFound = toRead.length;
+
+    progress.phase = 'reading-files';
+    const retriedRoots = toRead.map((l) => decodeURIComponent(new URL(l.url).pathname) + '/');
+    const largest = previous.largestOldFiles.filter((f) => !retriedRoots.some((root) => f.serverRelativeUrl.indexOf(root) === 0));
+    await this.readLibraries(toRead, quick, scanStart, largest, progress, onProgress);
+
+    progress.phase = 'completed';
+    onProgress({ ...progress });
+    return {
+      ...previous,
+      webs,
+      libraries: kept.concat(toRead),
+      largestOldFiles: this.finishLargest(largest),
+      scannedBy: this.context.pageContext.user.displayName
     };
   }
 }

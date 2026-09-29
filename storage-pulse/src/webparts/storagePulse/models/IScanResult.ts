@@ -24,6 +24,10 @@ export interface IAgeHistogram {
 export interface ILibraryStorageMetrics {
   totalSize: number;
   fileStreamSize: number;
+  /** Files in the library, per SharePoint (recursive). Missing on scans saved before v2.1. */
+  fileCount?: number;
+  /** Most recent change anywhere in the library, per SharePoint (ISO). */
+  lastModified?: string;
 }
 
 /**
@@ -61,6 +65,13 @@ export interface ILibraryResult {
    * because they have permissions that exclude the person scanning.
    */
   unreadItems?: number;
+  /**
+   * Quick scan: the library had no changes for at least `dormantMonths`, so it
+   * was measured as a whole from SharePoint's storage metrics instead of file
+   * by file. Its files are all counted at that age (a lower bound), and it has
+   * no file-type breakdown or largest-file entries.
+   */
+  measuredAsWhole?: { lastChange: string; dormantMonths: number };
 }
 
 export interface IWebResult {
@@ -98,6 +109,12 @@ export interface IScanResult {
   scannedBy: string;
   /** Which libraries were included; missing on scans saved before v2. */
   options?: { includeHidden: boolean; excludeSystemLibraries: boolean; excludedLibraries: string[] };
+  /**
+   * Quick scans measure libraries unchanged for at least this many months as
+   * a whole. Splits at this threshold or lower are exact; longer ones are
+   * approximate for those libraries. Missing on detailed scans.
+   */
+  quickAfterMonths?: number;
 }
 
 export interface IScanProgress {

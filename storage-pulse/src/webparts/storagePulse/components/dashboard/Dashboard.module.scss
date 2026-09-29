@@ -672,3 +672,135 @@
     transition: none;
   }
 }
+
+// ---------------------------------------------------------------- Scan issues and notes
+
+.issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.issue {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--sp-surface-2);
+  border: 1px solid var(--sp-border);
+  font-size: 13px;
+}
+
+.issueError {
+  color: $ms-color-error;
+  margin-top: 2px;
+}
+
+.issueInfo {
+  color: var(--sp-text-2);
+  margin-top: 2px;
+}
+
+.issueBody {
+  min-width: 0;
+}
+
+.issueKind {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sp-text-2);
+}
+
+.issueReason {
+  margin-top: 3px;
+  color: var(--sp-text);
+  word-break: break-word;
+}
+
+.note {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--sp-surface);
+  border: 1px solid var(--sp-border);
+  font-size: 13px;
+  color: var(--sp-text);
+}
+
+// Where the site collection storage goes
+.breakdown {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--sp-hairline);
+}
+
+.breakdownTitle {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sp-text-2);
+  margin-bottom: 8px;
+}
+
+.breakdownBar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--sp-surface-2);
+  transform-origin: left;
+  animation: growX 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.breakdownSegment {
+  min-width: 3px;
+  height: 100%;
+}
+
+.versions {
+  background: var(--sp-versions);
+}
+
+.other {
+  background: var(--sp-other);
+}
+
+.breakdownLegend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 20px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--sp-text-2);
+
+  li {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  strong {
+    display: block;
+    font-size: 15px;
+    color: var(--sp-text);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breakdownBar {
+    animation: none;
+  }
+}

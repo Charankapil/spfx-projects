@@ -93,12 +93,77 @@ const Figure: React.FC<{ kind: 'inactive' | 'active'; bytes: number; files: numb
   );
 };
 
+interface IBreakdownProps {
+  siteBytes: number;
+  split: IActivitySplit;
+  versionBytes: number;
+  dormantVersionBytes: number;
+  period: string;
+}
+
+/**
+ * The site collection's whole storage figure split into what the scan can
+ * explain (inactive and active current files, version history) and the rest.
+ * Every segment is labelled with its size, so colour is never the only cue.
+ */
+const Breakdown: React.FC<IBreakdownProps> = ({ siteBytes, split, versionBytes, dormantVersionBytes, period }) => {
+  const other = Math.max(0, siteBytes - split.totalBytes - versionBytes);
+  const parts = [
+    { key: 'inactive', label: strings.BreakdownInactive, bytes: split.inactiveBytes, hint: format(strings.NotModifiedFor, { period }) },
+    { key: 'active', label: strings.BreakdownActive, bytes: split.activeBytes, hint: format(strings.ModifiedInLast, { period }) },
+    {
+      key: 'versions',
+      label: strings.BreakdownVersions,
+      bytes: versionBytes,
+      hint: format(strings.BreakdownVersionsHint, { dormant: formatBytes(dormantVersionBytes), period })
+    },
+    { key: 'other', label: strings.BreakdownOther, bytes: other, hint: strings.BreakdownOtherHint }
+  ];
+  const total = Math.max(siteBytes, split.totalBytes + versionBytes);
+  const aria = format(strings.BreakdownAria, {
+    parts: parts.map((p) => `${p.label} ${formatBytes(p.bytes)} (${formatPercent(p.bytes, total)})`).join(', ')
+  });
+  return (
+    <div className={styles.breakdown}>
+      <div className={styles.breakdownTitle}>
+        {strings.BreakdownTitle} · {formatBytes(siteBytes)}
+      </div>
+      <div className={styles.breakdownBar} role="img" aria-label={aria}>
+        {parts
+          .filter((p) => p.bytes > 0)
+          .map((p) => (
+            <span
+              key={p.key}
+              className={`${styles.breakdownSegment} ${styles[p.key]}`}
+              style={{ flexGrow: p.bytes }}
+              title={`${p.label}: ${formatBytes(p.bytes)} (${formatPercent(p.bytes, total)})`}
+            />
+          ))}
+      </div>
+      <ul className={styles.breakdownLegend}>
+        {parts.map((p) => (
+          <li key={p.key}>
+            <span className={`${styles.swatch} ${styles[p.key]}`} />
+            <span>
+              <strong>
+                {formatBytes(p.bytes)} · {formatPercent(p.bytes, total)}
+              </strong>
+              {p.label}. {p.hint}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 export const SplitSummary: React.FC<ISplitSummaryProps> = ({ result, split, thresholdMonths }) => {
   const entering = useEntrance(result.scanCompletedAt);
   const period = thresholdLabel(thresholdMonths);
 
   const facts = useMemo(() => {
     let versionBytes = 0;
+    let dormantVersionBytes = 0;
     let librariesWithMetrics = 0;
     let dormantLibraries = 0;
     let dormantBytes = 0;
@@ -113,6 +178,9 @@ export const SplitSummary: React.FC<ISplitSummaryProps> = ({ result, split, thre
       if (newest !== undefined && newest >= thresholdMonths) {
         dormantLibraries++;
         dormantBytes += lib.bytes;
+        if (lib.metrics) {
+          dormantVersionBytes += Math.max(0, lib.metrics.totalSize - lib.metrics.fileStreamSize);
+        }
       }
       if (lib.error) {
         failed++;
@@ -120,7 +188,7 @@ export const SplitSummary: React.FC<ISplitSummaryProps> = ({ result, split, thre
       hiddenItems += lib.unreadItems || 0;
     }
     failed += result.webs.filter((w) => w.error).length;
-    return { versionBytes, librariesWithMetrics, dormantLibraries, dormantBytes, failed, hiddenItems };
+    return { versionBytes, dormantVersionBytes, librariesWithMetrics, dormantLibraries, dormantBytes, failed, hiddenItems };
   }, [result, thresholdMonths]);
 
   const inactiveShare = split.totalBytes ? split.inactiveBytes / split.totalBytes : 0;
@@ -169,6 +237,16 @@ export const SplitSummary: React.FC<ISplitSummaryProps> = ({ result, split, thre
           </div>
         </div>
       </div>
+
+      {result.scope === 'siteCollection' && result.siteStorageBytes !== undefined && result.siteStorageBytes > 0 && (
+        <Breakdown
+          siteBytes={result.siteStorageBytes}
+          split={split}
+          versionBytes={facts.versionBytes}
+          dormantVersionBytes={facts.dormantVersionBytes}
+          period={period}
+        />
+      )}
 
       <ul className={styles.insights}>
         {split.totalBytes > 0 && (

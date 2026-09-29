@@ -1,3 +1,4 @@
 .out/
+.bench/
 node_modules/
 e2e/out/

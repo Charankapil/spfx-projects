@@ -47,6 +47,8 @@ export function exportLibrariesCsv(result: IScanResult, thresholdMonths: number)
     'Inactive share of size (%)',
     'Newest file changed',
     'Library size incl. version history (bytes)',
+    'Measured as a whole (quick scan)',
+    'Last change in library',
     ...AGE_BANDS.map((b) => `Size ${b.label} (bytes)`),
     'Error'
   ];
@@ -68,6 +70,8 @@ export function exportLibrariesCsv(result: IScanResult, thresholdMonths: number)
       split.totalBytes ? ((split.inactiveBytes / split.totalBytes) * 100).toFixed(1) : '0',
       newest === undefined ? '' : describeAge(newest),
       lib.metrics ? String(lib.metrics.totalSize) : '',
+      lib.measuredAsWhole ? 'Yes' : 'No',
+      lib.measuredAsWhole ? lib.measuredAsWhole.lastChange : lib.metrics && lib.metrics.lastModified ? lib.metrics.lastModified : '',
       ...AGE_BANDS.map((b) => String(bandTotals(lib.histogram, b).bytes)),
       lib.error
         ? `${lib.partial ? 'Partly read: ' : ''}${lib.error}`
@@ -78,7 +82,7 @@ export function exportLibrariesCsv(result: IScanResult, thresholdMonths: number)
   }
   for (const web of result.webs) {
     if (web.error) {
-      lines.push([web.title, web.url, '', '', '', '', '', '', '', '', '', '', '', ...AGE_BANDS.map(() => ''), web.error]);
+      lines.push([web.title, web.url, '', '', '', '', '', '', '', '', '', '', '', '', '', ...AGE_BANDS.map(() => ''), web.error]);
     }
   }
   download(lines, `storage-pulse-libraries-${stamp(result)}.csv`);

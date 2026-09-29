@@ -1,5 +1,54 @@
 # Changelog
 
+## 2.1.0
+
+### Fixes
+- **Cancel and error handling were broken in the deployed web part.** The
+  SPFx build compiles to ES5, where subclasses of `Error` lose their type.
+  So `instanceof` checks for a cancelled scan or an HTTP error were always
+  false:
+  - a cancel was recorded as library failures instead of stopping cleanly;
+  - failed pages were not retried with smaller page sizes as designed;
+  - throttling, timeouts and access denied all looked the same.
+
+  Both error classes now restore their prototype. The unit tests run against
+  the compiled `lib/` output, so this kind of problem is caught.
+- **Failures no longer say "with your access".** Each failure now states its
+  cause (throttling, server error or timeout, list view threshold, access
+  denied, not found or network).
+- **One unreadable item no longer stops the rest of its library.** Paging
+  now walks through IDs itself. A batch that fails even at 500 items is
+  skipped and recorded, and the rest of the library is still read.
+- **"Time left" is based on the last minute of progress.** Early per-library
+  overhead used to inflate the estimate.
+
+### Faster
+- Four libraries are read at once, with at most six requests in flight
+  across the whole scan. Small libraries no longer wait for each other.
+  Measured on a simulated site of 72 libraries at 300 ms per request:
+  66 s → 17 s.
+- New **Quick scan** (the default). A library nobody has changed for the
+  chosen "Inactive after" period is measured as a whole from SharePoint's
+  storage metrics: one request instead of reading every file. That drops
+  the same simulated site to 12 s, with 30% fewer requests. The split
+  stays exact up to that period. For longer periods, those libraries count
+  by the date of their last change, and the dropdown marks those periods
+  "(approx.)". Choose **Detailed** in the settings to read every file.
+- The highest item ID is looked up only when it's needed (large libraries,
+  or skipping a bad batch).
+
+### Added
+- **Scan issues** panel: every site and library that could not be read
+  completely, with the reason.
+- **Retry failed** button: re-reads only what failed and merges it into the
+  saved result.
+- **Where the site collection storage goes**: the site's storage figure
+  split into inactive files, active files, version history (and how much
+  of it is in dormant libraries), and everything else (recycle bins,
+  unscanned hidden or skipped libraries, lists).
+- A CSV column saying whether each library was measured as a whole, plus
+  the library's last change.
+
 ## 2.0.0 — Storage Pulse
 
 Renamed from Storage Activity Analyser. The solution ID and web part ID are

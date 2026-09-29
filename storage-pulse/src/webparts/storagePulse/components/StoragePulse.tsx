@@ -45,6 +45,11 @@ interface INotice {
   text: string;
 }
 
+/** Sites and libraries that could not be read completely (what "Retry failed" reads again). */
+function countFailures(result: IScanResult): number {
+  return result.libraries.filter((l) => l.error).length + result.webs.filter((w) => w.error).length;
+}
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -121,69 +126,107 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
     };
   }, [props.scope]);
 
-  const { scope, includeHidden, excludeSystemLibraries, excludedLibraries } = props;
-  const startScan = useCallback(() => {
-    const service = serviceRef.current as StorageScanService;
-    const store = storeRef.current as ResultsStore;
-    setError(undefined);
-    setNotice(undefined);
-    setIsScanning(true);
-    setProgress(INITIAL_PROGRESS);
+  const resultRef = useRef<IScanResult | undefined>(undefined);
+  resultRef.current = result;
 
-    const run = async (): Promise<void> => {
-      let scanned: IScanResult;
-      try {
-        scanned = await service.scan({ scope, includeHidden, excludeSystemLibraries, excludedLibraries }, (p) => {
+  const { scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode } = props;
+  /** Runs a full scan, or (retry) re-reads only what failed in the current result, then saves for owners. */
+  const runScan = useCallback(
+    (retry: boolean) => {
+      const service = serviceRef.current as StorageScanService;
+      const store = storeRef.current as ResultsStore;
+      const previous = resultRef.current;
+      setError(undefined);
+      setNotice(undefined);
+      setIsScanning(true);
+      setProgress(INITIAL_PROGRESS);
+
+      const options = {
+        scope,
+        includeHidden,
+        excludeSystemLibraries,
+        excludedLibraries,
+        // Quick scans measure libraries unchanged for the chosen "Inactive after" period as a whole.
+        quickAfterMonths: scanMode === 'quick' ? threshold : undefined
+      };
+      const onProgress = (p: IScanProgress): void => {
+        if (mounted.current) {
+          setProgress(p);
+        }
+      };
+
+      const run = async (): Promise<void> => {
+        let scanned: IScanResult;
+        try {
+          scanned =
+            retry && previous
+              ? await service.retryFailed(previous, options, onProgress)
+              : await service.scan(options, onProgress);
+        } catch (err) {
           if (mounted.current) {
-            setProgress(p);
+            setError(err instanceof ScanCancelledError ? strings.ScanCancelled : errorText(err) || strings.ScanFailed);
+            setIsScanning(false);
           }
-        });
-      } catch (err) {
-        if (mounted.current) {
-          setError(err instanceof ScanCancelledError ? strings.ScanCancelled : errorText(err) || strings.ScanFailed);
-          setIsScanning(false);
+          return;
         }
-        return;
-      }
-      if (!mounted.current) {
-        return;
-      }
-      setResult(scanned);
-      setSavedBy(undefined);
+        if (!mounted.current) {
+          return;
+        }
+        setResult(scanned);
+        setSavedBy(undefined);
+        const retryNotice = retry
+          ? countFailures(scanned) === 0
+            ? strings.RetryAllRead
+            : format(strings.RetrySomeLeft, { count: countFailures(scanned) })
+          : undefined;
 
-      if (!isOwner) {
-        setIsScanning(false);
-        setNotice({ type: MessageBarType.info, text: strings.ScanNotSavedForOthers });
-        return;
-      }
-      setIsSaving(true);
-      try {
-        await store.save(scanned);
-        if (mounted.current) {
-          setNotice({ type: MessageBarType.success, text: strings.ScanSaved });
-        }
-      } catch (err) {
-        if (mounted.current) {
-          setNotice({ type: MessageBarType.warning, text: format(strings.SaveFailed, { error: errorText(err) }) });
-        }
-      } finally {
-        if (mounted.current) {
-          setIsSaving(false);
+        if (!isOwner) {
           setIsScanning(false);
+          setNotice({ type: MessageBarType.info, text: retryNotice || strings.ScanNotSavedForOthers });
+          return;
         }
-      }
-    };
-    run().catch(() => undefined);
-  }, [scope, includeHidden, excludeSystemLibraries, excludedLibraries, isOwner]);
+        setIsSaving(true);
+        try {
+          await store.save(scanned);
+          if (mounted.current) {
+            setNotice({ type: MessageBarType.success, text: retryNotice || strings.ScanSaved });
+          }
+        } catch (err) {
+          if (mounted.current) {
+            setNotice({ type: MessageBarType.warning, text: format(strings.SaveFailed, { error: errorText(err) }) });
+          }
+        } finally {
+          if (mounted.current) {
+            setIsSaving(false);
+            setIsScanning(false);
+          }
+        }
+      };
+      run().catch(() => undefined);
+    },
+    [scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, threshold, isOwner]
+  );
+  const startScan = useCallback(() => runScan(false), [runScan]);
+  const retryFailed = useCallback(() => runScan(true), [runScan]);
 
   const cancelScan = useCallback(() => {
     (serviceRef.current as StorageScanService).cancel();
   }, []);
 
+  // After a quick scan, periods longer than the one it used are approximate for libraries measured as a whole.
+  const approxAbove =
+    result && result.quickAfterMonths !== undefined && result.libraries.some((l) => l.measuredAsWhole)
+      ? result.quickAfterMonths
+      : undefined;
   const thresholdOptions: IDropdownOption[] = useMemo(
-    () => THRESHOLD_OPTIONS.map((m) => ({ key: m, text: thresholdLabel(m) })),
-    []
+    () =>
+      THRESHOLD_OPTIONS.map((m) => ({
+        key: m,
+        text: thresholdLabel(m) + (approxAbove !== undefined && m > approxAbove ? strings.ApproxSuffix : '')
+      })),
+    [approxAbove]
   );
+  const failures = result ? countFailures(result) : 0;
 
   const scopeShort = props.scope === 'currentWeb' ? strings.ScopeCurrentWebShort : strings.ScopeSiteCollectionShort;
   const scopePhrase = props.scope === 'currentWeb' ? strings.ScopeCurrentWebPhrase : strings.ScopeSiteCollectionPhrase;
@@ -198,7 +241,9 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
       name: who,
       duration: formatDuration(completed.getTime() - new Date(result.scanStartedAt).getTime())
     };
-    lastScanLine = format(who ? strings.LastScanned : strings.LastScannedNoName, values);
+    lastScanLine =
+      format(who ? strings.LastScanned : strings.LastScannedNoName, values) +
+      ` \u00b7 ${result.quickAfterMonths !== undefined ? strings.QuickScanTag : strings.DetailedScanTag}`;
     ageDays = Math.floor((Date.now() - completed.getTime()) / DAY_MS);
   }
   const isStale = !!result && !isScanning && props.staleAfterDays > 0 && ageDays >= props.staleAfterDays;
@@ -239,6 +284,14 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
               onClick={startScan}
               disabled={isLoadingSaved}
               className={styles.scanButton}
+            />
+          )}
+          {canScan && !isScanning && failures > 0 && (
+            <DefaultButton
+              text={format(strings.RetryFailed, { count: failures })}
+              iconProps={{ iconName: 'Sync' }}
+              onClick={retryFailed}
+              disabled={isLoadingSaved}
             />
           )}
           {isScanning && !isSaving && (

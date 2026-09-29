@@ -22,6 +22,10 @@ active.* Owners can then decide what to archive, move or delete.
 
 ## What it shows
 
+- **Where the storage goes.** The site collection's storage figure split
+  into inactive files, active files, version history, and the rest
+  (recycle bins, unscanned or hidden libraries, lists). Version history is
+  often most of a site's storage.
 - **The split.** A ring gauge with the inactive share, plus size, share
   and file count for active files, inactive files and all files. The site
   collection storage figure SharePoint reports is shown alongside.
@@ -40,6 +44,10 @@ active.* Owners can then decide what to archive, move or delete.
   marks **Dormant** libraries (nothing changed within the period) and shows
   version history size where SharePoint reports it.
 - **Largest inactive files**, with links.
+- **Scan issues and Retry failed.** Every site or library that couldn't be
+  read completely is listed with the reason: throttling, timeouts, a list
+  view threshold, access denied and so on. **Retry failed** re-reads only
+  those and merges them in.
 - **CSV exports.** One export each for libraries, file types (per library)
   and the largest inactive files.
 - **Saved for everyone.** A site owner's scan is saved in Site Assets.
@@ -108,6 +116,7 @@ Nothing is stored anywhere else, and nothing is sent outside SharePoint.
 | | Default inactivity period | 1 year |
 | | Warn when results are older than (days, 0 = never) | 90 |
 | What to scan | Scan: whole site collection, or this site and its subsites | Whole site collection |
+| | How to scan: Quick, or Detailed (read every file) | Quick |
 | | Include hidden libraries, such as the Preservation Hold Library | Off |
 | | Skip Site Pages, Site Assets, Style Library and Form Templates | Off |
 | | Libraries to skip (one title or URL name per line) | — |
@@ -138,8 +147,46 @@ scanned.
 4. **Site storage.** `_api/site?$select=Usage` gives the site collection
    total for context.
 
+### Quick and detailed scans
+
+Reading files is the slow part: SharePoint returns at most 5,000 per
+request.
+
+- **Quick scan (the default)** skips that for libraries nobody has changed
+  for the chosen "Inactive after" period. SharePoint records the last time
+  a person changed anything in a list (`LastItemUserModifiedDate`), and
+  every folder's storage metrics carry the total file count, current size,
+  size with versions and last change. If both are older than the period,
+  every file in the library must be at least that old. The library is then
+  measured with one request.
+  - The split is exact up to that period.
+  - For longer periods, the dropdown marks the option "(approx.)" and those
+    libraries count by the date of their last change.
+  - They have no file-type breakdown and don't appear in the largest-files
+    list.
+- **Detailed scan** reads every file in every library.
+
+In both modes, four libraries are read at once and large libraries use
+three readers, with at most six requests in flight in total.
+
+Measured on a simulated site collection with 72 libraries at 300 ms per
+request:
+
+| Version | Time | Requests |
+| --- | --- | --- |
+| v2.0 (one library at a time) | 66 s | 146 |
+| v2.1 detailed | 17 s | 146 |
+| v2.1 quick | 12 s | 101 |
+
+Real timings depend on how long SharePoint takes per page and how much it
+throttles.
+
 ### Very large libraries (a million files and more)
 
+- **Paging by ID.** Each request asks for `Id gt <last ID read>`, ordered by
+  ID, 5,000 at a time. If a batch still fails at 500 items (for example
+  because of one damaged item), that batch is skipped and recorded, and
+  the rest of the library is still read.
 - **Parallel ID ranges.** A library with more than 20,000 items is split
   into 50,000-ID ranges (`$filter=Id gt … and Id le …`), and three readers
   work through them at once. The last range is open-ended, so files added
@@ -153,8 +200,6 @@ scanned.
 - **Failures stay local.** If one range, library or subsite fails, it's
   marked and the rest of the scan carries on.
 - **Nothing missed silently.**
-  - If SharePoint returns a full page without a next-page link, the scan
-    continues from the last ID itself.
   - After each library, the number of items read is compared with its
     `ItemCount`, and any shortfall is reported.
 
@@ -225,7 +270,7 @@ permissions, missing next links, throttling and timeouts.
 ```bash
 cd tests
 npm ci
-npm test          # unit + scan-engine tests (Node)
+npm test          # unit + scan-engine tests (Node); run `gulp bundle` first, they test the compiled lib/
 npm run e2e       # browser tests of the built web part; run `gulp bundle` first
 ```
 
