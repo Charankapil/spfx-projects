@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "work-boards-client-side-solution",
+    "id": "6748e64b-5f1a-4913-9117-cef8b096d6a9",
+    "version": "0.1.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": false,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.23.2"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Work Boards - boards, Kanban and timelines for team and project work in SharePoint"
+      },
+      "longDescription": {
+        "default": "Work Boards is a work and project management app for SharePoint Online: boards with groups, items and subitems, Status, People, Timeline and other columns, table, Kanban and Timeline (Gantt) views, updates with @mentions, files, activity history and My Work. It sets up its own hidden lists on each site where it is added, and uses only SharePoint REST as the signed-in user - no Azure AD app registration, client id or Microsoft Graph permissions."
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "Work Boards",
+        "description": "Adds the Work Boards web part to this site.",
+        "id": "f4eff9d0-2e10-44b3-90d4-8182483be338",
+        "version": "0.1.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/work-boards.sppkg"
+  }
+}

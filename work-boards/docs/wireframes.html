@@ -143,24 +143,24 @@ ol.notes b{color:var(--ink);font-weight:600}
 <header class="top">
   <span class="eyebrow">monday.com replacement · SharePoint Online · SPFx</span>
   <h1>Work Boards</h1>
-  <p class="lede">Plan and wireframes for a work management app that runs inside SharePoint Online. It covers the monday.com features teams use every day, keeps all data in SharePoint lists on the site, and needs no app registration, client ID or Microsoft Graph permissions.</p>
+  <p class="lede">Plan and wireframes for a work and project management app that runs inside SharePoint Online, deployed to the sites you choose. It covers the monday.com features teams use every day, keeps all data in SharePoint lists on the site, and needs no app registration, client ID or Microsoft Graph permissions.</p>
   <div class="chips">
     <span class="chip ok">No app registration</span>
     <span class="chip ok">No Graph permissions</span>
     <span class="chip ok">Sets up its own lists</span>
-    <span class="chip">SPFx 1.23 · React 17 · Fluent UI 8 · PnPjs 4</span>
-    <span class="chip">Status: plan for review</span>
+    <span class="chip">SPFx 1.23 · React 17 · Fluent UI 8</span>
+    <span class="chip ok">Phase 1 built</span>
   </div>
 </header>
 
 <nav class="jump" aria-label="Sections">
-  <a href="#architecture">Architecture</a><a href="#data">Data model</a><a href="#coverage">Coverage</a><a href="#wf-home">Home</a><a href="#wf-table">Board table</a><a href="#wf-kanban">Kanban</a><a href="#wf-item">Item panel</a><a href="#wf-timeline">Timeline</a><a href="#wf-dash">Dashboard</a><a href="#wf-auto">Automations</a><a href="#wf-setup">Setup</a><a href="#wf-form">Form</a><a href="#phases">Phases</a><a href="#questions">Questions</a>
+  <a href="#architecture">Architecture</a><a href="#data">Data model</a><a href="#coverage">Coverage</a><a href="#wf-home">Home</a><a href="#wf-table">Board table</a><a href="#wf-kanban">Kanban</a><a href="#wf-item">Item panel</a><a href="#wf-timeline">Timeline</a><a href="#wf-dash">Dashboard</a><a href="#wf-auto">Automations</a><a href="#wf-setup">Setup</a><a href="#wf-form">Form</a><a href="#phases">Phases</a><a href="#decisions">Decisions</a>
 </nav>
 
 <section id="architecture">
   <span class="eyebrow">How it works</span>
   <h2>Architecture</h2>
-  <p class="lede">One SPFx package, deployed from the App Catalog. Each site collection becomes a workspace. The web part talks only to the site's own <code>/_api</code>, through SPFx's built-in <code>SPHttpClient</code>, as the signed-in user.</p>
+  <p class="lede">One SPFx package in the App Catalog. A site owner adds it to each chosen site, and that site becomes a workspace. The web part talks only to the site's own <code>/_api</code>, through SPFx's built-in <code>SPHttpClient</code>, as the signed-in user.</p>
   <div class="arch">
     <svg viewBox="0 0 1000 440" role="img" aria-label="Architecture: SPFx web parts call SharePoint REST on the current site, which holds hidden lists per workspace and per board">
       <rect x="10" y="10" width="980" height="420" rx="10" fill="none" stroke="var(--line)" stroke-width="1.5"/>
@@ -169,17 +169,17 @@ ol.notes b{color:var(--ink);font-weight:600}
       <text x="44" y="76" font-size="13" font-weight="600">SPFx bundle (runs in the browser, as the signed-in user)</text>
       <g font-size="12">
         <rect x="44" y="88" width="528" height="34" rx="5" fill="var(--paper)" stroke="var(--line)"/>
-        <text x="56" y="110">Web parts: Work Boards app · Board embed · Dashboard · Form · (Teams tab)</text>
+        <text x="56" y="110">Web parts: Work Boards app · later: Board embed · Dashboard · Form · Teams tab</text>
         <rect x="44" y="130" width="528" height="34" rx="5" fill="var(--paper)" stroke="var(--line)"/>
-        <text x="56" y="152">Views: table · kanban · calendar · timeline · chart · files · item panel · wizards</text>
+        <text x="56" y="152">Views: table · kanban · timeline · item panel · later: calendar · chart · files</text>
         <rect x="44" y="172" width="528" height="34" rx="5" fill="var(--paper)" stroke="var(--line)"/>
-        <text x="56" y="194">Services: boards · items · updates · views · inbox · import/export · permissions</text>
+        <text x="56" y="194">Services: boards · items · updates · people · prefs · permissions · later: views, inbox</text>
         <rect x="44" y="214" width="258" height="56" rx="5" fill="var(--paper)" stroke="var(--line)"/>
-        <text x="56" y="236">Automation engine</text>
+        <text x="56" y="236">Automation engine (phase 2)</text>
         <text x="56" y="256" class="m" font-size="11">event rules · lazy scheduler</text>
         <rect x="314" y="214" width="258" height="56" rx="5" fill="var(--paper)" stroke="var(--line)"/>
         <text x="326" y="236">Provisioner + change poller</text>
-        <text x="326" y="256" class="m" font-size="11">migrations · ETags · GetChanges</text>
+        <text x="326" y="256" class="m" font-size="11">migrations · ETags · change polling</text>
       </g>
       <rect x="620" y="52" width="352" height="232" rx="8" fill="var(--wire)" stroke="var(--line)"/>
       <text x="636" y="76" font-size="13" font-weight="600">Hidden lists on the site</text>
@@ -196,19 +196,19 @@ ol.notes b{color:var(--ink);font-weight:600}
       </g>
       <line x1="588" y1="168" x2="616" y2="168" stroke="var(--accent)" stroke-width="2"/>
       <polygon points="616,163 624,168 616,173" fill="var(--accent)"/>
-      <text x="566" y="300" font-size="11" class="m">PnPjs → SPHttpClient → /_api  ($batch, RenderListDataAsStream)</text>
+      <text x="566" y="300" font-size="11" class="m">SpClient → SPFx SPHttpClient → /_api (signed-in user)</text>
       <rect x="28" y="318" width="944" height="94" rx="8" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
       <text x="44" y="342" font-size="13" font-weight="600">Deliberately not used</text>
       <text x="44" y="364" font-size="12">✕ Entra ID app registration / client ID   ✕ Microsoft Graph   ✕ AadHttpClient   ✕ webApiPermissionRequests</text>
       <text x="44" y="386" font-size="12">✕ PnP PowerShell setup (needs its own app registration)   ✕ SP SendEmail REST API (being retired)</text>
-      <text x="44" y="404" font-size="11" class="m">Optional add-on: Power Automate flow template for email digests (standard connectors).</text>
+      <text x="44" y="404" font-size="11" class="m">Later, optional: Power Automate flow template for email digests (standard connectors).</text>
     </svg>
   </div>
   <div class="cols">
     <div class="card"><h3>One list per board</h3><p>Every column is a real SharePoint field. Filtering, sorting and indexes happen on the server, private boards are list permissions, and Excel and Power BI can read the data directly.</p></div>
     <div class="card"><h3>Activity log for free</h3><p>List versioning records every field change with who and when. The item panel reads it to show "Status: Working on it → Done".</p></div>
     <div class="card"><h3>Private by design</h3><p>Everything runs as the signed-in user. The Inbox is computed from lists they can read, so no central notification list can leak private boards.</p></div>
-    <div class="card"><h3>Sets itself up</h3><p>A site owner opens the page and clicks "Set up". Numbered migrations create and later upgrade every list. They are safe to re-run.</p></div>
+    <div class="card"><h3>Sets itself up</h3><p>A site owner opens the page and clicks "Set up". Numbered migrations create and later upgrade every list. They are safe to run again.</p></div>
   </div>
 </section>
 
@@ -238,18 +238,18 @@ ol.notes b{color:var(--ink);font-weight:600}
   <div class="tablewrap"><table class="data">
     <thead><tr><th>Area</th><th>Features</th><th>Phase</th></tr></thead>
     <tbody>
-      <tr><td>Structure</td><td>Workspaces, folders, boards, groups, items, subitems, templates, archive</td><td><span class="ph ph1">1</span></td></tr>
-      <tr><td>Columns</td><td>Status, Priority, Text, Long text, Numbers, Date, People, Dropdown, Checkbox, Link, Email, Phone, Tags, Files</td><td><span class="ph ph1">1</span></td></tr>
-      <tr><td>Views</td><td>Table with inline edit and drag and drop, Kanban, filter, sort, search, group by</td><td><span class="ph ph1">1</span></td></tr>
-      <tr><td>Item card</td><td>Updates with @mentions and replies, files, activity log</td><td><span class="ph ph1">1</span></td></tr>
-      <tr><td>People</td><td>My Work, favourites, near-live refresh, Excel import and export, main and private boards</td><td><span class="ph ph1">1</span></td></tr>
-      <tr><td>Views</td><td>Calendar, timeline/Gantt with dependencies, chart, files gallery, saved views</td><td><span class="ph ph2">2</span></td></tr>
-      <tr><td>Columns</td><td>Timeline, Dependency, Rating, Progress, Last updated, Creation log, Item ID</td><td><span class="ph ph2">2</span></td></tr>
+      <tr><td>Structure</td><td>Workspaces, folders, boards, groups, items, subitems, templates, archive</td><td><span class="ph ph1">1 ✓</span></td></tr>
+      <tr><td>Columns</td><td>Status, Priority, People, Timeline, Date, Text, Long text, Numbers, Dropdown, Checkbox, Link, Files</td><td><span class="ph ph1">1 ✓</span></td></tr>
+      <tr><td>Views</td><td>Table with inline edit and drag and drop, Kanban, Timeline (Gantt), filter, sort, search, hide columns</td><td><span class="ph ph1">1 ✓</span></td></tr>
+      <tr><td>Item card</td><td>Updates with @mentions, replies and likes, files, activity log</td><td><span class="ph ph1">1 ✓</span></td></tr>
+      <tr><td>People</td><td>My Work, favourites, near-live refresh, CSV export, main and private boards</td><td><span class="ph ph1">1 ✓</span></td></tr>
+      <tr><td>Views</td><td>Calendar, chart, files gallery, shared saved views, dependencies</td><td><span class="ph ph2">2</span></td></tr>
+      <tr><td>Columns</td><td>Dependency, Rating, Progress, Last updated, Creation log, Email, Phone</td><td><span class="ph ph2">2</span></td></tr>
       <tr><td>Work</td><td>Inbox, event automations, dashboards, forms, embed web parts</td><td><span class="ph ph2">2</span></td></tr>
-      <tr><td>Extras</td><td>Date and recurring automations, formula, time tracking, connect and mirror boards, workload, Teams tab, email digest, full migration tool</td><td><span class="ph ph3">3</span></td></tr>
+      <tr><td>Extras</td><td>Date and recurring automations, email digests, formula, time tracking, connect and mirror boards, workload, Teams tab, Excel import</td><td><span class="ph ph3">3</span></td></tr>
     </tbody>
   </table></div>
-  <p class="lede">Phases 1 and 2 cover about 80% of commonly used monday.com features. Phase 3 brings it to about 90%. Not planned: monday.com AI, the integrations marketplace (Power Automate covers most of it), WorkDocs, native mobile apps and live cursors.</p>
+  <p class="lede">Phases 1 and 2 cover about 80% of commonly used monday.com features. Phase 3 brings it to about 90%. Not planned: monday.com AI, the integrations marketplace (Power Automate covers most of it), WorkDocs, native mobile apps, live cursors and migration from monday.com (Work Boards starts fresh).</p>
 </section>
 
 <!-- ============ WIREFRAMES ============ -->
@@ -404,7 +404,7 @@ ol.notes b{color:var(--ink);font-weight:600}
 </section>
 
 <section id="wf-timeline" class="wf">
-  <span class="eyebrow">Wireframe 5 of 9 · phase 2</span>
+  <span class="eyebrow">Wireframe 5 of 9 · built in phase 1</span>
   <div class="wf-head"><h2>Timeline / Gantt</h2><p>Drag bars to reschedule, drag edges to resize, draw arrows to add dependencies. Reads a Timeline column or a pair of dates.</p></div>
   <div class="frame-scroll"><div class="frame">
     <div class="suite"><span class="dot"></span>SharePoint · Marketing<span class="search"></span><span class="av">JS</span></div>
@@ -490,21 +490,15 @@ ol.notes b{color:var(--ink);font-weight:600}
     <div class="main" style="grid-template-columns:1.1fr 1fr;gap:28px;padding:24px 28px">
       <div style="display:grid;gap:12px;align-content:start">
         <h3 style="font-size:22px">Set up Work Boards on this site</h3>
-        <p style="color:var(--muted)">This creates hidden lists on <b style="color:var(--ink)">Finance</b> to store boards, views, automations and settings. It takes about a minute. People with access to this site will be able to use boards. You can make boards private later.</p>
-        <div class="field"><span>Starter boards (optional)</span><div class="row"><span class="btn">☑ Project tracker</span><span class="btn">☐ Requests</span><span class="btn">☐ Content calendar</span></div></div>
-        <div class="field"><span>Import monday.com Excel exports (optional)</span><div class="inp">Drop .xlsx files here or browse</div></div>
-        <div class="field"><span>Add a "Work Boards" page to site navigation</span><div class="row"><span class="tog"></span>Yes</div></div>
+        <p style="color:var(--muted)">This creates hidden lists on <b style="color:var(--ink)">Finance</b> to hold boards and settings. It takes under a minute. Everyone with access to this site can then use Work Boards, and each board you create gets its own list.</p>
         <div class="row"><span class="btn pri">Set up</span><span class="btn">Cancel</span></div>
       </div>
       <div class="steps">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">PROGRESS · SCHEMA v1</span>
-        <div class="step"><span class="check done">✓</span>001 · Site columns and "WB Work Item" content type</div>
-        <div class="step"><span class="check done">✓</span>002 · WB_Meta, WB_Boards</div>
-        <div class="step"><span class="check done">✓</span>003 · WB_Views, WB_UserPrefs (own rows only)</div>
-        <div class="step"><span class="check work">…</span>004 · WB_Automations, WB_Dashboards</div>
-        <div class="step" style="color:var(--muted)"><span class="check none"></span>005 · WB_Forms, WB_FormInbox</div>
-        <div class="step" style="color:var(--muted)"><span class="check none"></span>006 · WB_Templates library</div>
-        <div class="step" style="color:var(--muted)"><span class="check none"></span>Starter board: Project tracker</div>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">PROGRESS · SCHEMA v3</span>
+        <div class="step"><span class="check done">✓</span>1 · Settings list (WB_Meta)</div>
+        <div class="step"><span class="check work">…</span>2 · Board registry (WB_Boards)</div>
+        <div class="step" style="color:var(--muted)"><span class="check none"></span>3 · Personal settings (WB_UserPrefs, own rows only)</div>
+        <div class="step" style="color:var(--muted)"><span class="check none"></span>Later phases add their lists the same way</div>
         <span style="color:var(--muted);font-size:12px">Each step checks before it creates, so you can run setup again safely if it stops.</span>
       </div>
     </div>
@@ -541,23 +535,23 @@ ol.notes b{color:var(--ink);font-weight:600}
   <span class="eyebrow">Delivery</span>
   <h2>Phases</h2>
   <div class="cols">
-    <div class="card"><span class="ph" style="background:var(--s-none)">0 · Discovery</span><p>List the organisation's boards, column types, automations and integrations in monday.com. Confirm the priorities.</p></div>
-    <div class="card"><span class="ph ph1">1 · Core</span><p>Setup wizard, boards, groups, items, subitems, core columns, table and Kanban, item panel, My Work, templates, Excel import and export, private boards. Pilot with one or two teams.</p></div>
-    <div class="card"><span class="ph ph2">2 · Parity</span><p>Calendar, timeline, saved views, charts, Inbox, automations, dashboards, forms, embed web parts. About 80% coverage, then a wider rollout.</p></div>
-    <div class="card"><span class="ph ph3">3 · Extras</span><p>Date and recurring automations, formula, time tracking, connected boards, workload, Teams tab, email digests, full migration. About 90% coverage, then cancel monday.com.</p></div>
+    <div class="card"><span class="ph" style="background:var(--s-done)">0 · Discovery · done</span><p>Work and project management within the department. Deploy to chosen sites. Start fresh with no migration. Email later. No guests.</p></div>
+    <div class="card"><span class="ph ph1">1 · Core · built</span><p>Setup, boards, groups, items, subitems, core columns, table, Kanban and Timeline views, item panel with updates, files and activity, My Work, templates, private boards, CSV export. Next: a pilot with one or two teams.</p></div>
+    <div class="card"><span class="ph ph2">2 · Parity</span><p>Automations, Inbox, dashboards, forms, calendar, saved views, dependencies, embed web parts. About 80% coverage, then a wider rollout.</p></div>
+    <div class="card"><span class="ph ph3">3 · Extras</span><p>Date and recurring automations, email digests, formula, time tracking, connected boards, workload, Teams tab. About 90% coverage, then cancel monday.com.</p></div>
   </div>
 </section>
 
-<section id="questions">
-  <span class="eyebrow">Before building</span>
-  <h2>Questions for you</h2>
+<section id="decisions">
+  <span class="eyebrow">Agreed</span>
+  <h2>Decisions</h2>
   <ol class="notes" style="font-size:15px">
-    <li>Roughly how many people and boards use monday.com today, and which features matter most: automations, dashboards, forms, integrations or time tracking?</li>
-    <li>Deploy to every site (tenant-wide) or only chosen sites (site collection App Catalog)?</li>
-    <li>Is an optional Power Automate flow acceptable for email notifications, with the in-app Inbox as the main channel?</li>
-    <li>Migrate current items only, or updates and files as well?</li>
-    <li>Do external guests use your monday.com boards?</li>
-    <li>Keep the name "Work Boards", or use your own?</li>
+    <li><b>Use:</b> work and project management within the department, so the Timeline view moved into phase 1.</li>
+    <li><b>Deployment:</b> only on chosen sites. A site owner adds the app to each site.</li>
+    <li><b>Email:</b> added later, through an optional Power Automate flow.</li>
+    <li><b>Migration:</b> none. Work Boards is a standalone app that starts fresh.</li>
+    <li><b>Guests:</b> not used.</li>
+    <li><b>Name:</b> Work Boards.</li>
   </ol>
 </section>
 </div>

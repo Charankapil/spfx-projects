@@ -11,9 +11,10 @@ A collection of SharePoint Framework (SPFx) web part solutions.
   SharePoint REST/Search APIs — no Azure AD app registration or client id
   required. See its own [README](./filetype-analyser/README.md) for setup,
   architecture and deployment details.
-- [`work-boards`](./work-boards) — *(planning)* A monday.com-style work
-  management app (boards, groups, items, Kanban, timeline, automations,
-  dashboards, forms) that runs in SharePoint Online and provisions its own
-  lists. No app registration, client id or Graph permissions. See the
-  [plan](./work-boards/docs/PLAN.md) and
-  [wireframes](./work-boards/docs/wireframes.html).
+- [`work-boards`](./work-boards) — Team and project work in SharePoint:
+  monday.com-style boards with groups, items and subitems, Status, People and
+  Timeline columns, table, Kanban and Timeline (Gantt) views, updates with
+  @mentions, files, activity history and My Work. Deployed to the sites you
+  choose, it sets up its own hidden lists and needs no app registration, client
+  id or Graph permissions. See its [README](./work-boards/README.md) and
+  [plan](./work-boards/docs/PLAN.md).
