@@ -1,0 +1,747 @@
+@import '~@fluentui/react/dist/sass/References.scss';
+
+// SharePoint theme tokens: SPFx swaps these for the site's theme colours at runtime.
+$theme-primary: '[theme:themePrimary, default:#0078d4]';
+$theme-darker: '[theme:themeDarker, default:#004578]';
+$theme-lighter: '[theme:themeLighter, default:#deecf9]';
+$theme-lighter-alt: '[theme:themeLighterAlt, default:#eff6fc]';
+$border: rgba(11, 11, 11, 0.08);
+$wash: #f7f6f3;
+$card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+
+// Brand colours from the logo, used for status only.
+$brand-teal: #0d9488;
+$good-bg: #e6f6f4;
+$good-fg: #0b6b62;
+$bad-bg: #fdecea;
+$bad-fg: #a4262c;
+$warn-fg: #8a5a00;
+$neutral-bg: #efeeea;
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(0, 0, 0, 0);
+  }
+}
+
+.reInherit {
+  font-family: $ms-font-family-fallbacks;
+  padding: 8px 4px 24px;
+  color: $ms-color-neutralPrimary;
+}
+
+.reInherit :global(.ms-MessageBar) {
+  margin-bottom: 12px;
+  border-radius: 8px;
+}
+
+// Header
+.hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  border: 1px solid $border;
+  background: linear-gradient(120deg, $theme-lighter-alt 0%, #ffffff 65%);
+  box-shadow: $card-shadow;
+
+  &::after {
+    content: '';
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    right: -90px;
+    top: -180px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: $theme-lighter;
+    opacity: 0.35;
+  }
+}
+
+.heroLogo {
+  flex-shrink: 0;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(67, 56, 202, 0.25);
+}
+
+.heroText {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.heroEyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: $theme-primary;
+}
+
+.heroTitle {
+  margin: 4px 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.heroMeta {
+  font-size: 13px;
+  color: $ms-color-neutralSecondary;
+  max-width: 720px;
+}
+
+.tabs {
+  margin-bottom: 14px;
+}
+
+// Stepper
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: $ms-color-neutralSecondary;
+}
+
+.stepDot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  background: #ebeae6;
+  color: $ms-color-neutralSecondary;
+  flex-shrink: 0;
+}
+
+.stepLabel {
+  white-space: nowrap;
+}
+
+.pending {
+  opacity: 0.75;
+}
+
+.done .stepDot {
+  background: $theme-lighter;
+  color: $theme-darker;
+}
+
+.active {
+  color: $ms-color-neutralPrimary;
+  font-weight: 600;
+}
+
+.active .stepDot {
+  background: $theme-primary;
+  color: #ffffff;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+// Setup: picker and options side by side on wide screens.
+.setupGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 16px;
+  margin-bottom: 16px;
+
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid $border;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: $card-shadow;
+  min-width: 0;
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+
+  i {
+    color: $theme-primary;
+  }
+}
+
+.cardHint {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+  margin-bottom: 10px;
+}
+
+.hint {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+  margin-top: 8px;
+}
+
+.warningText {
+  font-size: 12px;
+  color: $warn-fg;
+  margin-top: 6px;
+}
+
+.muted {
+  color: $ms-color-neutralSecondary;
+  font-size: 13px;
+}
+
+.optionGroup {
+  border: 1px solid $border;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: $wash;
+}
+
+.optionGroupTitle {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: $ms-color-neutralSecondary;
+  margin-bottom: 8px;
+}
+
+.depthDropdown {
+  margin-top: 12px;
+}
+
+.selectionSummary {
+  margin: 16px 0 12px;
+  padding-top: 12px;
+  border-top: 1px solid $border;
+}
+
+// Scope picker
+.picker {
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid $border;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.pickerLoading {
+  padding: 24px 0;
+}
+
+.pickerRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 6px;
+  border-radius: 6px;
+  min-height: 30px;
+
+  &:hover {
+    background: $wash;
+  }
+}
+
+.chevronButton {
+  border: 0;
+  background: transparent;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  cursor: pointer;
+  font-size: 10px;
+  color: $ms-color-neutralSecondary;
+  border-radius: 4px;
+  flex-shrink: 0;
+
+  &:hover {
+    background: $neutral-bg;
+  }
+}
+
+.chevronSpacer {
+  display: inline-block;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.kindIcon {
+  color: $theme-primary;
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.webBadge {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: $theme-lighter-alt;
+  color: $theme-primary;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.pickerTitle,
+.pickerTitleStrong {
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.pickerTitleStrong {
+  font-weight: 600;
+}
+
+.pickerMeta {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pickerNote {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+  padding: 4px 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.pillUnique,
+.pillNeutral {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pillUnique {
+  background: #fff4ce;
+  color: $warn-fg;
+}
+
+.pillNeutral {
+  background: $neutral-bg;
+  color: $ms-color-neutralSecondary;
+}
+
+.errorText {
+  color: $ms-color-error;
+}
+
+// Progress
+.progressCard {
+  background: #ffffff;
+  border: 1px solid $border;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  box-shadow: $card-shadow;
+}
+
+.currentItem {
+  color: $ms-color-neutralSecondary;
+  word-break: break-all;
+  margin-top: 4px;
+}
+
+.progressCancel {
+  margin-top: 10px;
+}
+
+// Report
+.report {
+  margin-top: 4px;
+}
+
+.reportHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.reportMeta {
+  font-size: 13px;
+  color: $ms-color-neutralSecondary;
+  min-width: 0;
+}
+
+.reportActions {
+  flex-shrink: 0;
+}
+
+.scopeChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.scopeChip,
+.scopeChipMuted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scopeChip {
+  background: $theme-lighter-alt;
+  color: $theme-darker;
+}
+
+.scopeChipMuted {
+  background: $neutral-bg;
+  color: $ms-color-neutralSecondary;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.tile {
+  background: #ffffff;
+  border: 1px solid $border;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: $card-shadow;
+  min-width: 0;
+}
+
+.tileHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: $ms-color-neutralSecondary;
+}
+
+.tileIcon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: $theme-lighter-alt;
+  color: $theme-primary;
+  font-size: 13px;
+}
+
+.tileValue {
+  font-size: 28px;
+  font-weight: 600;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tileSub {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toneAccent .tileIcon {
+  background: #fff4ce;
+  color: $warn-fg;
+}
+
+.toneGood .tileIcon {
+  background: $good-bg;
+  color: $good-fg;
+}
+
+.toneBad .tileIcon {
+  background: $bad-bg;
+  color: $bad-fg;
+}
+
+.toneBad .tileValue {
+  color: $bad-fg;
+}
+
+.kindBreakdown {
+  background: #ffffff;
+  border: 1px solid $border;
+  border-radius: 12px;
+  padding: 12px 16px;
+  box-shadow: $card-shadow;
+  margin-bottom: 14px;
+}
+
+.kindRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.kindLabel {
+  width: 110px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+
+  i {
+    color: $theme-primary;
+  }
+}
+
+.kindBar {
+  flex: 1;
+  height: 10px;
+  background: $neutral-bg;
+  border-radius: 5px;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.kindBarFill {
+  display: block;
+  height: 100%;
+  background: #f3d98b;
+  border-radius: 5px;
+  position: relative;
+  overflow: hidden;
+}
+
+.kindBarDone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: $brand-teal;
+}
+
+.kindCount {
+  width: 190px;
+  text-align: right;
+  color: $ms-color-neutralSecondary;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+
+  @media (max-width: 600px) {
+    width: auto;
+  }
+}
+
+.errorList {
+  margin: 6px 0 4px;
+  padding-left: 18px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.linkButton {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: $theme-primary;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.tableCard {
+  background: #ffffff;
+  border: 1px solid $border;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: $card-shadow;
+}
+
+.filterBar {
+  margin-bottom: 6px;
+}
+
+.searchBox {
+  width: 260px;
+}
+
+.filterDropdown {
+  width: 210px;
+}
+
+.tableCount {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+  margin: 6px 0 4px;
+}
+
+// Fixed-height scroll container: DetailsList only renders the visible rows,
+// which keeps a report with hundreds of thousands of rows responsive.
+.tableScroll {
+  position: relative;
+  height: 520px;
+  overflow: auto;
+}
+
+.nameCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+
+  a {
+    color: $ms-color-neutralPrimary;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.nameIcon {
+  color: $theme-primary;
+  flex-shrink: 0;
+}
+
+.pathCell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: $ms-color-neutralSecondary;
+}
+
+.numCell {
+  font-variant-numeric: tabular-nums;
+}
+
+.statusPill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  padding: 0 8px;
+  border-radius: 9px;
+  white-space: nowrap;
+}
+
+.status_found {
+  background: #fff4ce;
+  color: $warn-fg;
+}
+
+.status_restored {
+  background: $good-bg;
+  color: $good-fg;
+}
+
+.status_failed {
+  background: $bad-bg;
+  color: $bad-fg;
+}
+
+.status_excluded,
+.status_skipped {
+  background: $neutral-bg;
+  color: $ms-color-neutralSecondary;
+}
+
+.emptyTable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 16px;
+  color: $ms-color-neutralSecondary;
+  text-align: center;
+}
+
+.emptyTableIcon {
+  font-size: 32px;
+  color: $brand-teal;
+}
+
+.backButton {
+  margin-bottom: 12px;
+}
+
+.confirmList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+  }
+
+  i {
+    color: $theme-primary;
+  }
+}
+
+.confirmText {
+  margin: 0 0 14px;
+  color: $ms-color-neutralPrimary;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .active .stepDot {
+    animation: none;
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "reinherit-client-side-solution",
+    "title": "ReInherit",
+    "id": "cd1d0922-945c-4360-9a2f-2fcc95156f25",
+    "version": "1.0.0.0",
+    "iconPath": "images/ReInheritAppIcon.png",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "undefined"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "ReInherit - find unique permissions and restore inheritance on sites, libraries, folders and files"
+      },
+      "longDescription": {
+        "default": "ReInherit finds every subsite, list, library, folder and file with unique (broken) permissions in the scope you choose and restores permission inheritance in bulk, recursively or on the selected objects only. Built for very large libraries (millions of items): items are read in parallel ID ranges and inheritance is reset through SharePoint REST $batch requests. Every run produces a report of what was restored, with optional backup of the permissions that were removed, saved to the site and exportable to CSV. Uses only SharePoint REST - no Azure AD app registration required."
+      },
+      "screenshotPaths": []
+    },
+    "features": [
+      {
+        "title": "ReInherit Feature",
+        "description": "The feature that activates elements of the ReInherit solution.",
+        "id": "b5f79e57-b3ce-49bb-b1c1-e546ae0f0c0c",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/reinherit-webpart.sppkg"
+  }
+}

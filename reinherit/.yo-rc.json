@@ -1,0 +1,21 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "18.17.1",
+    "sdksVersions": {
+      "@microsoft/microsoft-graph-client": "3.0.2",
+      "@microsoft/teams-js": "2.19.0"
+    },
+    "version": "1.18.2",
+    "libraryName": "reinherit",
+    "libraryId": "cd1d0922-945c-4360-9a2f-2fcc95156f25",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "reinherit",
+    "solutionShortDescription": "ReInherit - restore permission inheritance in bulk on SharePoint sites, libraries, folders and files",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}
