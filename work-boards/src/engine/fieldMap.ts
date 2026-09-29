@@ -52,7 +52,7 @@ export function fieldXml(
       return `<Field Type="MultiChoice" ${attrs(name, displayName, 'FillInChoice="TRUE"')}><CHOICES>${choices}</CHOICES></Field>`;
     }
     case 'people':
-      return `<Field Type="UserMulti" ${attrs(name, displayName, 'Mult="TRUE" UserSelectionMode="PeopleOnly" ShowField="ImnName"')} />`;
+      return `<Field Type="UserMulti" ${attrs(name, displayName, 'Mult="TRUE" UserSelectionMode="PeopleOnly"')} />`;
     case 'text':
     case 'link':
       return `<Field Type="Text" ${attrs(name, displayName, 'MaxLength="255"' + indexed)} />`;
@@ -77,22 +77,24 @@ export function columnFields(col: IBoardColumn): string[] {
   return col.type === 'timeline' && col.fieldEnd ? [col.field, col.fieldEnd] : [col.field];
 }
 
-/** $select and $expand parts for loading items with the given columns. */
+/**
+ * $select and $expand parts for loading items with the given columns.
+ *
+ * People columns are read as ids only (`WB_OwnerId`), never projected (`WB_Owner/EMail`):
+ * SharePoint refuses projections on these custom multi-person fields ("Cannot get value for
+ * projected field"). Names and emails are looked up separately from the site's users.
+ */
 export function itemQueryParts(columns: IBoardColumn[]): { select: string[]; expand: string[] } {
   const select = ['Id', 'Title', F.GroupId, F.SortOrder, F.ParentId, 'Created', 'Modified', 'Attachments',
     'Author/Id', 'Author/Title', 'Author/EMail', 'Editor/Id', 'Editor/Title', 'Editor/EMail'];
   const expand = ['Author', 'Editor'];
   columns.forEach(col => {
-    if (col.type === 'people') {
-      select.push(`${col.field}/Id`, `${col.field}/Title`, `${col.field}/EMail`);
-      expand.push(col.field);
-    } else {
-      columnFields(col).forEach(f => {
-        if (select.indexOf(f) < 0) {
-          select.push(f);
-        }
-      });
-    }
+    const fields = col.type === 'people' ? [col.field + 'Id'] : columnFields(col);
+    fields.forEach(f => {
+      if (select.indexOf(f) < 0) {
+        select.push(f);
+      }
+    });
   });
   return { select, expand };
 }
@@ -105,12 +107,37 @@ function readPerson(raw: any): IPerson | null {
   return { id: raw.Id, title: raw.Title || '', email: raw.EMail || '' };
 }
 
-function readPeople(raw: any): IPerson[] {
-  if (!raw) {
+/** Person ids from a `FieldId` value: an array, { results: [] }, a single number or null. */
+export function readIds(raw: any): number[] {
+  if (raw === null || raw === undefined) {
     return [];
   }
-  const arr: any[] = Array.isArray(raw) ? raw : raw.results || [raw];
-  return arr.map(readPerson).filter((p): p is IPerson => p !== null);
+  const arr: any[] = Array.isArray(raw) ? raw : Array.isArray(raw.results) ? raw.results : [raw];
+  return arr.map(Number).filter(n => !isNaN(n) && n > 0);
+}
+
+export type UserMap = Map<number, IPerson>;
+
+function readPeople(col: IBoardColumn, row: any, users?: UserMap): IPerson[] {
+  // Expanded objects, if an older query or a test supplies them.
+  const expanded = row[col.field];
+  if (Array.isArray(expanded) && expanded.length > 0 && typeof expanded[0] === 'object') {
+    return expanded.map(readPerson).filter((p): p is IPerson => p !== null);
+  }
+  return readIds(row[col.field + 'Id']).map(id => (users && users.get(id)) || { id, title: 'User ' + id, email: '' });
+}
+
+/** Every person id used in people columns of the given rows, for one user lookup. */
+export function peopleIdsIn(columns: IBoardColumn[], rows: any[]): number[] {
+  const ids: number[] = [];
+  columns.filter(c => c.type === 'people').forEach(col => {
+    rows.forEach(r => readIds(r[col.field + 'Id']).forEach(id => {
+      if (ids.indexOf(id) < 0) {
+        ids.push(id);
+      }
+    }));
+  });
+  return ids;
 }
 
 function readStrings(raw: any): string[] {
@@ -130,11 +157,11 @@ function readStrings(raw: any): string[] {
   return [];
 }
 
-export function readCell(col: IBoardColumn, row: any): CellValue {
+export function readCell(col: IBoardColumn, row: any, users?: UserMap): CellValue {
   const raw = row[col.field];
   switch (col.type) {
     case 'people':
-      return readPeople(raw);
+      return readPeople(col, row, users);
     case 'dropdown':
       return readStrings(raw);
     case 'number':
@@ -152,10 +179,10 @@ export function readCell(col: IBoardColumn, row: any): CellValue {
   }
 }
 
-export function readItem(columns: IBoardColumn[], row: any): IWorkItem {
+export function readItem(columns: IBoardColumn[], row: any, users?: UserMap): IWorkItem {
   const values: { [id: string]: CellValue } = {};
   columns.forEach(col => {
-    values[col.id] = readCell(col, row);
+    values[col.id] = readCell(col, row, users);
   });
   return {
     id: row.Id,

@@ -1,7 +1,8 @@
 import { SpClient, SpError, mapLimit } from './SpClient';
 import { itemEntityType } from './lists';
 import { IBoard, IBoardColumn, IWorkItem, CellValue, IAttachment, IActivityEntry, IMyWorkRow, IPerson } from '../models/types';
-import { F, itemQueryParts, readItem, writeCell } from '../engine/fieldMap';
+import { F, itemQueryParts, readItem, writeCell, peopleIdsIn, readIds } from '../engine/fieldMap';
+import { PeopleService } from './PeopleService';
 import { diffVersions, IVersionRow } from '../engine/activity';
 import { fromSpDate } from '../engine/dates';
 
@@ -23,9 +24,16 @@ export interface INewItem {
 /** Items of one board list. */
 export class ItemService {
   private readonly sp: SpClient;
+  private readonly people: PeopleService;
 
-  constructor(sp: SpClient) {
+  constructor(sp: SpClient, people: PeopleService) {
     this.sp = sp;
+    this.people = people;
+  }
+
+  private async toItems(board: IBoard, rows: any[]): Promise<IWorkItem[]> {
+    const users = await this.people.resolve(peopleIdsIn(board.config.columns, rows));
+    return rows.map(r => readItem(board.config.columns, r, users));
   }
 
   private listPath(board: IBoard): string {
@@ -39,12 +47,12 @@ export class ItemService {
 
   public async loadItems(board: IBoard): Promise<IWorkItem[]> {
     const rows = await this.sp.getAll<any>(`${this.listPath(board)}/items?${this.query(board)}&$top=5000`);
-    return rows.map(r => readItem(board.config.columns, r));
+    return this.toItems(board, rows);
   }
 
   public async getItem(board: IBoard, id: number): Promise<IWorkItem> {
     const row = await this.sp.get<any>(`${this.listPath(board)}/items(${id})?${this.query(board)}`);
-    return readItem(board.config.columns, row);
+    return (await this.toItems(board, [row]))[0];
   }
 
   /** Cheap check used by the change poller. */
@@ -164,8 +172,9 @@ export class ItemService {
   /* ---------- My Work ---------- */
 
   /**
-   * Items where the user is in the board's main People column (WB_Owner), across boards.
-   * Filters on the server; a list over the 5,000-item threshold falls back to a paged scan.
+   * Items where the user is in the board's Owner column (WB_Owner), across boards.
+   * Reads the owner ids and filters in the browser, because SharePoint can't filter or project
+   * these multi-person fields reliably.
    */
   public async myWork(boards: IBoard[], me: IPerson): Promise<IMyWorkRow[]> {
     const perBoard = await mapLimit(boards, 4, async board => {
@@ -175,25 +184,20 @@ export class ItemService {
       }
       const statusCol = board.config.columns.filter(c => c.field === F.Status)[0];
       const dueCol = board.config.columns.filter(c => c.field === F.DueDate || c.fieldEnd === F.DueDate)[0];
-      const select = `Id,Title,${F.GroupId},${F.SortOrder},${F.ParentId},${F.Status},${F.StartDate},${F.DueDate},Created,Modified,Attachments,${F.Owner}/Id,${F.Owner}/Title,${F.Owner}/EMail`;
-      const base = `web/lists(guid'${board.itemsListId}')/items?$select=${select}&$expand=${F.Owner}`;
+      const select = `Id,Title,${F.GroupId},${F.SortOrder},${F.ParentId},${F.Status},${F.StartDate},${F.DueDate},Created,Modified,Attachments,${F.Owner}Id`;
       let rows: any[];
       try {
-        rows = await this.sp.getAll<any>(`${base}&$filter=${F.Owner}/Id eq ${me.id}&$top=500`, 2000);
+        rows = (await this.sp.getAll<any>(`web/lists(guid'${board.itemsListId}')/items?$select=${select}&$top=5000`))
+          .filter(r => readIds(r[F.Owner + 'Id']).indexOf(me.id) >= 0);
       } catch (e) {
-        if (e instanceof SpError && (e.isThreshold || e.status === 500)) {
-          rows = (await this.sp.getAll<any>(`${base}&$top=5000`)).filter(r => {
-            const owners = r[F.Owner];
-            return Array.isArray(owners) && owners.some((o: any) => o.Id === me.id);
-          });
-        } else if (e instanceof SpError && (e.isNotFound || e.isAccessDenied)) {
+        if (e instanceof SpError && (e.isNotFound || e.isAccessDenied)) {
           return [] as IMyWorkRow[];
-        } else {
-          throw e;
         }
+        throw e;
       }
+      const users = await this.people.resolve(peopleIdsIn([ownerCol], rows));
       return rows.map(r => {
-        const item = readItem([ownerCol], r);
+        const item = readItem([ownerCol], r, users);
         const statusText: string | null = statusCol ? r[F.Status] || null : null;
         const status = statusCol && statusText ? (statusCol.labels || []).filter(l => l.text === statusText)[0] || { id: '', text: statusText, color: '#c4c4c4' } : null;
         return {

@@ -1,6 +1,6 @@
 import { keyBetween, keyForIndex, needsRebalance, rebalance, ORDER_STEP } from '../ordering';
 import { toSpDate, fromSpDate, addDays, diffDays, formatDay, formatRange, relativeDay, todayIso } from '../dates';
-import { fieldXml, readItem, writeCell, cellText, itemQueryParts, xmlEscape, F } from '../fieldMap';
+import { fieldXml, readItem, writeCell, cellText, itemQueryParts, xmlEscape, F, peopleIdsIn, readIds } from '../fieldMap';
 import { diffVersions, versionField } from '../activity';
 import { parseSegments, mentionIds, mentionToken, plainText } from '../mentions';
 import { boardToCsv, csvEscape } from '../csv';
@@ -99,8 +99,10 @@ describe('fieldMap', () => {
 
   it('selects and expands the right fields', () => {
     const q = itemQueryParts(config.columns);
-    expect(q.expand).toContain(F.Owner);
-    expect(q.select).toContain(`${F.Owner}/Title`);
+    // People are read as ids, never projected: SharePoint rejects WB_Owner/EMail.
+    expect(q.expand).not.toContain(F.Owner);
+    expect(q.select).toContain(`${F.Owner}Id`);
+    expect(q.select.some(s => s.indexOf(F.Owner + '/') === 0)).toBe(false);
     expect(q.select).toContain(F.StartDate);
     expect(q.select).toContain(F.DueDate);
     expect(q.select).toContain('WB_c_tags01');
@@ -109,16 +111,20 @@ describe('fieldMap', () => {
   it('reads a REST row into an item', () => {
     const row = {
       Id: 5, Title: 'Write brief', [F.GroupId]: 'g1', [F.SortOrder]: 2048, [F.ParentId]: null,
-      [F.Owner]: [{ Id: 7, Title: 'Anna Smith', EMail: 'anna@contoso.com' }],
+      [F.Owner + 'Id']: [7, 9],
       [F.Status]: 'Working on it', [F.StartDate]: '2026-10-01T12:00:00Z', [F.DueDate]: '2026-10-08T12:00:00Z',
       WB_c_tags01: ['Urgent'], WB_c_eff001: 6, Created: '2026-09-01T10:00:00Z', Modified: '2026-09-02T10:00:00Z',
       Attachments: true, 'odata.etag': '"3"'
     };
-    const it1 = readItem(config.columns, row);
+    const users = new Map([[7, { id: 7, title: 'Anna Smith', email: 'anna@contoso.com' }]]);
+    const it1 = readItem(config.columns, row, users);
     expect(it1.id).toBe(5);
     expect(it1.parentId).toBeNull();
     expect(it1.etag).toBe('"3"');
-    expect(it1.values.owner).toEqual([{ id: 7, title: 'Anna Smith', email: 'anna@contoso.com' }]);
+    expect(it1.values.owner).toEqual([{ id: 7, title: 'Anna Smith', email: 'anna@contoso.com' }, { id: 9, title: 'User 9', email: '' }]);
+    expect(peopleIdsIn(config.columns, [row, { [F.Owner + 'Id']: { results: [9, 11] } }])).toEqual([7, 9, 11]);
+    expect(readIds(null)).toEqual([]);
+    expect(readIds(5)).toEqual([5]);
     expect(it1.values.tl).toEqual({ start: '2026-10-01', end: '2026-10-08' });
     expect(it1.values.tags).toEqual(['Urgent']);
     expect(it1.values.effort).toBe(6);

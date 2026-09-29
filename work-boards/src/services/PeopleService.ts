@@ -11,6 +11,7 @@ interface IPickerEntity {
 export class PeopleService {
   private readonly sp: SpClient;
   private readonly ensured: { [key: string]: IPerson } = {};
+  private readonly byId: Map<number, IPerson> = new Map();
   private me: IPerson | null = null;
 
   constructor(sp: SpClient) {
@@ -54,6 +55,34 @@ export class PeopleService {
     }));
   }
 
+  /**
+   * Names and emails for site user ids, from the site's user list. Cached; asks for up to 20 at a time.
+   * Ids that can't be found (for example a deleted user) come back as "User 12".
+   */
+  public async resolve(ids: number[]): Promise<Map<number, IPerson>> {
+    const missing = ids.filter(id => !this.byId.has(id));
+    for (let i = 0; i < missing.length; i += 20) {
+      const chunk = missing.slice(i, i + 20);
+      const filter = chunk.map(id => `Id eq ${id}`).join(' or ');
+      try {
+        const res = await this.sp.get<{ value: { Id: number; Title: string; Email: string }[] }>(
+          `web/siteusers?$select=Id,Title,Email&$filter=${encodeURIComponent(filter)}`
+        );
+        res.value.forEach(u => this.byId.set(u.Id, { id: u.Id, title: u.Title, email: u.Email || '' }));
+      } catch {
+        // Fall back to "User 12" labels rather than failing the whole board.
+      }
+      chunk.forEach(id => {
+        if (!this.byId.has(id)) {
+          this.byId.set(id, { id, title: 'User ' + id, email: '' });
+        }
+      });
+    }
+    const out = new Map<number, IPerson>();
+    ids.forEach(id => out.set(id, this.byId.get(id) as IPerson));
+    return out;
+  }
+
   /** Make sure the person exists in the site's user list and return their site user id. */
   public async ensure(key: string): Promise<IPerson> {
     if (this.ensured[key]) {
@@ -62,6 +91,7 @@ export class PeopleService {
     const u = await this.sp.post<{ Id: number; Title: string; Email: string }>('web/ensureuser', { logonName: key });
     const person: IPerson = { id: u.Id, title: u.Title, email: u.Email };
     this.ensured[key] = person;
+    this.byId.set(person.id, person);
     return person;
   }
 }

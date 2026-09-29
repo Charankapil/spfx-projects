@@ -40,14 +40,17 @@ const THEME_VARS = ['--wb-primary', '--wb-primary-text', '--wb-bg', '--wb-surfac
 type Phase = { kind: 'loading' } | { kind: 'setup'; status: ISetupStatus } | { kind: 'ready' } | { kind: 'error'; message: string };
 
 export function App(props: IAppProps): JSX.Element {
-  const services = React.useMemo<IServices>(() => ({
-    sp: props.sp,
-    boards: new BoardService(props.sp),
-    items: new ItemService(props.sp),
-    updates: new UpdateService(props.sp),
-    people: new PeopleService(props.sp),
-    prefs: new PrefsService(props.sp)
-  }), [props.sp]);
+  const services = React.useMemo<IServices>(() => {
+    const people = new PeopleService(props.sp);
+    return {
+      sp: props.sp,
+      boards: new BoardService(props.sp),
+      items: new ItemService(props.sp, people),
+      updates: new UpdateService(props.sp),
+      people,
+      prefs: new PrefsService(props.sp)
+    };
+  }, [props.sp]);
 
   const [phase, setPhase] = React.useState<Phase>({ kind: 'loading' });
   const [me, setMe] = React.useState<IPerson | null>(null);
