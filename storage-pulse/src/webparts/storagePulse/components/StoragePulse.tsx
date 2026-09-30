@@ -18,12 +18,15 @@ import { Dashboard } from './dashboard/Dashboard';
 import { formatDate, formatDuration } from './dashboard/format';
 import { ErrorBoundary } from './ErrorBoundary';
 import { PulseMark } from './PulseMark';
+import { ScanMap } from './ScanMap';
 import { ScanPanel } from './ScanPanel';
 import { format, thresholdLabel } from './text';
 import { IScanProgress, IScanResult } from '../models/IScanResult';
 import { THRESHOLD_OPTIONS } from '../services/activity';
 import { exportLibrariesCsv } from '../services/ExportService';
+import { canRunScan, isAllowedPerson } from '../services/access';
 import { ResultsStore } from '../services/ResultsStore';
+import { coverage, isPartialCoverage } from '../services/siteMap';
 import { ScanCancelledError, ScanPausedError, StorageScanService } from '../services/StorageScanService';
 
 const INITIAL_PROGRESS: IScanProgress = {
@@ -50,6 +53,12 @@ function countFailures(result: IScanResult): number {
   return result.libraries.filter((l) => l.error).length + result.webs.filter((w) => w.error).length;
 }
 
+function toKeys(selected: Set<string>): string[] {
+  const keys: string[] = [];
+  selected.forEach((k) => keys.push(k));
+  return keys;
+}
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -71,7 +80,13 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
     const legacy = ctx.legacyPageContext as { isSiteAdmin?: boolean } | undefined;
     return !!(legacy && legacy.isSiteAdmin) || ctx.web.permissions.hasPermission(SPPermission.manageWeb);
   }, [props.context]);
-  const canScan = isOwner || props.scanPermission === 'everyone';
+  const isListed = useMemo(() => {
+    const user = props.context.pageContext.user;
+    return isAllowedPerson({ email: user.email, loginName: user.loginName }, props.scanAllowedPeople);
+  }, [props.context, props.scanAllowedPeople]);
+  const canScan = canRunScan(props.scanPermission, isOwner, isListed);
+  // Owners, and the people the owner named, save scans for everyone; in "everyone" mode scans stay private.
+  const savesForEveryone = isOwner || (props.scanPermission === 'people' && isListed);
 
   const [result, setResult] = useState<IScanResult | undefined>(undefined);
   const [savedBy, setSavedBy] = useState<string | undefined>(undefined);
@@ -84,6 +99,9 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
   const [notice, setNotice] = useState<INotice | undefined>(undefined);
   /** An unfinished scan (paused by throttling, or interrupted) that can be resumed. */
   const [partial, setPartial] = useState<IScanResult | undefined>(undefined);
+  /** The site map (choose what to scan) is open, and the libraries ticked on it as `webUrl|libraryId`. */
+  const [showMap, setShowMap] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -105,6 +123,8 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
     setResult(undefined);
     setSavedBy(undefined);
     setPartial(undefined);
+    setShowMap(false);
+    setSelected(new Set());
     const store = storeRef.current as ResultsStore;
     store
       .load(props.scope)
@@ -114,9 +134,9 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
           setSavedBy(saved.savedBy);
         }
         // An unfinished scan is only offered when it is newer than the last complete one.
-        if (isOwner) {
+        if (savesForEveryone) {
           const unfinished = await store.loadPartial(props.scope);
-          if (active && unfinished && (!saved || unfinished.result.scanStartedAt > saved.result.scanStartedAt)) {
+          if (active && unfinished && (!saved || unfinished.result.scanCompletedAt > saved.result.scanCompletedAt)) {
             setPartial(unfinished.result);
           }
         }
@@ -135,7 +155,7 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
     return () => {
       active = false;
     };
-  }, [props.scope, isOwner]);
+  }, [props.scope, savesForEveryone]);
 
   const resultRef = useRef<IScanResult | undefined>(undefined);
   resultRef.current = result;
@@ -143,14 +163,18 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
   const partialRef = useRef<IScanResult | undefined>(undefined);
   partialRef.current = partial;
 
+  const selectedRef = useRef<Set<string>>(selected);
+  selectedRef.current = selected;
+
   const { scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, scanSpeed, tuning } = props;
   /**
    * Runs a full scan, resumes an unfinished one, or (retry) re-reads only what
    * failed in the current result; then saves the result for owners.
    */
   const runScan = useCallback(
-    (kind: 'full' | 'retry' | 'resume') => {
+    (kind: 'full' | 'retry' | 'resume' | 'map' | 'selected') => {
       const retry = kind === 'retry';
+      const map = kind === 'map';
       const service = serviceRef.current as StorageScanService;
       const store = storeRef.current as ResultsStore;
       const previous = resultRef.current;
@@ -171,7 +195,7 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
         ...(tuning || {})
       };
       // Owners save progress as the scan goes, so throttling or a closed tab never costs the work done so far.
-      const checkpoint = isOwner ? (snapshot: IScanResult): Promise<void> => store.savePartial(snapshot) : undefined;
+      const checkpoint = savesForEveryone ? (snapshot: IScanResult): Promise<void> => store.savePartial(snapshot) : undefined;
       const onProgress = (p: IScanProgress): void => {
         if (mounted.current) {
           setProgress(p);
@@ -184,6 +208,10 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
           scanned =
             kind === 'resume' && unfinished
               ? await service.resume(unfinished, options, onProgress, checkpoint)
+              : map
+              ? await service.mapSite(options, previous, onProgress)
+              : kind === 'selected' && previous
+              ? await service.scanSelected(previous, toKeys(selectedRef.current), options, onProgress, checkpoint)
               : retry && previous
               ? await service.retryFailed(previous, options, onProgress)
               : await service.scan(options, onProgress, checkpoint);
@@ -196,7 +224,7 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
                 setPartial(snapshot);
                 setNotice({
                   type: MessageBarType.warning,
-                  text: format(isOwner ? strings.ScanPausedSaved : strings.ScanPausedNotSaved, {
+                  text: format(savesForEveryone ? strings.ScanPausedSaved : strings.ScanPausedNotSaved, {
                     done: snapshot.partial.librariesDone,
                     total: snapshot.partial.librariesTotal
                   })
@@ -216,16 +244,29 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
         }
         setResult(scanned);
         setSavedBy(undefined);
-        if (!retry) {
+        // Retrying and refreshing the map leave an unfinished scan alone; every other run replaces it.
+        const keepPartial = retry || map;
+        if (!keepPartial) {
           setPartial(undefined);
         }
+        if (map) {
+          setShowMap(true);
+        } else if (kind === 'selected') {
+          setShowMap(false);
+          setSelected(new Set());
+        }
+        const cover = coverage(scanned);
         const retryNotice = retry
           ? countFailures(scanned) === 0
             ? strings.RetryAllRead
             : format(strings.RetrySomeLeft, { count: countFailures(scanned) })
+          : map
+          ? strings.MapDone
+          : kind === 'selected'
+          ? format(strings.ScanSelectedSaved, { done: cover.scanned, total: cover.total })
           : undefined;
 
-        if (!isOwner) {
+        if (!savesForEveryone) {
           setIsScanning(false);
           setNotice({ type: MessageBarType.info, text: retryNotice || strings.ScanNotSavedForOthers });
           return;
@@ -233,7 +274,7 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
         setIsSaving(true);
         try {
           await store.save(scanned);
-          if (!retry) {
+          if (!keepPartial) {
             // The unfinished-scan file is obsolete now; failing to delete it is harmless (it is older than this scan).
             store.deletePartial(scope).catch(() => undefined);
           }
@@ -253,17 +294,20 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
       };
       run().catch(() => undefined);
     },
-    [scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, scanSpeed, tuning, threshold, isOwner]
+    [scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, scanSpeed, tuning, threshold, savesForEveryone]
   );
   const startScan = useCallback(() => runScan('full'), [runScan]);
   const retryFailed = useCallback(() => runScan('retry'), [runScan]);
   const resumeScan = useCallback(() => runScan('resume'), [runScan]);
+  const refreshMap = useCallback(() => runScan('map'), [runScan]);
+  const scanSelected = useCallback(() => runScan('selected'), [runScan]);
+  const openMap = useCallback(() => (resultRef.current ? setShowMap(true) : runScan('map')), [runScan]);
   const discardPartial = useCallback(() => {
     setPartial(undefined);
-    if (isOwner) {
+    if (savesForEveryone) {
       (storeRef.current as ResultsStore).deletePartial(scope).catch(() => undefined);
     }
-  }, [isOwner, scope]);
+  }, [savesForEveryone, scope]);
 
   const cancelScan = useCallback(() => {
     (serviceRef.current as StorageScanService).cancel();
@@ -283,6 +327,16 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
     [approxAbove]
   );
   const failures = result ? countFailures(result) : 0;
+  const cover = result ? coverage(result) : undefined;
+  const partialCover = !!result && isPartialCoverage(result);
+  // Libraries still on the map are left out of the dashboard; the site storage breakdown only makes sense once all are read.
+  const view = useMemo(
+    () =>
+      result && isPartialCoverage(result)
+        ? { ...result, libraries: result.libraries.filter((l) => !l.unscanned), siteStorageBytes: undefined }
+        : result,
+    [result]
+  );
 
   const scopeShort = props.scope === 'currentWeb' ? strings.ScopeCurrentWebShort : strings.ScopeSiteCollectionShort;
   const scopePhrase = props.scope === 'currentWeb' ? strings.ScopeCurrentWebPhrase : strings.ScopeSiteCollectionPhrase;
@@ -299,7 +353,8 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
     };
     lastScanLine =
       format(who ? strings.LastScanned : strings.LastScannedNoName, values) +
-      ` \u00b7 ${result.quickAfterMonths !== undefined ? strings.QuickScanTag : strings.DetailedScanTag}`;
+      ` \u00b7 ${result.quickAfterMonths !== undefined ? strings.QuickScanTag : strings.DetailedScanTag}` +
+      (partialCover && cover ? ` \u00b7 ${format(strings.MapCoverage, { done: cover.scanned, total: cover.total })}` : '');
     ageDays = Math.floor((Date.now() - completed.getTime()) / DAY_MS);
   }
   const isStale = !!result && !isScanning && props.staleAfterDays > 0 && ageDays >= props.staleAfterDays;
@@ -340,6 +395,14 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
               onClick={startScan}
               disabled={isLoadingSaved}
               className={styles.scanButton}
+            />
+          )}
+          {canScan && !isScanning && (
+            <DefaultButton
+              text={strings.MapButton}
+              iconProps={{ iconName: 'BulletedTreeList' }}
+              onClick={openMap}
+              disabled={isLoadingSaved}
             />
           )}
           {canScan && !isScanning && failures > 0 && (
@@ -405,9 +468,37 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
         </div>
       )}
 
-      {!isScanning && result && (
-        <ErrorBoundary resetKey={result}>
-          <Dashboard result={result} thresholdMonths={threshold} />
+      {!isScanning && result && showMap && (
+        <ScanMap
+          result={result}
+          selected={selected}
+          onChange={setSelected}
+          onScan={scanSelected}
+          onRefresh={refreshMap}
+          onClose={() => setShowMap(false)}
+          canScan={canScan}
+        />
+      )}
+
+      {!isScanning && result && view && partialCover && cover && cover.scanned > 0 && (
+        <MessageBar messageBarType={MessageBarType.info}>
+          {format(strings.PartialCoverage, {
+            done: cover.scanned,
+            total: cover.total,
+            share:
+              cover.totalBytes > 0
+                ? ` (${format(strings.MapCoverageShare, { percent: `${Math.round((cover.scannedBytes / cover.totalBytes) * 100)}%` })})`
+                : ''
+          })}
+        </MessageBar>
+      )}
+      {!isScanning && result && cover && cover.scanned === 0 && !showMap && (
+        <MessageBar messageBarType={MessageBarType.info}>{strings.NothingScannedYet}</MessageBar>
+      )}
+
+      {!isScanning && result && view && cover && cover.scanned > 0 && (
+        <ErrorBoundary resetKey={view}>
+          <Dashboard result={view} thresholdMonths={threshold} />
         </ErrorBoundary>
       )}
 
@@ -421,12 +512,15 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
               : strings.EmptyNoPermission}
           </p>
           {canScan && (
-            <PrimaryButton
-              text={strings.StartScan}
-              iconProps={{ iconName: 'Search' }}
-              onClick={startScan}
-              className={styles.scanButton}
-            />
+            <Stack horizontal wrap horizontalAlign="center" tokens={{ childrenGap: 8 }}>
+              <PrimaryButton
+                text={strings.StartScan}
+                iconProps={{ iconName: 'Search' }}
+                onClick={startScan}
+                className={styles.scanButton}
+              />
+              <DefaultButton text={strings.MapButton} iconProps={{ iconName: 'BulletedTreeList' }} onClick={openMap} />
+            </Stack>
           )}
         </div>
       )}

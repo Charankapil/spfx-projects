@@ -17,6 +17,7 @@ import { StoragePulse } from './components/StoragePulse';
 import { IStoragePulseProps, IStoragePulseTheme, ScanMode, ScanPermission } from './components/IStoragePulseProps';
 import { format, thresholdLabel } from './components/text';
 import { ScanScope } from './models/IScanResult';
+import { parseAllowedPeople } from './services/access';
 import { DEFAULT_THRESHOLD_MONTHS, THRESHOLD_OPTIONS } from './services/activity';
 import { ScanSpeed } from './services/RequestGovernor';
 
@@ -25,6 +26,8 @@ export interface IStoragePulseWebPartProps {
   scope: ScanScope;
   thresholdMonths: number;
   scanPermission: ScanPermission;
+  /** One email or sign-in name per line; used when scanPermission is 'people'. */
+  scanAllowedPeople: string;
   scanMode: ScanMode;
   scanSpeed: ScanSpeed;
   includeHidden: boolean;
@@ -102,7 +105,11 @@ export default class StoragePulseWebPart extends BaseClientSideWebPart<IStorageP
       title: this.properties.title,
       scope: this.properties.scope === 'currentWeb' ? 'currentWeb' : 'siteCollection',
       thresholdMonths: THRESHOLD_OPTIONS.indexOf(threshold) >= 0 ? threshold : DEFAULT_THRESHOLD_MONTHS,
-      scanPermission: this.properties.scanPermission === 'everyone' ? 'everyone' : 'owners',
+      scanPermission:
+        this.properties.scanPermission === 'everyone' || this.properties.scanPermission === 'people'
+          ? this.properties.scanPermission
+          : 'owners',
+      scanAllowedPeople: parseAllowedPeople(this.properties.scanAllowedPeople),
       // Pages added before v2.1 have no scan mode set; they get the quick scan too.
       scanMode: this.properties.scanMode === 'detailed' ? 'detailed' : 'quick',
       // Pages added before v2.2 have no speed set; they get the gentle default too.
@@ -202,9 +209,20 @@ export default class StoragePulseWebPart extends BaseClientSideWebPart<IStorageP
                   label: strings.ScanPermissionLabel,
                   options: [
                     { key: 'owners', text: strings.ScanPermissionOwners },
+                    { key: 'people', text: strings.ScanPermissionPeople },
                     { key: 'everyone', text: strings.ScanPermissionEveryone }
                   ]
-                })
+                }),
+                ...(this.properties.scanPermission === 'people'
+                  ? [
+                      PropertyPaneTextField('scanAllowedPeople', {
+                        label: strings.ScanAllowedPeopleLabel,
+                        description: strings.ScanAllowedPeopleDescription,
+                        multiline: true,
+                        rows: 4
+                      })
+                    ]
+                  : [])
               ]
             },
             {

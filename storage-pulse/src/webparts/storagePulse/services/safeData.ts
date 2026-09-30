@@ -133,9 +133,15 @@ function library(raw: ILibraryResult, origin: string): ILibraryResult | undefine
   }
   if (raw.pending === true) {
     lib.pending = true;
-    if (isDate(raw.lastUserChange)) {
-      lib.lastUserChange = raw.lastUserChange;
-    }
+  }
+  if (raw.unscanned === true) {
+    lib.unscanned = true;
+  }
+  if ((raw.pending === true || raw.unscanned === true) && isDate(raw.lastUserChange)) {
+    lib.lastUserChange = raw.lastUserChange;
+  }
+  if (isDate(raw.scannedAt)) {
+    lib.scannedAt = raw.scannedAt;
   }
   if (raw.measuredAsWhole && isDate(raw.measuredAsWhole.lastChange)) {
     lib.measuredAsWhole = {

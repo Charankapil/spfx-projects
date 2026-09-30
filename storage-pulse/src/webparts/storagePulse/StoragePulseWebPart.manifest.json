@@ -20,6 +20,7 @@
         "scope": "siteCollection",
         "thresholdMonths": 12,
         "scanPermission": "owners",
+        "scanAllowedPeople": "",
         "scanMode": "quick",
         "scanSpeed": "gentle",
         "includeHidden": false,

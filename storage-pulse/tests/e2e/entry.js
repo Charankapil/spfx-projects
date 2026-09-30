@@ -17,6 +17,7 @@ function render(extra) {
     scope: 'siteCollection',
     thresholdMonths: 12,
     scanPermission: 'owners',
+    scanAllowedPeople: [],
     scanMode: 'quick',
     // Tests run without real-world pacing; scenarios can override any of it.
     scanSpeed: 'fast',

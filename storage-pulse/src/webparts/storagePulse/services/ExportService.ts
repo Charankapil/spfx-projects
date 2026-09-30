@@ -73,7 +73,9 @@ export function exportLibrariesCsv(result: IScanResult, thresholdMonths: number)
       lib.measuredAsWhole ? 'Yes' : 'No',
       lib.measuredAsWhole ? lib.measuredAsWhole.lastChange : lib.metrics && lib.metrics.lastModified ? lib.metrics.lastModified : '',
       ...AGE_BANDS.map((b) => String(bandTotals(lib.histogram, b).bytes)),
-      lib.error
+      lib.unscanned
+        ? 'Not scanned yet'
+        : lib.error
         ? `${lib.partial ? 'Partly read: ' : ''}${lib.error}`
         : lib.unreadItems
         ? `${lib.unreadItems} of ${lib.itemCount} items not visible to the person who ran the scan`

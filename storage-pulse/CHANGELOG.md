@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.3.0
+
+### Added
+- **Choose what to scan.** A new map lists every site, subsite and library
+  with SharePoint's own size and file count for each (one request per
+  library, no files read). Tick the ones to read now and leave the rest for a
+  later visit; sites have tri-state checkboxes that cover their subsites, and
+  a filter box narrows a long list. Libraries above 250,000 files or 200 GB
+  are flagged as large.
+- **Results that build up over several visits.** **Scan selected** reads only
+  the ticked libraries and merges them into the saved result; libraries read
+  before stay as they are (or are replaced when ticked again). Ages stay
+  measured from the first scan's start, so libraries added on different days
+  are consistent with each other. Each library records when it was read.
+- **Coverage.** The header and dashboard say how much has been read ("42 of
+  181 libraries", and the share of the library storage), and libraries still
+  on the map are left out of the totals. "Where the site collection storage
+  goes" is shown once everything has been read.
+- Pausing, checkpoints and **Resume scan** work for a selected scan the same
+  way as for a full one. **Refresh map** adds new libraries and drops deleted
+  ones without touching what was read.
+- **Only the people I name** for *Who can run a scan*: list email addresses
+  in the settings and only those people see the scan buttons, whether or not
+  they own the site. It is a control on this page, not a permission change
+  in SharePoint. Named people also save scans for everyone.
+
+### Changed
+- An unfinished scan is offered when its checkpoint is newer than the saved
+  result (it used to compare the scan start, which selective scans keep).
+- The libraries CSV lists libraries not read yet as "Not scanned yet".
+
 ## 2.2.0
 
 ### Fixes

@@ -78,8 +78,16 @@ export interface ILibraryResult {
    * on resume.
    */
   pending?: boolean;
-  /** The list's last change by a person (ISO). Kept only while pending, for the quick-scan check on resume. */
+  /** The list's last change by a person (ISO). Kept only while pending or unscanned, for the quick-scan check when it is read. */
   lastUserChange?: string;
+  /**
+   * Found on the site map but not read yet (v2.3): files, bytes and histogram
+   * are empty, and `metrics` holds SharePoint's own size and file count so the
+   * map can show them. Left out of the dashboard figures.
+   */
+  unscanned?: boolean;
+  /** When this library was last read (ISO). Missing on scans saved before v2.3. */
+  scannedAt?: string;
 }
 
 export interface IWebResult {

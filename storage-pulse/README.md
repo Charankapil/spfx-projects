@@ -121,7 +121,7 @@ Nothing is stored anywhere else, and nothing is sent outside SharePoint.
 | | Include hidden libraries, such as the Preservation Hold Library | Off |
 | | Skip Site Pages, Site Assets, Style Library and Form Templates | Off |
 | | Libraries to skip (one title or URL name per line) | — |
-| Who can scan | Site owners only, or everyone (their scans are shown only to them) | Site owners |
+| Who can scan | Site owners only, only the people you name (by email), or everyone (their scans are shown only to them) | Site owners |
 
 `_catalogs` libraries (master pages, web parts, solutions) are never
 scanned.
@@ -258,6 +258,30 @@ Forms 2 and 3 rely on SharePoint returning items in ID order when no
 `$orderby` is given, which it does. After each library the items read are
 compared with the library's item count and any shortfall is reported. The
 dashboard says how many libraries needed a fallback.
+
+### Choosing what to scan (large sites)
+
+On a site with many subsites and libraries, **Choose what to scan** shows a
+map instead of starting one all-or-nothing scan.
+
+1. **Map.** Every site, subsite and library is listed with SharePoint's own
+   size (including version history) and file count, from one storage
+   metrics request per library. No files are read.
+2. **Select.** Tick libraries, or a whole site (it covers its subsites).
+   Very large libraries (250,000+ files or 200 GB+) are flagged.
+3. **Scan selected.** Only those libraries are read and merged into the
+   saved result. Come back later for the rest; the header shows coverage.
+
+Ages are always measured from the first scan's start, so libraries read on
+different days add up consistently. Run **Run new scan** to start over from
+scratch. The map is saved with the result, so a later visit shows what has
+been read and what is left; **Refresh map** picks up new libraries.
+
+Restricting who can scan: set *Who can run a scan* to *Only the people I
+name* and list email addresses. Only they see the scan buttons. This limits
+the page, not SharePoint permissions, and it cannot check tenant admin
+roles (that would need a Microsoft Graph permission, which this web part
+avoids), so list your admins by name.
 
 ### Very large libraries (a million files and more)
 

@@ -1,9 +1,10 @@
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 
 import { ScanScope } from '../models/IScanResult';
+import { ScanPermission } from '../services/access';
 import { ISpeedProfile, ScanSpeed } from '../services/RequestGovernor';
 
-export type ScanPermission = 'owners' | 'everyone';
+export type { ScanPermission };
 export type ScanMode = 'quick' | 'detailed';
 
 export interface IStoragePulseTheme {
@@ -18,6 +19,8 @@ export interface IStoragePulseProps {
   scope: ScanScope;
   thresholdMonths: number;
   scanPermission: ScanPermission;
+  /** Emails or sign-in names allowed to scan when scanPermission is 'people'. */
+  scanAllowedPeople: string[];
   scanMode: ScanMode;
   scanSpeed: ScanSpeed;
   includeHidden: boolean;

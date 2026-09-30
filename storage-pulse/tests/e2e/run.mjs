@@ -228,6 +228,52 @@ test('visitors can scan for themselves when allowed, without saving', async () =
   await page.close();
 });
 
+test('site map: scan a few libraries now, the rest on a later visit, and the totals end up exact', async () => {
+  const { page, errors } = await open({ mock: { extraLibraries: 8 } });
+  await page.getByRole('button', { name: 'Choose what to scan' }).first().click();
+  await page.getByRole('heading', { name: 'Choose what to scan' }).waitFor({ timeout: 60000 });
+  await page.getByText(/^0 of \d+ libraries scanned/).waitFor();
+  // Sizes and file counts are listed before anything is read.
+  assert.equal(await page.evaluate(() => window.__sp.log.filter((l) => l.indexOf('/items') >= 0).length), 0);
+  await page.getByRole('checkbox', { name: 'Select Documents' }).first().click({ force: true });
+  await page.getByRole('button', { name: 'Scan selected (1)' }).click();
+  await page.getByText(/This dashboard covers 1 of \d+ libraries/).waitFor({ timeout: 60000 });
+  if (shots) {
+    await page.getByRole('button', { name: 'Choose what to scan' }).first().click();
+    await page.getByRole('heading', { name: 'Choose what to scan' }).waitFor();
+    await page.locator('section[aria-label="Choose what to scan"]').screenshot({ path: path.join(shots, 'site-map.png') });
+    await page.getByRole('button', { name: 'Close' }).click();
+  }
+  // A later visit: the map remembers what was read; add everything still on it.
+  await page.evaluate(() => window.__remount(true));
+  await page.getByText(/This dashboard covers 1 of \d+ libraries/).waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Choose what to scan' }).first().click();
+  await page.getByRole('button', { name: 'Select all not scanned' }).click();
+  await page.getByRole('button', { name: /^Scan selected/ }).click();
+  await page.getByText('Where the inactive storage is').waitFor({ timeout: 120000 });
+  await page.waitForTimeout(1500);
+  assert.equal(await page.getByText(/This dashboard covers/).count(), 0);
+  const info = await page.evaluate(() => {
+    const figs = [...document.querySelectorAll('[class*=figureValue]')].map((e) => e.getAttribute('title'));
+    const bytes = figs.slice(0, 2).map((t) => Number(String(t).replace(/[^0-9]/g, '')));
+    return { bytes: bytes[0] + bytes[1], expected: window.__sp.expected({}) };
+  });
+  assert.equal(info.bytes, info.expected.bytes);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('naming the people who may scan replaces site ownership', async () => {
+  const listed = await open({ mock: { owner: false }, props: { scanPermission: 'people', scanAllowedPeople: ['ALEX@contoso.com'] } });
+  await listed.page.getByRole('button', { name: 'Start scan' }).first().waitFor({ timeout: 15000 });
+  await listed.page.close();
+  const other = await open({ mock: { owner: true }, props: { scanPermission: 'people', scanAllowedPeople: ['someone.else@contoso.com'] } });
+  await other.page.getByText(/Ask a site owner or administrator/).waitFor({ timeout: 15000 });
+  assert.equal(await other.page.getByRole('button', { name: 'Start scan' }).count(), 0);
+  assert.equal(await other.page.getByRole('button', { name: 'Choose what to scan' }).count(), 0);
+  await other.page.close();
+});
+
 test('old results show the stale banner', async () => {
   const { page: seed } = await open({ mock: {} });
   await scanToEnd(seed);

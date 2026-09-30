@@ -495,6 +495,171 @@
   flex-shrink: 0;
 }
 
+// ---------------------------------------------------------------- Site map (choose what to scan)
+
+.mapPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+  border-radius: 16px;
+  background: var(--sp-surface);
+  border: 1px solid var(--sp-border);
+  box-shadow: var(--sp-shadow);
+}
+
+.mapHead {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.mapTitle {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--sp-text);
+}
+
+.mapIntro {
+  margin: 0;
+  max-width: 760px;
+  font-size: 13px;
+  color: var(--sp-text-2);
+}
+
+.mapCoverage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--sp-text-2);
+}
+
+.mapToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.mapSearch {
+  min-width: 220px;
+  flex: 1 1 220px;
+}
+
+.mapTree {
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid var(--sp-border);
+  border-radius: 10px;
+  background: var(--sp-surface-solid);
+}
+
+.mapRow {
+  display: grid;
+  grid-template-columns: 24px 24px minmax(0, 1fr) 84px 96px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px 6px 8px;
+  border-bottom: 1px solid var(--sp-hairline);
+  font-size: 13px;
+  color: var(--sp-text);
+}
+
+.mapHeaderRow {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sp-text-3);
+  background: var(--sp-surface-2);
+  pointer-events: none;
+}
+
+.mapWebRow {
+  background: var(--sp-surface-2);
+}
+
+.mapLibRow {
+  background: var(--sp-surface-solid);
+}
+
+.mapCoverageText {
+  color: var(--sp-text);
+}
+
+.mapToggle {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--sp-text-2);
+  cursor: pointer;
+}
+
+.mapName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapIcon {
+  margin-right: 6px;
+  color: var(--sp-text-3);
+}
+
+.mapMeta {
+  font-size: 12px;
+  color: var(--sp-text-3);
+}
+
+.mapWarn {
+  color: var(--sp-inactive);
+}
+
+.mapNum {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mapBadge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--sp-text-2);
+  background: var(--sp-surface-2);
+  border: 1px solid var(--sp-border);
+}
+
+.mapBadgeDone {
+  color: var(--sp-text);
+  border-color: var(--sp-active);
+}
+
+.mapBadgeFailed,
+.mapBadgeLarge {
+  color: var(--sp-badge-text);
+  background: var(--sp-badge-bg);
+  border-color: transparent;
+}
+
+.mapFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--sp-text-2);
+}
+
 // ---------------------------------------------------------------- Loading and empty
 
 @keyframes shimmer {

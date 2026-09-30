@@ -890,7 +890,9 @@ export class StorageScanService {
         }
         // Done (successfully or with a recorded error): a checkpoint taken from here on counts it as read.
         delete library.pending;
+        delete library.unscanned;
         delete library.lastUserChange;
+        library.scannedAt = new Date().toISOString();
         progress.librariesDone++;
         onProgress({ ...progress });
         this.checkpoint(false);
@@ -1012,9 +1014,10 @@ export class StorageScanService {
       },
       quickAfterMonths: run.options.quickAfterMonths,
       paging: this.pagingSummary(run.previousPaging),
+      // Libraries left on the map (not selected for this run) are neither done nor pending.
       partial: {
-        librariesDone: libraries.filter((l) => !l.pending).length,
-        librariesTotal: libraries.length
+        librariesDone: libraries.filter((l) => !l.pending && !l.unscanned).length,
+        librariesTotal: libraries.filter((l) => l.pending || !l.unscanned).length
       }
     };
     return JSON.parse(JSON.stringify(result)) as IScanResult;
@@ -1200,6 +1203,145 @@ export class StorageScanService {
       paging: this.pagingSummary(copy.paging),
       partial: undefined
     };
+  }
+
+  /**
+   * Lists every site and library the options allow, with SharePoint's own size
+   * and file count for each (one request per library), without reading any
+   * files. Libraries already read in `previous` keep their results; new ones
+   * are added as unscanned, so the map can be refreshed at any time and the
+   * result built up over several visits with scanSelected.
+   */
+  public async mapSite(
+    options: IScanOptions,
+    previous: IScanResult | undefined,
+    onProgress: (p: IScanProgress) => void
+  ): Promise<IScanResult> {
+    this.begin(options);
+    const emit = this.makeEmitter(onProgress);
+    const now = new Date();
+    const rootUrl =
+      options.scope === 'currentWeb' ? this.context.pageContext.web.absoluteUrl : this.context.pageContext.site.absoluteUrl;
+    const progress = this.newProgress(rootUrl);
+    progress.phase = 'discovering';
+    this.governor.onChange = () => emit(progress);
+    emit(progress);
+
+    const storagePromise = this.getSiteStorage();
+    storagePromise.catch(() => undefined);
+    const rootTitle = await this.getWebTitle(rootUrl);
+    const webs: IWebResult[] = [];
+    const found: ILibraryResult[] = [];
+    await this.discoverWebs(rootUrl, rootTitle, webs, found, options, progress, emit);
+
+    const keyOf = (l: ILibraryResult): string => `${l.webUrl}|${l.id}`;
+    const known = new Map<string, ILibraryResult>();
+    (previous ? previous.libraries : []).forEach((l) => known.set(keyOf(l), l));
+    const fresh: ILibraryResult[] = [];
+    const libraries: ILibraryResult[] = found.map((lib) => {
+      const before = known.get(keyOf(lib));
+      if (before) {
+        // Already on the map: keep what is known, refresh the item count for the size figures.
+        before.itemCount = lib.itemCount;
+        before.title = lib.title;
+        before.webTitle = lib.webTitle;
+        return before;
+      }
+      delete lib.pending;
+      lib.unscanned = true;
+      fresh.push(lib);
+      return lib;
+    });
+    // A library that was read before but is not listed any more is dropped, unless its site could not be listed this time.
+    const failedWebs = new Set(webs.filter((w) => w.error).map((w) => w.url));
+    const listed = new Set(libraries.map(keyOf));
+    (previous ? previous.libraries : []).forEach((l) => {
+      if (!listed.has(keyOf(l)) && failedWebs.has(l.webUrl)) {
+        libraries.push(l);
+      }
+    });
+
+    // SharePoint's size and file count for libraries not read yet, so the map can show them.
+    let next = 0;
+    let measured = 0;
+    const worker = async (): Promise<void> => {
+      while (next < fresh.length) {
+        const lib = fresh[next++];
+        this.throwIfCancelled();
+        progress.currentItem = lib.url;
+        onProgress({ ...progress });
+        lib.metrics = await this.getStorageMetrics(lib.webUrl, lib.id);
+        measured++;
+        progress.librariesDone = measured;
+        emit(progress);
+      }
+    };
+    const pool: Promise<void>[] = [];
+    for (let i = 0; i < Math.min(this.profile.libraryWorkers, fresh.length); i++) {
+      pool.push(worker());
+    }
+    await Promise.all(pool);
+
+    const siteStorageBytes = await storagePromise;
+    progress.phase = 'completed';
+    emit(progress);
+    return {
+      scope: options.scope,
+      rootUrl,
+      rootTitle,
+      siteStorageBytes: siteStorageBytes !== undefined ? siteStorageBytes : previous ? previous.siteStorageBytes : undefined,
+      webs,
+      libraries,
+      largestOldFiles: previous ? previous.largestOldFiles : [],
+      scanStartedAt: previous ? previous.scanStartedAt : now.toISOString(),
+      scanCompletedAt: now.toISOString(),
+      scannedBy: this.context.pageContext.user.displayName,
+      options: {
+        includeHidden: options.includeHidden,
+        excludeSystemLibraries: options.excludeSystemLibraries,
+        excludedLibraries: options.excludedLibraries
+      },
+      quickAfterMonths: previous ? previous.quickAfterMonths : options.quickAfterMonths,
+      paging: previous ? previous.paging : undefined
+    };
+  }
+
+  /**
+   * Reads only the chosen libraries (keys are `webUrl|libraryId`) and merges
+   * them into `previous`, a result from mapSite or an earlier scan. Libraries
+   * read before are replaced when chosen again; the others stay as they are.
+   * Ages stay measured from the first scan's start, so every visit adds
+   * libraries that are consistent with the ones already there. Pausing,
+   * checkpoints and resume work as for a full scan.
+   */
+  public scanSelected(
+    previous: IScanResult,
+    keys: string[],
+    options: IScanOptions,
+    onProgress: (p: IScanProgress) => void,
+    onCheckpoint?: (snapshot: IScanResult) => Promise<void> | void
+  ): Promise<IScanResult> {
+    const chosen = new Set(keys);
+    const copy = JSON.parse(JSON.stringify(previous)) as IScanResult;
+    const restart: string[] = [];
+    for (const lib of copy.libraries) {
+      if (!chosen.has(`${lib.webUrl}|${lib.id}`)) {
+        continue;
+      }
+      restart.push(pathPrefix(lib.url));
+      lib.files = 0;
+      lib.bytes = 0;
+      lib.histogram = emptyHistogram();
+      lib.fileTypes = undefined;
+      delete lib.error;
+      delete lib.partial;
+      delete lib.unreadItems;
+      delete lib.measuredAsWhole;
+      delete lib.scannedAt;
+      lib.pending = true;
+    }
+    copy.largestOldFiles = copy.largestOldFiles.filter((f) => !restart.some((root) => f.serverRelativeUrl.indexOf(root) === 0));
+    return this.resume(copy, options, onProgress, onCheckpoint);
   }
 
   /** How many libraries needed a more conservative query form, for the dashboard note. */

@@ -416,7 +416,7 @@ export function createMockSharePoint(options = {}) {
     pageContext: {
       site: { absoluteUrl: `${ORIGIN}${SITE}`, serverRelativeUrl: SITE },
       web: { absoluteUrl: `${ORIGIN}${SITE}`, title: 'Finance', permissions: { hasPermission: () => opts.owner } },
-      user: { displayName: 'Alex Wilber' },
+      user: { displayName: 'Alex Wilber', email: 'alex@contoso.com', loginName: 'i:0#.f|membership|alex@contoso.com' },
       legacyPageContext: { isSiteAdmin: opts.owner }
     }
   };
