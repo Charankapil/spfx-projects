@@ -32,10 +32,12 @@ in bulk.
 - **Review before anything changes.** The scan only reads. You see every
   object with unique permissions, can filter and exclude any that should
   stay unique, and confirm before the restore starts.
-- **Built for millions of items.** Items are read 5,000 IDs at a time in
-  two parallel ID ranges, which stays under the list view threshold in a
-  library of any size. Resets go 100 per REST `$batch` request. Throttling
-  (`429` / `503`) is waited out, honouring `Retry-After`.
+- **Built for millions of items.** Items are read 5,000 IDs at a time,
+  which stays under the list view threshold in a library of any size; a
+  selected folder or a depth limit is walked folder by folder instead, so
+  only that part of the library is read. Resets go 100 per REST `$batch`
+  request. Throttling, including SharePoint's *Throttle.htm* page, pauses
+  the run and it then continues by itself.
 - **A report you can hand to someone.** Headline figures, a breakdown by
   type, and a searchable table of every site, list, folder and file that
   had unique permissions and what happened to it. Optionally records **who
@@ -77,6 +79,7 @@ in bulk.
 | **Lists and libraries** | Restore lists and libraries (below a selected site) that have unique permissions. |
 | **Folders** / **Files and list items** | Restore folders, and files or list items, that have unique permissions. Untick **Files** to fix the folder structure but leave individually shared files alone. |
 | **How deep into folders** | All levels (down to the last file), or 1, 2, 3, 4, 5 or 10 levels below the selected library or folder. A top-level file or folder is level 1. |
+| **Speed** | **Gentle** (default): one request at a time, at least a second apart. Use it for big libraries and busy tenants. **Standard**: two at a time, 150 ms apart. Faster, but more likely to be throttled. Either way, throttling pauses the run rather than failing it. |
 | **Back up current permissions into the report** | Before each reset, read the object's role assignments and store them in the report as *"Finance Members: Contribute; Jane Doe: Read"*. `Limited Access` is left out because SharePoint manages it itself. If an object's permissions can't be read, that object is not reset. |
 
 ### What restoring inheritance does
@@ -108,32 +111,48 @@ the case ReInherit is built for.
 1. **Structure is cheap to read.** Sites, lists and folders in the picker
    come from `_api/web/webs`, `_api/web/lists` and `Folder/Folders`, one
    level at a time. None of these enumerate files.
-2. **Items are read in ID ranges, in parallel.**
+2. **Whole libraries are read in ID ranges.**
    `items?$select=Id,FileRef,FSObjType,HasUniqueRoleAssignments&$filter=Id ge 1 and Id le 5000`,
-   then 5,001–10,000, and so on up to the list's highest ID, with two
-   ranges in flight at once. `Id` is always indexed, so every request
-   stays under the 5,000-item list view threshold no matter how big the
-   library is. A million items is about 200 requests. A range that times
-   out is split in half and retried, down to 250 IDs; a range that still
-   fails is recorded in the report and the scan carries on.
+   then 5,001–10,000, and so on up to the list's highest ID (one range at
+   a time in Gentle mode, two in Standard). `Id` is always indexed, so
+   every request stays under the 5,000-item list view threshold no matter
+   how big the library is. A million items is about 200 requests. A range
+   that times out is split in half and retried, at most twice; a range
+   that still fails is recorded in the report and the scan carries on.
 3. **Only what matters is kept.** Rows without unique permissions are
    counted and dropped, so memory grows with what is found, not with the
    size of the library.
-4. **Folders share a pass.** Several folders selected in the same library
+4. **Selected folders and depth limits are walked, not read in full.**
+   When you pick a folder, or limit how deep to go, ReInherit lists just
+   those folders' subfolders (and files, if wanted) level by level, with
+   `Folder/Folders` and `Folder/Files`, and stops at the depth limit.
+   Picking one folder of a 500,000-item library reads that folder, not the
+   whole library. If the walk would cost more than reading the library by
+   ID ranges (a very deep tree, or a folder holding more than 5,000 items
+   directly), it hands over to the ID-range read automatically.
+5. **Folders share a pass.** Several folders selected in the same library
    are covered by one pass over that library, and a folder inside a
    library that has already been scanned in full is not read again.
-5. **Resets are batched.** Objects are grouped by site and sent as
-   `ResetRoleInheritance` calls, 100 per `_api/$batch` request, two batches
-   at a time. Each call is in its own change set, so one failure affects
+6. **Resets are batched.** Objects are grouped by site and sent as
+   `ResetRoleInheritance` calls, 100 per `_api/$batch` request (one batch
+   at a time in Gentle mode, two in Standard). Each call is in its own change set, so one failure affects
    one object only. The permission backup is batched the same way. If a
    tenant rejects `$batch`, ReInherit falls back to one call at a time.
-6. **Throttling is shared, not per request.** Requests are paced at least
-   150 ms apart across all parallel readers. When SharePoint answers `429`
-   or `503` (for a whole batch, or for one request inside it), *every*
-   request waits out `Retry-After`, and the pacing gap doubles, up to 5
-   seconds, then eases back after a run of successes. Gateway errors
-   (`502`, `504`) and dropped connections are retried. **Stop** ends a long
-   wait straight away.
+7. **Throttling is shared, not per request.** When SharePoint throttles,
+   whether with `429` / `503` or by redirecting the browser to its
+   *"Something's not right"* page (`/_layouts/15/Throttle.htm`), *every*
+   request pauses, the screen says how long for, and the scan then carries
+   on by itself. The throttle page means "stop for a while", so those
+   pauses start at 30 seconds and grow to 5 minutes. A throttled request is
+   retried as it is, never split into more requests. Gateway errors (`502`,
+   `504`) and dropped connections are retried. **Stop** ends a wait straight
+   away.
+8. **It stops instead of piling up errors.** If 5 reads of a library fail
+   in a row, ReInherit stops reading that library and reports it once.
+9. **Speed is your choice.** **Gentle** (the default) sends one request at
+   a time, at least a second apart, which is the right setting for very
+   large libraries and busy tenants. **Standard** sends two at a time, 150 ms
+   apart.
 
 **Rough timings.** Scanning costs about one request per 5,000 item IDs.
 Restoring costs about one request per 100 objects, or two with backup on.

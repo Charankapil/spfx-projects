@@ -1,11 +1,10 @@
 import { IUniqueObject, ObjectKind } from '../models/IUniqueObject';
 import { errorMessageFromBody, IBatchRequest, IBatchResponse } from './batch';
 import { runPool } from './pool';
-import { CancelledError, HttpError, SpRest } from './SpRest';
+import { HttpError, isCancelled, SpRest } from './SpRest';
 
 /** SharePoint accepts up to 100 requests per $batch. */
 const BATCH_SIZE = 100;
-const PARALLEL_BATCHES = 2;
 const MAX_INNER_RETRIES = 4;
 
 const KIND_ORDER: { [kind in ObjectKind]: number } = {
@@ -88,7 +87,9 @@ function isSuccess(r: IBatchResponse): boolean {
 export class InheritanceRestorer {
   constructor(
     private rest: SpRest,
-    private onProgress: (progress: IRestoreProgress) => void
+    private onProgress: (progress: IRestoreProgress) => void,
+    /** Batches in flight at once: 1 in gentle mode, 2 in standard. */
+    private parallelBatches = 1
   ) {}
 
   public async restore(targets: IUniqueObject[], backup: boolean): Promise<void> {
@@ -112,7 +113,7 @@ export class InheritanceRestorer {
 
     const progress: IRestoreProgress = { done: 0, total: ordered.length, restored: 0, failed: 0, current: '' };
     this.onProgress({ ...progress });
-    await runPool(chunks, PARALLEL_BATCHES, async (chunk) => {
+    await runPool(chunks, this.parallelBatches, async (chunk) => {
       progress.current = chunk[0].path;
       await this.processChunk(chunk, backup);
       progress.done += chunk.length;
@@ -207,7 +208,7 @@ export class InheritanceRestorer {
     try {
       return await this.rest.batch(webUrl, requests);
     } catch (err) {
-      if (err instanceof CancelledError) {
+      if (isCancelled(err)) {
         throw err;
       }
       console.warn('[ReInherit] $batch failed, falling back to single requests.', err);
@@ -220,11 +221,11 @@ export class InheritanceRestorer {
           const json = await this.rest.getJson<unknown>(request.url);
           results.push({ status: 200, statusText: 'OK', body: JSON.stringify(json) });
         } else {
-          const response = await this.rest.post(request.url, request.body);
-          results.push({ status: response.status, statusText: response.statusText, body: '' });
+          const status = await this.rest.post(request.url, request.body);
+          results.push({ status, statusText: '', body: '' });
         }
       } catch (err) {
-        if (err instanceof CancelledError) {
+        if (isCancelled(err)) {
           throw err;
         }
         results.push(

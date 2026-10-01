@@ -3,6 +3,10 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { IScopeNode } from '../models/IScopeNode';
 import { HttpError, quoteForUrl, SpRest } from './SpRest';
 
+export function isBadRequest(err: unknown): boolean {
+  return err instanceof HttpError && err.status === 400;
+}
+
 interface IWebInfo {
   Title: string;
   ServerRelativeUrl: string;
@@ -51,7 +55,7 @@ export async function getWebLists(rest: SpRest, webUrl: string): Promise<IListIn
     );
     return json.value || [];
   } catch (err) {
-    if (!(err instanceof HttpError) || err.status !== 400) {
+    if (!isBadRequest(err)) {
       throw err;
     }
     const json = await rest.getJson<{ value: IListInfo[] }>(
@@ -161,7 +165,7 @@ export class ScopeService {
       json = await this.rest.getJson<{ value: IFolderInfo[] }>(`${base},ListItemAllFields/HasUniqueRoleAssignments`);
     } catch (err) {
       // Without the flag the folders still load; they just aren't tagged "Unique".
-      if (!(err instanceof HttpError) || err.status !== 400) {
+      if (!isBadRequest(err)) {
         throw err;
       }
       json = await this.rest.getJson<{ value: IFolderInfo[] }>(base);

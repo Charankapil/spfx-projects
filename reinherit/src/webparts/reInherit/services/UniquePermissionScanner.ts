@@ -4,19 +4,49 @@ import { EMPTY_STATS, IRunStats } from '../models/IRunReport';
 import { IScopeNode } from '../models/IScopeNode';
 import { IUniqueObject } from '../models/IUniqueObject';
 import { runPool } from './pool';
-import { getWebLists, IListInfo, isContentList, LIST_SELECT, ScopeService } from './ScopeService';
-import { CancelledError, HttpError, SpRest } from './SpRest';
+import { getWebLists, IListInfo, isBadRequest, isContentList, LIST_SELECT, ScopeService } from './ScopeService';
+import { HttpError, isCancelled, quoteForUrl, SpRest } from './SpRest';
 
 /**
  * Items are read in ID ranges rather than by following the paging link: ID
  * is always indexed, so "Id ge a and Id le b" stays under the 5,000-item
  * list view threshold in a library of any size, and independent ranges can
  * be fetched in parallel. A range that times out is split in half and
- * retried, down to MIN_ID_RANGE.
+ * retried, at most MAX_SPLITS times.
  */
 const ID_RANGE = 5000;
-const MIN_ID_RANGE = 250;
-const PARALLEL_RANGES = 2;
+/** A range that times out is split in two, at most this many times over (5,000 -> 2,500 -> 1,250). */
+const MAX_SPLITS = 2;
+
+/** After this many failed reads in a row, stop reading the list instead of piling up errors. */
+const MAX_CONSECUTIVE_FAILURES = 5;
+
+/**
+ * Folders whose direct contents exceed this are not listed through
+ * Folder/Files; the walk hands over to the ID-range read instead.
+ */
+const MAX_FOLDER_ITEMS_FOR_WALK = 5000;
+
+/** The walk's request budget, as a multiple of what reading the whole list by ID ranges would cost. */
+const WALK_BUDGET_FACTOR = 3;
+const MIN_WALK_BUDGET = 25;
+
+const FOLDER_ITEM_SELECT = 'ListItemAllFields/Id,ListItemAllFields/HasUniqueRoleAssignments';
+
+interface IFolderEntry {
+  Name: string;
+  ServerRelativeUrl: string;
+  ItemCount?: number;
+  ListItemAllFields?: { Id?: number; HasUniqueRoleAssignments?: boolean };
+}
+
+/** Thrown inside the folder walk to hand over to the ID-range read. */
+class WalkAbandoned extends Error {
+  constructor(reason: string) {
+    super(reason);
+    (Object as unknown as { setPrototypeOf: (o: object, p: object) => void }).setPrototypeOf(this, WalkAbandoned.prototype);
+  }
+}
 
 /** Libraries need no Title (the file name comes from FileRef), which keeps each row light. */
 const LIBRARY_SELECT = 'Id,FileRef,FSObjType,HasUniqueRoleAssignments';
@@ -45,6 +75,8 @@ interface IWebInfo {
 interface IItemScope {
   path: string;
   depth: number;
+  /** Items directly in the folder, when already known (saves the walk a request). */
+  itemCount?: number;
 }
 
 export interface IScanResult {
@@ -62,9 +94,13 @@ export function depthBelow(path: string, rootPath: string): number {
   return path.substring(rootPath.length).split('/').filter((s) => s.length > 0).length;
 }
 
-function isRetryable(err: unknown): boolean {
-  // Timeouts and threshold errors surface as 5xx; a TypeError is a dropped connection.
-  return !(err instanceof HttpError) || err.status >= 500 || err.status === 408;
+/**
+ * Only a server-side timeout or list view threshold error (a 5xx) is worth
+ * retrying as two smaller ranges. Throttling is already waited out by the
+ * REST client and must never be answered with more requests.
+ */
+function isWorthSplitting(err: unknown): boolean {
+  return err instanceof HttpError && ((err.status >= 500 && err.status !== 503) || err.status === 408);
 }
 
 /**
@@ -87,7 +123,9 @@ export class UniquePermissionScanner {
     private scopeService: ScopeService,
     private siteServerRelativeUrl: string,
     private options: IRestoreOptions,
-    private onProgress: (progress: IRunProgress) => void
+    private onProgress: (progress: IRunProgress) => void,
+    /** Ranges / folder listings read at once: 1 in gentle mode, 2 in standard. */
+    private lanes = 1
   ) {
     this.progress = {
       phase: 'scanning',
@@ -140,7 +178,7 @@ export class UniquePermissionScanner {
     try {
       await action();
     } catch (err) {
-      if (err instanceof CancelledError) {
+      if (isCancelled(err)) {
         throw err;
       }
       this.errors.push(`${title} (${url}): ${message(err)}`);
@@ -214,14 +252,14 @@ export class UniquePermissionScanner {
         try {
           await this.scanList(webUrl, list, false);
         } catch (err) {
-          if (err instanceof CancelledError) {
+          if (isCancelled(err)) {
             throw err;
           }
           this.errors.push(`${list.Title} (${list.RootFolder.ServerRelativeUrl}): ${message(err)}`);
         }
       }
     } catch (err) {
-      if (err instanceof CancelledError) {
+      if (isCancelled(err)) {
         throw err;
       }
       this.errors.push(`Lists of ${webUrl}: ${message(err)}`);
@@ -237,7 +275,7 @@ export class UniquePermissionScanner {
       );
       subwebs = (json.value || []).filter((w) => w.WebTemplate !== 'APP');
     } catch (err) {
-      if (err instanceof CancelledError) {
+      if (isCancelled(err)) {
         throw err;
       }
       this.errors.push(`Subsites of ${webUrl}: ${message(err)}`);
@@ -248,7 +286,7 @@ export class UniquePermissionScanner {
       try {
         await this.scanWeb(subUrl, false);
       } catch (err) {
-        if (err instanceof CancelledError) {
+        if (isCancelled(err)) {
           throw err;
         }
         this.errors.push(`${sub.Title} (${subUrl}): ${message(err)}`);
@@ -288,7 +326,8 @@ export class UniquePermissionScanner {
     const rootPath = list.RootFolder.ServerRelativeUrl;
     const scopes: IItemScope[] = folders.map((f) => ({
       path: f.serverRelativeUrl,
-      depth: depthBelow(f.serverRelativeUrl, rootPath)
+      depth: depthBelow(f.serverRelativeUrl, rootPath),
+      itemCount: f.itemCount
     }));
 
     if (this.options.includeSelected) {
@@ -347,6 +386,17 @@ export class UniquePermissionScanner {
       return;
     }
 
+    // A selected folder, or a depth limit, usually covers a small part of a
+    // big library: walking just those folders is far cheaper than reading
+    // every item. The walk gives up (and the ranges below take over) if it
+    // would cost more than reading the whole list.
+    if (list.BaseType === 1 && (!isWholeList || opts.maxDepth > 0)) {
+      const rangeCost = Math.ceil(maxId / ID_RANGE);
+      if (await this.walkFolders(webUrl, list, scopes, Math.max(MIN_WALK_BUDGET, rangeCost * WALK_BUDGET_FACTOR))) {
+        return;
+      }
+    }
+
     const ranges: [number, number][] = [];
     for (let start = 1; start <= maxId; start += ID_RANGE) {
       ranges.push([start, Math.min(start + ID_RANGE - 1, maxId)]);
@@ -361,8 +411,19 @@ export class UniquePermissionScanner {
     this.progress.listItemsDone = 0;
     this.report(true);
 
-    await runPool(ranges, PARALLEL_RANGES, async ([from, to]) => {
+    let consecutiveFailures = 0;
+    await runPool(ranges, this.lanes, async ([from, to]) => {
       const rows = await this.fetchRange(listApi, list, from, to);
+      if (rows === undefined) {
+        if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          throw new Error(
+            `stopped reading after ${MAX_CONSECUTIVE_FAILURES} failed requests in a row; ` +
+              'the errors above say why. Run the scan again later, or with Gentle speed.'
+          );
+        }
+        return;
+      }
+      consecutiveFailures = 0;
       for (const row of rows) {
         let baseDepth = 0;
         if (!isWholeList) {
@@ -374,19 +435,7 @@ export class UniquePermissionScanner {
           baseDepth = match.depth;
         }
         this.stats.itemsChecked++;
-        if (!row.HasUniqueRoleAssignments) {
-          continue;
-        }
-        const depth = depthBelow(row.FileRef, rootPath);
-        const relative = depth - baseDepth;
-        if (relative <= 0 || (opts.maxDepth > 0 && relative > opts.maxDepth)) {
-          continue;
-        }
-        const isFolder = Number(row.FSObjType) === 1;
-        if (isFolder ? !opts.includeFolders : !opts.includeFiles) {
-          continue;
-        }
-        this.add(this.toObject(webUrl, list, row, depth));
+        this.consider(webUrl, list, row, baseDepth);
       }
       this.progress.listItemsDone = (this.progress.listItemsDone || 0) + (to - from + 1);
       this.progress.currentItem = `${list.Title}: items ${from.toLocaleString()}-${to.toLocaleString()}`;
@@ -395,24 +444,145 @@ export class UniquePermissionScanner {
     this.progress.listTitle = undefined;
   }
 
-  private async fetchRange(listApi: string, list: IListInfo, from: number, to: number): Promise<IItemRow[]> {
+  /** Keeps a row if it has unique permissions and is a kind and depth the options ask for. */
+  private consider(webUrl: string, list: IListInfo, row: IItemRow, baseDepth: number): void {
+    const opts = this.options;
+    if (!row.HasUniqueRoleAssignments) {
+      return;
+    }
+    const depth = depthBelow(row.FileRef, list.RootFolder.ServerRelativeUrl);
+    const relative = depth - baseDepth;
+    if (relative <= 0 || (opts.maxDepth > 0 && relative > opts.maxDepth)) {
+      return;
+    }
+    const isFolder = Number(row.FSObjType) === 1;
+    if (isFolder ? !opts.includeFolders : !opts.includeFiles) {
+      return;
+    }
+    this.add(this.toObject(webUrl, list, row, depth));
+  }
+
+  /**
+   * Lists the selected folders' subfolders (and files, if wanted) level by
+   * level, only as deep as maxDepth needs. Returns false if it handed over to
+   * the ID-range read: over budget, a folder too big to list, or a tenant
+   * that won't return HasUniqueRoleAssignments through Folder/ListItemAllFields.
+   */
+  private async walkFolders(webUrl: string, list: IListInfo, scopes: IItemScope[], budget: number): Promise<boolean> {
+    const opts = this.options;
+    const folderApi = (path: string): string =>
+      `${webUrl}/_api/web/GetFolderByServerRelativeUrl('${quoteForUrl(path)}')`;
+    let requests = 0;
+    const checkedBefore = this.stats.itemsChecked;
+    const get = async <T>(url: string): Promise<T> => {
+      if (++requests > budget) {
+        throw new WalkAbandoned('the folders hold more than reading the whole list would cost');
+      }
+      return this.rest.getJson<T>(url);
+    };
+
+    this.progress.listTitle = undefined;
+    try {
+      // Each entry: a folder to list, its depth below its scope, and the scope's depth.
+      let level: { path: string; relative: number; base: number; itemCount?: number }[] = scopes.map((sc) => ({
+        path: sc.path,
+        relative: 0,
+        base: sc.depth,
+        itemCount: sc.itemCount
+      }));
+      while (level.length > 0) {
+        const next: typeof level = [];
+        await runPool(level, this.lanes, async (folder) => {
+          // Children of this folder sit at relative + 1.
+          if (opts.maxDepth > 0 && folder.relative + 1 > opts.maxDepth) {
+            return;
+          }
+          let itemCount = folder.itemCount;
+          if (itemCount === undefined) {
+            itemCount = (await get<{ ItemCount?: number }>(`${folderApi(folder.path)}?$select=ItemCount`)).ItemCount || 0;
+          }
+          if (itemCount > MAX_FOLDER_ITEMS_FOR_WALK) {
+            throw new WalkAbandoned(`${folder.path} holds ${itemCount.toLocaleString()} items directly`);
+          }
+          if (itemCount === 0) {
+            return;
+          }
+          this.progress.currentItem = folder.path;
+          this.report();
+
+          const subfolders = await get<{ value: IFolderEntry[] }>(
+            `${folderApi(folder.path)}/Folders?$select=Name,ServerRelativeUrl,ItemCount,${FOLDER_ITEM_SELECT}&$expand=ListItemAllFields`
+          );
+          for (const sub of subfolders.value || []) {
+            const item = sub.ListItemAllFields;
+            if (!item || typeof item.Id !== 'number') {
+              continue; // "Forms" and other system folders have no list item
+            }
+            this.stats.itemsChecked++;
+            const row: IItemRow = { Id: item.Id, FileRef: sub.ServerRelativeUrl, FSObjType: 1, HasUniqueRoleAssignments: !!item.HasUniqueRoleAssignments };
+            this.consider(webUrl, list, row, folder.base);
+            next.push({ path: sub.ServerRelativeUrl, relative: folder.relative + 1, base: folder.base, itemCount: sub.ItemCount });
+          }
+
+          if (opts.includeFiles) {
+            const files = await get<{ value: IFolderEntry[] }>(
+              `${folderApi(folder.path)}/Files?$select=Name,ServerRelativeUrl,${FOLDER_ITEM_SELECT}&$expand=ListItemAllFields`
+            );
+            for (const file of files.value || []) {
+              const item = file.ListItemAllFields;
+              if (!item || typeof item.Id !== 'number') {
+                continue;
+              }
+              this.stats.itemsChecked++;
+              const row: IItemRow = { Id: item.Id, FileRef: file.ServerRelativeUrl, FSObjType: 0, HasUniqueRoleAssignments: !!item.HasUniqueRoleAssignments };
+              this.consider(webUrl, list, row, folder.base);
+            }
+          }
+          this.report();
+        });
+        level = next;
+      }
+      return true;
+    } catch (err) {
+      if (isCancelled(err)) {
+        throw err;
+      }
+      if (!(err instanceof WalkAbandoned) && !isBadRequest(err) && !isWorthSplitting(err)) {
+        throw err;
+      }
+      // The ID-range read covers the same items again; don't count them twice.
+      // Anything the walk already found is kept (objects are keyed by item).
+      this.stats.itemsChecked = checkedBefore;
+      console.info(`[ReInherit] Folder walk of ${list.Title} handed over to an ID-range read: ${err instanceof Error ? err.message : err}`);
+      return false;
+    }
+  }
+
+  /** The rows with IDs from..to, or undefined if they could not be read (the error is recorded). */
+  private async fetchRange(
+    listApi: string,
+    list: IListInfo,
+    from: number,
+    to: number,
+    splits = 0
+  ): Promise<IItemRow[] | undefined> {
     try {
       const json = await this.rest.getJson<{ value: IItemRow[] }>(
         `${listApi}/items?$select=${itemSelect(list)}&$filter=Id ge ${from} and Id le ${to}&$top=${to - from + 1}`
       );
       return json.value || [];
     } catch (err) {
-      if (err instanceof CancelledError) {
+      if (isCancelled(err)) {
         throw err;
       }
-      if (to - from + 1 > MIN_ID_RANGE && isRetryable(err)) {
+      if (splits < MAX_SPLITS && to > from && isWorthSplitting(err)) {
         const mid = Math.floor((from + to) / 2);
-        const first = await this.fetchRange(listApi, list, from, mid);
-        const second = await this.fetchRange(listApi, list, mid + 1, to);
-        return first.concat(second);
+        const first = await this.fetchRange(listApi, list, from, mid, splits + 1);
+        const second = await this.fetchRange(listApi, list, mid + 1, to, splits + 1);
+        return first && second ? first.concat(second) : first || second;
       }
       this.errors.push(`${list.Title}: items with ID ${from}-${to} could not be read (${message(err)})`);
-      return [];
+      return undefined;
     }
   }
 

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Checkbox, Dropdown, IDropdownOption, Stack, Toggle } from '@fluentui/react';
 
-import { IRestoreOptions } from '../models/IRestoreOptions';
+import { IRestoreOptions, ScanSpeed } from '../models/IRestoreOptions';
 import styles from './ReInherit.module.scss';
 
 interface IOptionsPanelProps {
@@ -9,6 +9,11 @@ interface IOptionsPanelProps {
   onChange: (options: IRestoreOptions) => void;
   disabled?: boolean;
 }
+
+const SPEED_OPTIONS: IDropdownOption[] = [
+  { key: 'gentle', text: 'Gentle - one request at a time (recommended for large libraries)' },
+  { key: 'standard', text: 'Standard - faster, more likely to be throttled' }
+];
 
 const DEPTH_OPTIONS: IDropdownOption[] = [
   { key: 0, text: 'All levels (down to the last file)' },
@@ -94,6 +99,14 @@ export const OptionsPanel: React.FC<IOptionsPanelProps> = ({ options, onChange, 
           )}
         </div>
       )}
+
+      <Dropdown
+        label="Speed"
+        selectedKey={options.speed || 'gentle'}
+        options={SPEED_OPTIONS}
+        disabled={disabled}
+        onChange={(_, option) => option && set({ speed: option.key as ScanSpeed })}
+      />
 
       <Toggle
         label="Back up current permissions into the report"

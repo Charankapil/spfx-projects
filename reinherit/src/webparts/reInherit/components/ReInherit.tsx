@@ -34,7 +34,7 @@ import { IUniqueObject, ObjectKind } from '../models/IUniqueObject';
 import { InheritanceRestorer } from '../services/InheritanceRestorer';
 import { ReportStore } from '../services/ReportStore';
 import { ScopeService } from '../services/ScopeService';
-import { CancelledError, newId, SpRest } from '../services/SpRest';
+import { GENTLE_GAP_MS, isCancelled, newId, SpRest, STANDARD_GAP_MS } from '../services/SpRest';
 import { UniquePermissionScanner } from '../services/UniquePermissionScanner';
 
 type Stage = 'setup' | 'scanning' | 'review' | 'restoring' | 'done';
@@ -84,8 +84,39 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
   const [confirmChecked, setConfirmChecked] = useState(false);
   const [historyToken, setHistoryToken] = useState(0);
   const [cancelRequested, setCancelRequested] = useState(false);
+  const [pausedUntil, setPausedUntil] = useState<{ until: number; reason: string } | undefined>(undefined);
+  const [, setTick] = useState(0);
 
   const busy = stage === 'scanning' || stage === 'restoring';
+
+  // Show the user when (and for how long) everything is paused because SharePoint is throttling.
+  useEffect(() => {
+    rest.onThrottle = (seconds, reason) => setPausedUntil({ until: Date.now() + seconds * 1000, reason });
+    return () => {
+      rest.onThrottle = undefined;
+    };
+  }, [rest]);
+  useEffect(() => {
+    if (!pausedUntil) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      if (Date.now() >= pausedUntil.until) {
+        setPausedUntil(undefined);
+      }
+      setTick((t) => t + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [pausedUntil]);
+
+  const applySpeed = useCallback(
+    (o: IRestoreOptions): number => {
+      const gentle = o.speed !== 'standard';
+      rest.setPace(gentle ? GENTLE_GAP_MS : STANDARD_GAP_MS);
+      return gentle ? 1 : 2;
+    },
+    [rest]
+  );
 
   // A scan or restore runs in this browser tab; leaving the page stops it.
   useEffect(() => {
@@ -137,6 +168,8 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
       return;
     }
     rest.reset();
+    const lanes = applySpeed(options);
+    setPausedUntil(undefined);
     setCancelRequested(false);
     setNotice(undefined);
     setReport(undefined);
@@ -150,7 +183,8 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
         scopeService,
         context.pageContext.site.serverRelativeUrl,
         options,
-        (p) => setProgress(p)
+        (p) => setProgress(p),
+        lanes
       );
       try {
         const result = await scanner.scan(scopes);
@@ -178,16 +212,17 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
             : 'Scan finished and saved to Reports. Nothing in this scope has unique permissions.'
         );
       } catch (err) {
+        rest.reset();
         setStage('setup');
         setNotice(
-          err instanceof CancelledError
+          isCancelled(err)
             ? { type: MessageBarType.info, text: 'Scan cancelled. Nothing was changed.' }
             : { type: MessageBarType.error, text: errorText(err, 'The scan failed.') }
         );
       }
     };
     run().catch(() => undefined);
-  }, [selected, options, rest, scopeService, context, saveReport]);
+  }, [selected, options, rest, scopeService, context, saveReport, applySpeed]);
 
   const startRestore = useCallback(() => {
     if (!report) {
@@ -196,6 +231,8 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
     setConfirmOpen(false);
     setConfirmChecked(false);
     rest.reset();
+    const lanes = applySpeed(report.options);
+    setPausedUntil(undefined);
     setCancelRequested(false);
     setNotice(undefined);
 
@@ -216,13 +253,14 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
           restoreTotal: p.total,
           restored: p.restored,
           failed: p.failed
-        }))
+        })),
+        lanes
       );
       let failure: string | undefined;
       try {
         await restorer.restore(targets, r.options.backupPermissions);
       } catch (err) {
-        if (err instanceof CancelledError) {
+        if (isCancelled(err)) {
           r.cancelled = true;
         } else {
           failure = errorText(err, 'The restore stopped unexpectedly.');
@@ -257,7 +295,7 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
       }
     };
     run().catch(() => undefined);
-  }, [report, rest, progress, saveReport]);
+  }, [report, rest, progress, saveReport, applySpeed]);
 
   const cancel = useCallback(() => {
     setCancelRequested(true);
@@ -426,6 +464,13 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
                 description={progressLabel}
                 percentComplete={progressPercent}
               />
+              {pausedUntil && pausedUntil.until > Date.now() && (
+                <div className={styles.pausedNote} role="status">
+                  <Icon iconName="Clock" /> {pausedUntil.reason}. Everything is paused for{' '}
+                  {Math.ceil((pausedUntil.until - Date.now()) / 1000)}s and then continues on its own - nothing has
+                  failed.
+                </div>
+              )}
               <Text variant="small" block className={styles.currentItem}>
                 {stage === 'scanning' && progress.listTitle
                   ? `Reading ${progress.listTitle} (${Math.round((progressPercent || 0) * 100)}% of item IDs)`

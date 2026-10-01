@@ -16,7 +16,15 @@ export interface IRestoreOptions {
   maxDepth: number;
   /** Read and store each object's current role assignments before resetting it. */
   backupPermissions: boolean;
+  /**
+   * gentle: one request at a time, at least a second apart - for very large
+   * libraries and busy tenants. standard: two at a time, 150 ms apart.
+   * Optional so reports saved by older versions still load.
+   */
+  speed?: ScanSpeed;
 }
+
+export type ScanSpeed = 'gentle' | 'standard';
 
 export const DEFAULT_OPTIONS: IRestoreOptions = {
   recursive: true,
@@ -26,5 +34,6 @@ export const DEFAULT_OPTIONS: IRestoreOptions = {
   includeFolders: true,
   includeFiles: true,
   maxDepth: 0,
-  backupPermissions: true
+  backupPermissions: true,
+  speed: 'gentle'
 };
