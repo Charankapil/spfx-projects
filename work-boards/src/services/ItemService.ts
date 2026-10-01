@@ -1,6 +1,6 @@
 import { SpClient, SpError, mapLimit } from './SpClient';
 import { itemEntityType } from './lists';
-import { IBoard, IBoardColumn, IWorkItem, CellValue, IAttachment, IActivityEntry, IMyWorkRow, IPerson } from '../models/types';
+import { IBoard, IBoardColumn, IWorkItem, CellValue, IAttachment, IActivityEntry, IMyWorkRow, IPerson, ILink, IPersonWorkRow, ILabel } from '../models/types';
 import { F, itemQueryParts, readItem, writeCell, peopleIdsIn, readIds } from '../engine/fieldMap';
 import { PeopleService } from './PeopleService';
 import { diffVersions, IVersionRow } from '../engine/activity';
@@ -41,7 +41,7 @@ export class ItemService {
   }
 
   private query(board: IBoard): string {
-    const { select, expand } = itemQueryParts(board.config.columns);
+    const { select, expand } = itemQueryParts(board.config.columns, board.config.linksField === true);
     return `$select=${select.join(',')}&$expand=${expand.join(',')}`;
   }
 
@@ -225,5 +225,93 @@ export class ItemService {
       counts[s] = (counts[s] || 0) + 1;
     });
     return counts;
+  }
+
+  /* ---------- Linked files ---------- */
+
+  /** Save the item's linked files (stored as JSON in WB_Links). */
+  public async saveLinks(board: IBoard, item: IWorkItem, links: ILink[]): Promise<IWorkItem> {
+    const type = await itemEntityType(this.sp, board.itemsListId);
+    await this.sp.merge(`${this.listPath(board)}/items(${item.id})`, { __metadata: { type }, [F.Links]: JSON.stringify(links) });
+    return this.getItem(board, item.id);
+  }
+
+  /* ---------- My team and My projects ---------- */
+
+  /**
+   * Items on the given boards where any People column includes one of `personIds`.
+   * Reads ids only and filters in the browser (see myWork for why).
+   */
+  public async itemsForPeople(boards: IBoard[], personIds: number[]): Promise<IPersonWorkRow[]> {
+    if (personIds.length === 0) {
+      return [];
+    }
+    const perBoard = await mapLimit(boards, 4, async board => {
+      const peopleCols = board.config.columns.filter(c => c.type === 'people');
+      if (peopleCols.length === 0) {
+        return [] as IPersonWorkRow[];
+      }
+      const statusCol = board.config.columns.filter(c => c.field === F.Status)[0];
+      const dueCol = board.config.columns.filter(c => c.field === F.DueDate || c.fieldEnd === F.DueDate)[0];
+      const select = [`Id,Title,${F.GroupId},${F.SortOrder},${F.ParentId},${F.Status},${F.DueDate},Created,Modified,Attachments`]
+        .concat(peopleCols.map(c => c.field + 'Id')).join(',');
+      let rows: any[];
+      try {
+        rows = await this.sp.getAll<any>(`web/lists(guid'${board.itemsListId}')/items?$select=${select}&$top=5000`);
+      } catch (e) {
+        if (e instanceof SpError && (e.isNotFound || e.isAccessDenied)) {
+          return [] as IPersonWorkRow[];
+        }
+        throw e;
+      }
+      rows = rows.filter(r => peopleCols.some(c => readIds(r[c.field + 'Id']).some(id => personIds.indexOf(id) >= 0)));
+      const users = await this.people.resolve(peopleIdsIn(peopleCols, rows));
+      return rows.map(r => {
+        const item = readItem(peopleCols, r, users);
+        const involved: number[] = [];
+        peopleCols.forEach(c => readIds(r[c.field + 'Id']).forEach(id => {
+          if (personIds.indexOf(id) >= 0 && involved.indexOf(id) < 0) {
+            involved.push(id);
+          }
+        }));
+        const statusText: string | null = statusCol ? r[F.Status] || null : null;
+        const status: ILabel | null = statusCol && statusText
+          ? (statusCol.labels || []).filter(l => l.text === statusText)[0] || { id: '', text: statusText, color: '#c4c4c4' } : null;
+        return {
+          board,
+          item,
+          people: involved.map(id => users.get(id) as IPerson),
+          status,
+          due: dueCol ? fromSpDate(r[F.DueDate]) : null
+        } as IPersonWorkRow;
+      });
+    });
+    const all: IPersonWorkRow[] = [];
+    perBoard.forEach(rows => rows.forEach(r => all.push(r)));
+    return all;
+  }
+
+  /** Progress figures for a board's top-level items, for My projects. */
+  public async summary(board: IBoard, today: string): Promise<{ total: number; done: number; overdue: number; counts: { [label: string]: number } }> {
+    const rows = await this.sp.getAll<any>(`${this.listPath(board)}/items?$select=${F.Status},${F.DueDate},${F.ParentId}&$top=5000`, 20000);
+    const statusCol = board.config.columns.filter(c => c.field === F.Status)[0];
+    const doneLabels = statusCol ? (statusCol.labels || []).filter(l => l.isDone).map(l => l.text) : [];
+    const out = { total: 0, done: 0, overdue: 0, counts: {} as { [label: string]: number } };
+    rows.forEach(r => {
+      if (r[F.ParentId]) {
+        return;
+      }
+      const s = r[F.Status] || '';
+      const isDone = doneLabels.indexOf(s) >= 0;
+      const due = fromSpDate(r[F.DueDate]);
+      out.total++;
+      out.counts[s] = (out.counts[s] || 0) + 1;
+      if (isDone) {
+        out.done++;
+      } else if (due && due < today) {
+        out.overdue++;
+      }
+    });
+    return out;
   }
 }

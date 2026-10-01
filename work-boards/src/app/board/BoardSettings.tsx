@@ -5,7 +5,7 @@ import { IBoard, IPerson } from '../../models/types';
 import { IBoardRights } from '../../services/permissions';
 import { IBoardMember, RoleName } from '../../services/BoardService';
 import { useApp } from '../AppContext';
-import { PeoplePicker, Swatches, useConfirm } from '../common/Common';
+import { PeoplePicker, Swatches, useConfirm, RolesEditor } from '../common/Common';
 
 export interface IBoardSettingsProps {
   board: IBoard;
@@ -24,6 +24,15 @@ export function BoardSettings(props: IBoardSettingsProps): JSX.Element {
   const [folder, setFolder] = React.useState(board.folder);
   const [color, setColor] = React.useState(board.color);
   const [owners, setOwners] = React.useState<IPerson[]>([]);
+  const [roles, setRoles] = React.useState<{ head: IPerson[]; lead: IPerson[]; sponsor: IPerson[] }>({ head: [], lead: [], sponsor: [] });
+  const roleIds = board.roles.head.concat(board.roles.lead, board.roles.sponsor);
+  React.useEffect(() => {
+    services.people.resolve(roleIds).then(m => setRoles({
+      head: board.roles.head.map(id => m.get(id) as IPerson),
+      lead: board.roles.lead.map(id => m.get(id) as IPerson),
+      sponsor: board.roles.sponsor.map(id => m.get(id) as IPerson)
+    })).catch(() => undefined);
+  }, [board.id, roleIds.join(',')]);
   const [busy, setBusy] = React.useState('');
   const [error, setError] = React.useState('');
   const [members, setMembers] = React.useState<IBoardMember[] | null>(null);
@@ -62,8 +71,13 @@ export function BoardSettings(props: IBoardSettingsProps): JSX.Element {
 
   const saveGeneral = (): Promise<void> => run('Saving…', async () => {
     const updated = await services.boards.updateProps(board, {
-      title: title.trim() || board.title, description, folder: folder.trim(), color, ownerIds: owners.map(o => o.id)
+      title: title.trim() || board.title, description, folder: folder.trim(), color, ownerIds: owners.map(o => o.id),
+      roles: { head: roles.head.map(p => p.id), lead: roles.lead.map(p => p.id), sponsor: roles.sponsor.map(p => p.id) }
     });
+    if (rights.canManagePermissions) {
+      // On a private board, people in project roles get read access so they can follow it.
+      await services.boards.grantRoleViewers(updated);
+    }
     props.onChanged(updated);
   });
 
@@ -142,6 +156,11 @@ export function BoardSettings(props: IBoardSettingsProps): JSX.Element {
               <Swatches value={color} onChange={c => { if (rights.canManage) { setColor(c); } }} />
             </div>
             <PeoplePicker label="Board owners (can change columns, groups and settings)" selected={owners} onChange={setOwners} />
+            <h3 className={styles.sectionTitle}>Project roles</h3>
+            <p className={`${styles.small} ${styles.muted}`} style={{ margin: 0 }}>
+              People in these roles see this board under My projects.{board.privacy === 'Private' ? ' On this private board they also get read access.' : ''}
+            </p>
+            <RolesEditor value={roles} onChange={setRoles} disabled={!rights.canManage} />
             <div className={styles.row}>
               <span className={`${styles.small} ${styles.muted}`}>Board key: <strong>{board.key}</strong> (item IDs look like {board.key}-12)</span>
             </div>

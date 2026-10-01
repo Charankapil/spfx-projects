@@ -5,6 +5,7 @@ import { ItemService } from '../services/ItemService';
 import { UpdateService } from '../services/UpdateService';
 import { PeopleService } from '../services/PeopleService';
 import { PrefsService } from '../services/PrefsService';
+import { FilesService } from '../services/FilesService';
 import { IBoard, IPerson, IUserPrefs } from '../models/types';
 import { Route } from './router';
 
@@ -15,6 +16,7 @@ export interface IServices {
   updates: UpdateService;
   people: PeopleService;
   prefs: PrefsService;
+  files: FilesService;
 }
 
 export interface IAppContext {
@@ -30,6 +32,8 @@ export interface IAppContext {
   /** Replace one board in the shared list after a change. */
   replaceBoard: (board: IBoard) => void;
   toggleFavourite: (boardId: number) => void;
+  /** Save the people added by hand to My team. */
+  setTeam: (ids: number[]) => void;
   navigate: (route: Route) => void;
 }
 

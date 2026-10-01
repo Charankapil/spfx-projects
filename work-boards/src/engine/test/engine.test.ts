@@ -1,6 +1,7 @@
 import { keyBetween, keyForIndex, needsRebalance, rebalance, ORDER_STEP } from '../ordering';
 import { toSpDate, fromSpDate, addDays, diffDays, formatDay, formatRange, relativeDay, todayIso } from '../dates';
-import { fieldXml, readItem, writeCell, cellText, itemQueryParts, xmlEscape, F, peopleIdsIn, readIds } from '../fieldMap';
+import { fieldXml, readItem, writeCell, cellText, itemQueryParts, xmlEscape, F, peopleIdsIn, readIds, readLinks, nameFromUrl } from '../fieldMap';
+import { teamTotals, sortTeamRows } from '../team';
 import { diffVersions, versionField } from '../activity';
 import { parseSegments, mentionIds, mentionToken, plainText } from '../mentions';
 import { boardToCsv, csvEscape } from '../csv';
@@ -9,7 +10,7 @@ import { suggestBoardKey, isValidBoardKey, shortId } from '../ids';
 import { parseRoute, routeToHash } from '../../app/router';
 import { hasPermission, PermissionKind, boardRights } from '../../services/permissions';
 import { pickFieldsForNewColumn, parseConfig } from '../../services/BoardService';
-import { IBoard, IBoardColumn, IWorkItem, IBoardConfig } from '../../models/types';
+import { IBoard, IBoardColumn, IWorkItem, IBoardConfig, IPersonWorkRow, ILabel } from '../../models/types';
 import { STATUS_LABELS } from '../../models/templates';
 
 const statusCol: IBoardColumn = { id: 'status', title: 'Status', type: 'status', field: F.Status, labels: STATUS_LABELS };
@@ -28,11 +29,11 @@ const config: IBoardConfig = {
 
 const board: IBoard = {
   id: 1, title: 'Launch', key: 'LCH', description: '', folder: '', color: '#579bfc', privacy: 'Main',
-  itemsListId: 'x', updatesListId: 'y', ownerIds: [7], archived: false, config, etag: '"1"'
+  itemsListId: 'x', updatesListId: 'y', ownerIds: [7], roles: { head: [], lead: [], sponsor: [] }, archived: false, config, etag: '"1"'
 };
 
 function item(id: number, title: string, groupId: string, sortOrder: number, values: IWorkItem['values'], parentId: number | null = null): IWorkItem {
-  return { id, title, groupId, sortOrder, parentId, values, created: '2026-09-01T10:00:00Z', modified: '2026-09-01T10:00:00Z', author: null, editor: null, attachments: false, etag: '"1"' };
+  return { id, title, groupId, sortOrder, parentId, values, created: '2026-09-01T10:00:00Z', modified: '2026-09-01T10:00:00Z', author: null, editor: null, attachments: false, links: [], etag: '"1"' };
 }
 
 describe('ordering', () => {
@@ -289,5 +290,43 @@ describe('board config', () => {
     expect(cfg.groups).toHaveLength(1);
     expect(cfg.columns).toEqual([]);
     expect(parseConfig(JSON.stringify(config)).kanbanColumnId).toBe('status');
+  });
+});
+
+describe('team totals and links', () => {
+  const anna = { id: 7, title: 'Anna', email: '' };
+  const ben = { id: 8, title: 'Ben', email: '' };
+  const done: ILabel = { id: 'd', text: 'Done', color: '#0f0', isDone: true };
+  const working: ILabel = { id: 'w', text: 'Working on it', color: '#fa0' };
+  const row = (id: number, people: typeof anna[], status: ILabel | null, due: string | null, boardId: number = 1): IPersonWorkRow => ({
+    board: { ...board, id: boardId }, item: item(id, 'Item ' + id, 'g1', id, {}), people, status, due
+  });
+
+  it('counts open, overdue, due this week, done and boards per person', () => {
+    const rows = [
+      row(1, [anna], working, '2026-09-20'),
+      row(2, [anna, ben], working, '2026-10-02', 2),
+      row(3, [anna], done, '2026-09-01'),
+      row(4, [ben], null, null)
+    ];
+    const t = teamTotals(rows, [anna, ben], '2026-09-29', '2026-10-06');
+    expect(t[0]).toEqual({ person: anna, open: 2, overdue: 1, dueThisWeek: 1, done: 1, boards: 2 });
+    expect(t[1]).toEqual({ person: ben, open: 2, overdue: 0, dueThisWeek: 1, done: 0, boards: 2 });
+    expect(sortTeamRows(rows).map(r => r.item.id)).toEqual([1, 2, 4, 3]);
+  });
+
+  it('reads stored links and names files from URLs', () => {
+    expect(readLinks(JSON.stringify([{ name: 'Plan', url: 'https://x/a.xlsx' }, { bad: 1 }]))).toEqual([{ name: 'Plan', url: 'https://x/a.xlsx', addedBy: undefined, added: undefined }]);
+    expect(readLinks('not json')).toEqual([]);
+    expect(readLinks(null)).toEqual([]);
+    expect(nameFromUrl('https://contoso.sharepoint.com/sites/t/Shared%20Documents/Cleanup%20Batch1.xlsx?web=1')).toBe('Cleanup Batch1.xlsx');
+    expect(itemQueryParts(config.columns, true).select).toContain(F.Links);
+    expect(itemQueryParts(config.columns, false).select).not.toContain(F.Links);
+  });
+
+  it('parses the new routes', () => {
+    expect(parseRoute('#/projects')).toEqual({ page: 'projects' });
+    expect(parseRoute('#/team')).toEqual({ page: 'team' });
+    expect(routeToHash({ page: 'team' })).toBe('#/team');
   });
 });

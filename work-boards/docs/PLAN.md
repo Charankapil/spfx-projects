@@ -515,6 +515,21 @@ used, and those need only standard connectors.
 
 ---
 
+## 11a. Added after the pilot (v0.2)
+
+Requested after the first real-site use:
+
+- **Linked files:** items can link to files in any document library (browse this
+  site, or paste a SharePoint, OneDrive or Teams link). Stored as JSON in a
+  `WB_Links` field on the board list; boards made before v0.2 get the field the
+  first time a board owner links a file.
+- **Project roles:** optional Project head, lead and sponsor per board, stored in
+  new `WB_ProjectHead`, `WB_ProjectLead` and `WB_ProjectSponsor` fields on
+  `WB_Boards` (migration 4). On private boards, role holders get read access.
+- **My projects** and **My team** pages. My team reads reporting lines from the
+  SharePoint user profile service (`SP.UserProfiles.PeopleManager`), which is
+  SharePoint's own API: still no Graph and no app registration.
+
 ## 12. Decisions
 
 Answers to the phase 0 questions, and what they changed:

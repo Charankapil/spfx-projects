@@ -54,6 +54,8 @@ export interface IBoardConfig {
   /** Column id the Timeline view reads (a Timeline or Date column). */
   timelineColumnId?: string;
   defaultView?: BoardViewType;
+  /** True once the board list has the WB_Links field (boards created from v0.1.5 on, or upgraded by an owner). */
+  linksField?: boolean;
 }
 
 export type BoardPrivacy = 'Main' | 'Private';
@@ -70,9 +72,34 @@ export interface IBoard {
   itemsListId: string;
   updatesListId: string;
   ownerIds: number[];
+  /** Optional project roles, set in board settings. */
+  roles: IBoardRoles;
   archived: boolean;
   config: IBoardConfig;
   etag: string;
+}
+
+export type BoardRole = 'head' | 'lead' | 'sponsor';
+
+/** Site user ids per project role. */
+export interface IBoardRoles {
+  head: number[];
+  lead: number[];
+  sponsor: number[];
+}
+
+export const ROLE_LABELS: { [role in BoardRole]: string } = {
+  head: 'Project head',
+  lead: 'Project lead',
+  sponsor: 'Project sponsor'
+};
+
+/** A file linked to an item: in a SharePoint library, OneDrive or anywhere else. */
+export interface ILink {
+  name: string;
+  url: string;
+  addedBy?: string;
+  added?: string;
 }
 
 export interface IPerson {
@@ -101,6 +128,7 @@ export interface IWorkItem {
   author: IPerson | null;
   editor: IPerson | null;
   attachments: boolean;
+  links: ILink[];
   etag: string;
 }
 
@@ -141,4 +169,16 @@ export interface IMyWorkRow {
 export interface IUserPrefs {
   favourites: number[];
   recent: number[];
+  /** People added by hand to My team (site user ids). */
+  team: number[];
+}
+
+/** An item that involves a person, for My team. */
+export interface IPersonWorkRow {
+  board: IBoard;
+  item: IWorkItem;
+  /** People from the watched set who appear in any People column of the item. */
+  people: IPerson[];
+  status: ILabel | null;
+  due: string | null;
 }

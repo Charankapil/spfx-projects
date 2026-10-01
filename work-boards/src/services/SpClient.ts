@@ -117,7 +117,8 @@ export class SpClient {
 
   public async postBinary<T = any>(path: string, content: ArrayBuffer): Promise<T> {
     const res = await this.send('POST', this.api(path), {
-      headers: { Accept: 'application/json;odata=minimalmetadata', 'odata-version': '' },
+      // A Content-Type is required: with no OData version set, SPHttpClient refuses any write that lacks one.
+      headers: { Accept: 'application/json;odata=minimalmetadata', 'Content-Type': 'application/octet-stream', 'odata-version': '' },
       body: content
     });
     return this.readOptionalJson<T>(res);

@@ -195,3 +195,53 @@ export function download(fileName: string, content: string, mime: string): void 
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** People for site user ids, resolved once per change of the id list. */
+export function usePeople(ids: number[]): IPerson[] {
+  const { services } = useApp();
+  const key = ids.join(',');
+  const [people, setPeople] = React.useState<IPerson[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    if (ids.length === 0) {
+      setPeople([]);
+      return undefined;
+    }
+    services.people.resolve(ids).then(m => {
+      if (!cancelled) {
+        setPeople(ids.map(id => m.get(id) as IPerson));
+      }
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [key]);
+  return people;
+}
+
+/** Pickers for the optional project roles (head, lead, sponsor). */
+export function RolesEditor(props: {
+  value: { head: IPerson[]; lead: IPerson[]; sponsor: IPerson[] };
+  onChange: (value: { head: IPerson[]; lead: IPerson[]; sponsor: IPerson[] }) => void;
+  disabled?: boolean;
+}): JSX.Element {
+  const { value } = props;
+  if (props.disabled) {
+    return (
+      <div style={{ display: 'grid', gap: 8 }}>
+        {(['head', 'lead', 'sponsor'] as const).map(r => (
+          <div key={r} className={styles.row}>
+            <span className={styles.muted} style={{ width: 130 }}>{r === 'head' ? 'Project head' : r === 'lead' ? 'Project lead' : 'Project sponsor'}</span>
+            {value[r].length ? <Avatars people={value[r]} max={5} /> : <span className={styles.muted}>Not set</span>}
+            <span>{value[r].map(p => p.title).join(', ')}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <PeoplePicker label="Project head (optional)" selected={value.head} onChange={p => props.onChange({ ...value, head: p })} />
+      <PeoplePicker label="Project lead (optional)" selected={value.lead} onChange={p => props.onChange({ ...value, lead: p })} />
+      <PeoplePicker label="Project sponsor (optional)" selected={value.sponsor} onChange={p => props.onChange({ ...value, sponsor: p })} />
+    </div>
+  );
+}

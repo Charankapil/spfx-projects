@@ -232,14 +232,27 @@ export function TableView(props: ITableViewProps): JSX.Element {
   const addColumnMenu = (target: HTMLElement): void => {
     setMenu({
       target,
-      items: COLUMN_TYPES.map(t => ({
+      items: (COLUMN_TYPES.map(t => ({
         key: t.type,
         text: t.title,
-        secondaryText: undefined,
         title: t.description,
         iconProps: { iconName: t.icon },
         onClick: () => { actions.addColumn(t.type, t.title, cols.length ? cols[cols.length - 1].id : undefined).catch(() => undefined); }
-      }))
+      })) as IContextualMenuItem[]).concat([
+        { key: 'roles-divider', itemType: 1 },
+        {
+          key: 'roles', text: 'Project roles', iconProps: { iconName: 'Contact' },
+          subMenuProps: {
+            items: ['Project lead', 'Project head', 'Project sponsor'].map(title => ({
+              key: title,
+              text: title,
+              title: `A People column named ${title}`,
+              disabled: board.config.columns.some(c => c.title.toLowerCase() === title.toLowerCase()),
+              onClick: () => { actions.addColumn('people', title, cols.length ? cols[cols.length - 1].id : undefined).catch(() => undefined); }
+            }))
+          }
+        }
+      ])
     });
   };
 

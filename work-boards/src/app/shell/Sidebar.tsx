@@ -40,6 +40,12 @@ export function Sidebar(props: { route: Route; version?: string; onNewBoard: () 
       <button type="button" className={`${styles.navItem} ${props.route.page === 'mywork' ? styles.navItemActive : ''}`} onClick={() => app.navigate({ page: 'mywork' })}>
         <Icon iconName="CheckList" /> <span className={styles.navLabel}>My Work</span>
       </button>
+      <button type="button" className={`${styles.navItem} ${props.route.page === 'projects' ? styles.navItemActive : ''}`} onClick={() => app.navigate({ page: 'projects' })}>
+        <Icon iconName="ProjectCollection" /> <span className={styles.navLabel}>My projects</span>
+      </button>
+      <button type="button" className={`${styles.navItem} ${props.route.page === 'team' ? styles.navItemActive : ''}`} onClick={() => app.navigate({ page: 'team' })}>
+        <Icon iconName="People" /> <span className={styles.navLabel}>My team</span>
+      </button>
 
       {favourites.length > 0 && (
         <>

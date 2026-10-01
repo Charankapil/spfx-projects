@@ -9,6 +9,7 @@ import { ItemService } from '../services/ItemService';
 import { UpdateService } from '../services/UpdateService';
 import { PeopleService } from '../services/PeopleService';
 import { PrefsService } from '../services/PrefsService';
+import { FilesService } from '../services/FilesService';
 import { getSetupStatus, ISetupStatus } from '../services/Provisioner';
 import { hasPermission, PermissionKind, IBasePermissions } from '../services/permissions';
 import { IBoard, IPerson, IUserPrefs } from '../models/types';
@@ -16,6 +17,8 @@ import { Setup } from './shell/Setup';
 import { Sidebar } from './shell/Sidebar';
 import { Home } from './shell/Home';
 import { MyWork } from './shell/MyWork';
+import { MyProjects } from './shell/MyProjects';
+import { MyTeam } from './shell/MyTeam';
 import { NewBoardDialog } from './shell/NewBoardDialog';
 import { BoardPage } from './board/BoardPage';
 import { Loading } from './common/Common';
@@ -48,14 +51,15 @@ export function App(props: IAppProps): JSX.Element {
       items: new ItemService(props.sp, people),
       updates: new UpdateService(props.sp),
       people,
-      prefs: new PrefsService(props.sp)
+      prefs: new PrefsService(props.sp),
+      files: new FilesService(props.sp)
     };
   }, [props.sp]);
 
   const [phase, setPhase] = React.useState<Phase>({ kind: 'loading' });
   const [me, setMe] = React.useState<IPerson | null>(null);
   const [boards, setBoards] = React.useState<IBoard[]>([]);
-  const [prefs, setPrefs] = React.useState<IUserPrefs>({ favourites: [], recent: [] });
+  const [prefs, setPrefs] = React.useState<IUserPrefs>({ favourites: [], recent: [], team: [] });
   const [isSiteOwner, setIsSiteOwner] = React.useState(false);
   const [route, setRoute] = React.useState<Route>(() => {
     const r = parseRoute(window.location.hash);
@@ -154,6 +158,10 @@ export function App(props: IAppProps): JSX.Element {
       services.prefs.toggleFavourite(id).then(setPrefs).catch(() => undefined);
       setPrefs(p => ({ ...p, favourites: p.favourites.indexOf(id) >= 0 ? p.favourites.filter(x => x !== id) : p.favourites.concat([id]) }));
     },
+    setTeam: ids => {
+      setPrefs(p => ({ ...p, team: ids }));
+      services.prefs.setTeam(ids).then(setPrefs).catch(() => undefined);
+    },
     navigate: r => {
       const hash = routeToHash(r);
       if (window.location.hash === hash) {
@@ -170,6 +178,8 @@ export function App(props: IAppProps): JSX.Element {
         <Sidebar route={route} version={props.version} onNewBoard={() => setNewBoardOpen(true)} />
         {route.page === 'home' && <div className={styles.main}><Home onNewBoard={() => setNewBoardOpen(true)} /></div>}
         {route.page === 'mywork' && <div className={styles.main}><MyWork /></div>}
+        {route.page === 'projects' && <div className={styles.main}><MyProjects /></div>}
+        {route.page === 'team' && <div className={styles.main}><MyTeam /></div>}
         {route.page === 'board' && <BoardPage key={route.boardId} boardId={route.boardId} view={route.view} itemId={route.itemId} />}
         {newBoardOpen && (
           <NewBoardDialog onClose={() => setNewBoardOpen(false)} onCreated={b => {

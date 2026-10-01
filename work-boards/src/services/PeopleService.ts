@@ -83,6 +83,43 @@ export class PeopleService {
     return out;
   }
 
+  /**
+   * The signed-in user's reports, from their SharePoint user profile (org data synced from
+   * Entra ID). Uses SharePoint's own profile API: no Graph, no app registration.
+   * `everyone` includes reports of reports. Returns account names (login names).
+   */
+  public async myReportLogins(everyone: boolean): Promise<string[]> {
+    type Logins = string[] | { results: string[] } | null | undefined;
+    const res = await this.sp.get<{ AccountName?: string; DirectReports?: Logins; ExtendedReports?: Logins }>(
+      'SP.UserProfiles.PeopleManager/GetMyProperties?$select=AccountName,DirectReports,ExtendedReports'
+    );
+    const list = (raw: Logins): string[] => (Array.isArray(raw) ? raw : raw && Array.isArray(raw.results) ? raw.results : []);
+    const me = String(res.AccountName || '').toLowerCase();
+    const logins = list(everyone ? res.ExtendedReports : res.DirectReports);
+    return logins.filter((l, i) => l && l.toLowerCase() !== me && logins.indexOf(l) === i);
+  }
+
+  /**
+   * Site users for login names. People who were never added to this site are not returned:
+   * they cannot be in any board's People column here.
+   */
+  public async siteUsersByLogin(logins: string[]): Promise<IPerson[]> {
+    const out: IPerson[] = [];
+    for (let i = 0; i < logins.length; i += 15) {
+      const chunk = logins.slice(i, i + 15);
+      const filter = chunk.map(l => `LoginName eq '${l.replace(/'/g, "''")}'`).join(' or ');
+      const res = await this.sp.get<{ value: { Id: number; Title: string; Email: string }[] }>(
+        `web/siteusers?$select=Id,Title,Email&$filter=${encodeURIComponent(filter)}`
+      );
+      res.value.forEach(u => {
+        const person = { id: u.Id, title: u.Title, email: u.Email || '' };
+        this.byId.set(u.Id, person);
+        out.push(person);
+      });
+    }
+    return out;
+  }
+
   /** Make sure the person exists in the site's user list and return their site user id. */
   public async ensure(key: string): Promise<IPerson> {
     if (this.ensured[key]) {

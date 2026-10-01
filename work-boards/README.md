@@ -40,6 +40,19 @@ all apply as they do to any other list.
 - **Search, filter and sort.** Search text, filter by person, by any Status or
   Dropdown label, or by date (overdue, next 7 days, no date), sort by any column
   and hide columns. Your view is remembered per board.
+- **Linked files.** Besides uploading, link a file that already lives in a
+  document library: browse this site's libraries and folders, or paste a link to
+  any SharePoint, OneDrive or Teams file. Nothing is copied.
+- **Project roles.** Give a board an optional **Project head**, **Project lead**
+  and **Project sponsor**. They show under the board name, and on a private board
+  they get read access so they can follow it. The add-column menu also offers
+  ready-made *Project lead*, *Project head* and *Project sponsor* People columns.
+- **My projects.** Every board where you are project head, lead, sponsor or board
+  owner, with progress, overdue count and status mix.
+- **My team.** The work of the people who report to you (from your organisation
+  profile in SharePoint), across every board you can open: open and done items,
+  overdue counts, and the projects they lead. Add people by hand to follow anyone
+  else. Switch on *Include their teams* to see reports of reports.
 - **My Work and Home.** Everything assigned to you across every board you can
   open, grouped into Overdue, Today, Next 7 days, Later and No date, plus recent
   boards and favourites.
@@ -107,8 +120,21 @@ Read), because the Work Boards page lives there.
 
 Deleted items, boards and files go to the site recycle bin and can be restored.
 
+### Upgrading from an earlier version
+
+Version 0.2 adds project roles to the board registry. After you replace the
+package, the first site owner to open the Work Boards page sees **Update Work
+Boards** and clicks **Update now** (a few seconds). Until then, other people see
+a message asking a site owner to open the page. Boards, items and files are not
+changed. Linked files switch on for each existing board the first time a board
+owner links a file on it.
+
 ### Limits in this version
 
+- **My team** uses the reporting lines in your SharePoint user profile, which
+  come from Entra ID. If those are incomplete, add people by hand on the page.
+  It shows only boards you can open: a private board appears only if you are a
+  member or hold a project role on it.
 - **My Work** uses each board's **Owner** column (the People column named Owner in
   every template). Items where you appear only in another People column, such as
   *Requested by*, are not listed there.

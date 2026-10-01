@@ -6,7 +6,7 @@ import { TEMPLATES, IBoardTemplate } from '../../models/templates';
 import { IBoard, IPerson, CellValue, ITimelineValue } from '../../models/types';
 import { suggestBoardKey, isValidBoardKey } from '../../engine/ids';
 import { PALETTE } from '../../models/colors';
-import { PeoplePicker, Swatches } from '../common/Common';
+import { PeoplePicker, Swatches, RolesEditor } from '../common/Common';
 import { addDays, todayIso } from '../../engine/dates';
 import { ORDER_STEP } from '../../engine/ordering';
 import { ItemService } from '../../services/ItemService';
@@ -60,6 +60,8 @@ export function NewBoardDialog(props: { onClose: () => void; onCreated: (board: 
   const [description, setDescription] = React.useState('');
   const [privacy, setPrivacy] = React.useState<'Main' | 'Private'>('Main');
   const [members, setMembers] = React.useState<IPerson[]>([]);
+  const [showRoles, setShowRoles] = React.useState(false);
+  const [roles, setRoles] = React.useState<{ head: IPerson[]; lead: IPerson[]; sponsor: IPerson[] }>({ head: [], lead: [], sponsor: [] });
   const [examples, setExamples] = React.useState(true);
   const [busy, setBusy] = React.useState('');
   const [error, setError] = React.useState('');
@@ -76,7 +78,8 @@ export function NewBoardDialog(props: { onClose: () => void; onCreated: (board: 
     try {
       const board = await app.services.boards.createBoard({
         title: title.trim(), key: effectiveKey, description: description.trim(), folder: folder.trim(), color, privacy,
-        templateId, memberIds: members.map(m => m.id)
+        templateId, memberIds: members.map(m => m.id),
+        roles: { head: roles.head.map(p => p.id), lead: roles.lead.map(p => p.id), sponsor: roles.sponsor.map(p => p.id) }
       }, app.me.id, step => setBusy(step + '…'));
       if (examples && template.items.length > 0) {
         setBusy('Adding example items…');
@@ -129,6 +132,12 @@ export function NewBoardDialog(props: { onClose: () => void; onCreated: (board: 
           ]} />
         {!app.isSiteOwner && <span className={`${styles.small} ${styles.muted}`}>Only site owners can create private boards, because it changes SharePoint permissions.</span>}
         {privacy === 'Private' && <PeoplePicker label="Members" selected={members} onChange={setMembers} />}
+        <div>
+          <button type="button" className={styles.linkBtn} onClick={() => setShowRoles(s => !s)} aria-expanded={showRoles}>
+            <Icon iconName={showRoles ? 'ChevronDown' : 'ChevronRight'} style={{ fontSize: 10 }} /> Project roles (optional): head, lead, sponsor
+          </button>
+          {showRoles && <RolesEditor value={roles} onChange={setRoles} />}
+        </div>
         {template.items.length > 0 && <Checkbox label="Add a few example items" checked={examples} onChange={(_, c) => setExamples(!!c)} />}
       </div>
       <DialogFooter>

@@ -11,7 +11,7 @@ import { TimelineView } from '../views/TimelineView';
 import { ItemPanel } from '../item/ItemPanel';
 import { LabelEditor } from './LabelEditor';
 import { BoardSettings } from './BoardSettings';
-import { Avatar, Loading, download } from '../common/Common';
+import { Avatar, Avatars, Loading, download, usePeople } from '../common/Common';
 import { boardToCsv } from '../../engine/csv';
 
 export interface IBoardPageProps {
@@ -56,6 +56,9 @@ export function BoardPage(props: IBoardPageProps): JSX.Element {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [popup, setPopup] = React.useState<{ kind: 'person' | 'filter' | 'hide'; target: HTMLElement } | null>(null);
   const [title, setTitle] = React.useState('');
+  const heads = usePeople(board ? board.roles.head : []);
+  const leads = usePeople(board ? board.roles.lead : []);
+  const sponsors = usePeople(board ? board.roles.sponsor : []);
 
   React.useEffect(() => setViewState(loadView(app.webUrl, props.boardId)), [props.boardId]);
   React.useEffect(() => { if (board) { setTitle(board.title); } }, [board && board.title]);
@@ -145,6 +148,17 @@ export function BoardPage(props: IBoardPageProps): JSX.Element {
           <DefaultButton text="Settings" iconProps={{ iconName: 'Settings' }} onClick={() => setSettingsOpen(true)} />
         </div>
         {board.description && <p className={styles.muted} style={{ margin: 0 }}>{board.description}</p>}
+        {(heads.length > 0 || leads.length > 0 || sponsors.length > 0) && (
+          <div className={styles.row} style={{ gap: 16 }} aria-label="Project roles">
+            {([['Head', heads], ['Lead', leads], ['Sponsor', sponsors]] as [string, typeof heads][]).filter(r => r[1].length > 0).map(([label, people]) => (
+              <span key={label} className={styles.row} style={{ gap: 6 }}>
+                <span className={`${styles.small} ${styles.muted}`}>{label}</span>
+                <Avatars people={people} max={3} size={22} />
+                <span className={styles.small}>{people.length === 1 ? people[0].title : `${people.length} people`}</span>
+              </span>
+            ))}
+          </div>
+        )}
         <nav className={styles.tabs} aria-label="Board views">
           {VIEW_TABS.map(t => (
             <button key={t.key} type="button" className={`${styles.tab} ${activeView === t.key ? styles.tabActive : ''}`} aria-current={activeView === t.key ? 'page' : undefined}

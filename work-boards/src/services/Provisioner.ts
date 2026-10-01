@@ -59,6 +59,25 @@ export const MIGRATIONS: IMigration[] = [
       });
       await ensureField(sp, list.Id, 'WB_Prefs', '<Field Type="Note" Name="WB_Prefs" StaticName="WB_Prefs" DisplayName="Preferences" NumLines="6" RichText="FALSE" />');
     }
+  },
+  {
+    version: 4,
+    title: 'Project roles on boards (head, lead, sponsor)',
+    run: async sp => {
+      const list = await findList(sp, LIST_BOARDS);
+      if (!list) {
+        throw new Error('The WB_Boards list is missing. Run setup again.');
+      }
+      const roles: [string, string][] = [
+        ['WB_ProjectHead', 'Project head'],
+        ['WB_ProjectLead', 'Project lead'],
+        ['WB_ProjectSponsor', 'Project sponsor']
+      ];
+      for (const [name, title] of roles) {
+        await ensureField(sp, list.Id, name,
+          `<Field Type="UserMulti" Name="${name}" StaticName="${name}" DisplayName="${title}" Mult="TRUE" UserSelectionMode="PeopleOnly" />`);
+      }
+    }
   }
 ];
 

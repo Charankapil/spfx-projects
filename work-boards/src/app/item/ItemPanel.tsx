@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { Panel, PanelType, Pivot, PivotItem, PrimaryButton, DefaultButton, Icon, Spinner, SpinnerSize, MessageBar, MessageBarType } from '@fluentui/react';
 import styles from '../WorkBoards.module.scss';
-import { IBoard, IBoardColumn, IWorkItem, IUpdate, IAttachment, IActivityEntry, IPerson } from '../../models/types';
+import { IBoard, IBoardColumn, IWorkItem, IUpdate, IAttachment, IActivityEntry, IPerson, ILink } from '../../models/types';
+import { LinkFileDialog } from './LinkFileDialog';
 import { IBoardRights } from '../../services/permissions';
 import { IBoardActions } from '../board/useBoard';
 import { useApp } from '../AppContext';
@@ -110,7 +111,8 @@ export function ItemPanel(props: IItemPanelProps): JSX.Element {
           <UpdatesTab board={board} item={item} canPost={rights.canView} onCountChange={d => actions.bumpUpdateCount(item.id, d)} />
         </PivotItem>
         <PivotItem itemKey="files" headerText="Files" itemIcon="Attach">
-          <FilesTab board={board} item={item} canEdit={rights.canEdit} onChanged={async () => {
+          <FilesTab board={board} item={item} canEdit={rights.canEdit} canManage={rights.canManage}
+            onItemChanged={actions.applyItem} onBoardChanged={actions.setBoard} onChanged={async () => {
             try {
               actions.applyItem(await services.items.getItem(board, item.id));
             } catch {
@@ -350,7 +352,10 @@ function UpdatesTab(props: { board: IBoard; item: IWorkItem; canPost: boolean; o
 
 /* ---------- Files ---------- */
 
-function FilesTab(props: { board: IBoard; item: IWorkItem; canEdit: boolean; onChanged: () => Promise<void> }): JSX.Element {
+function FilesTab(props: {
+  board: IBoard; item: IWorkItem; canEdit: boolean; canManage: boolean;
+  onChanged: () => Promise<void>; onItemChanged: (item: IWorkItem) => void; onBoardChanged: (board: IBoard) => void;
+}): JSX.Element {
   const { services } = useApp();
   const [files, setFiles] = React.useState<IAttachment[] | null>(null);
   const [busy, setBusy] = React.useState('');
@@ -358,6 +363,39 @@ function FilesTab(props: { board: IBoard; item: IWorkItem; canEdit: boolean; onC
   const [over, setOver] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [confirmDialog, confirm] = useConfirm();
+  const [linking, setLinking] = React.useState(false);
+  const { me } = useApp();
+
+  /** Save links; boards made before linked files existed get the field first (needs a board owner). */
+  const saveLinks = async (links: ILink[]): Promise<void> => {
+    let board = props.board;
+    if (!board.config.linksField) {
+      if (!props.canManage) {
+        throw new Error('Linked files are not turned on for this board yet. Ask a board owner to link a file once, which turns it on for everyone.');
+      }
+      board = await services.boards.enableLinks(board);
+      props.onBoardChanged(board);
+    }
+    props.onItemChanged(await services.items.saveLinks(board, props.item, links));
+  };
+
+  const addLinks = (added: ILink[]): Promise<void> => {
+    const stamp = new Date().toISOString();
+    const existing = props.item.links.map(l => l.url);
+    return saveLinks(props.item.links.concat(added.filter(l => existing.indexOf(l.url) < 0).map(l => ({ ...l, addedBy: me.title, added: stamp }))));
+  };
+
+  const removeLink = async (link: ILink): Promise<void> => {
+    const ok = await confirm({ title: `Remove the link to ${link.name}?`, message: 'Only the link is removed. The file itself is not touched.', confirmText: 'Remove link', danger: true });
+    if (!ok) {
+      return;
+    }
+    try {
+      await saveLinks(props.item.links.filter(l => l.url !== link.url));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
 
   const load = (): void => {
     services.items.listAttachments(props.board, props.item.id).then(setFiles).catch(e => { setError((e as Error).message); setFiles([]); });
@@ -415,8 +453,27 @@ function FilesTab(props: { board: IBoard; item: IWorkItem; canEdit: boolean; onC
           )}
         </div>
       )}
+      <div className={styles.row}>
+        <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Linked files</h3>
+        <span className={styles.spacer} />
+        {props.canEdit && <DefaultButton text="Link a file" iconProps={{ iconName: 'Link' }} onClick={() => setLinking(true)} />}
+      </div>
+      {props.item.links.length === 0 && <p className={styles.muted} style={{ margin: 0 }}>Link files that live in a document library, OneDrive or Teams, instead of uploading a copy.</p>}
+      {props.item.links.map(l => (
+        <div key={l.url} className={styles.fileRow}>
+          <Icon iconName="Link" />
+          <a href={l.url} target="_blank" rel="noopener noreferrer" data-interception="off" title={l.url}>{l.name}</a>
+          {l.addedBy && <span className={`${styles.small} ${styles.muted}`}>{l.addedBy}</span>}
+          {props.canEdit && (
+            <button type="button" className={styles.iconBtn} onClick={() => { removeLink(l).catch(() => undefined); }} aria-label={`Remove link to ${l.name}`}>
+              <Icon iconName="Cancel" />
+            </button>
+          )}
+        </div>
+      ))}
+      <h3 className={styles.sectionTitle} style={{ margin: '8px 0 0' }}>Attached files</h3>
       {files === null && <Spinner size={SpinnerSize.medium} />}
-      {files !== null && files.length === 0 && <p className={styles.muted}>No files on this item.</p>}
+      {files !== null && files.length === 0 && <p className={styles.muted} style={{ margin: 0 }}>No files uploaded to this item.</p>}
       {(files || []).map(f => (
         <div key={f.fileName} className={styles.fileRow}>
           <Icon iconName="Page" />
@@ -428,6 +485,7 @@ function FilesTab(props: { board: IBoard; item: IWorkItem; canEdit: boolean; onC
           )}
         </div>
       ))}
+      {linking && <LinkFileDialog onLink={addLinks} onClose={() => setLinking(false)} />}
       {confirmDialog}
     </div>
   );

@@ -3,7 +3,7 @@ import { findList, itemEntityType } from './lists';
 import { LIST_PREFS } from './Provisioner';
 import { IUserPrefs } from '../models/types';
 
-const EMPTY: IUserPrefs = { favourites: [], recent: [] };
+const EMPTY: IUserPrefs = { favourites: [], recent: [], team: [] };
 const MAX_RECENT = 8;
 
 /**
@@ -36,7 +36,8 @@ export class PrefsService {
         const parsed = JSON.parse(row.WB_Prefs || '{}');
         this.prefs = {
           favourites: Array.isArray(parsed.favourites) ? parsed.favourites : [],
-          recent: Array.isArray(parsed.recent) ? parsed.recent : []
+          recent: Array.isArray(parsed.recent) ? parsed.recent : [],
+          team: Array.isArray(parsed.team) ? parsed.team : []
         };
       } catch {
         this.prefs = EMPTY;
@@ -66,6 +67,10 @@ export class PrefsService {
       return this.prefs;
     }
     return this.save({ ...this.prefs, recent });
+  }
+
+  public async setTeam(ids: number[]): Promise<IUserPrefs> {
+    return this.save({ ...this.prefs, team: ids });
   }
 
   private async save(prefs: IUserPrefs): Promise<IUserPrefs> {

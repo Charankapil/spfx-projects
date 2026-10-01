@@ -1,14 +1,14 @@
 import { SpClient, SpError } from './SpClient';
 import { ensureField, ensureList, findList, deleteField, renameField, recycleList, setTitleFieldName, itemEntityType } from './lists';
 import { LIST_BOARDS } from './Provisioner';
-import { IBoard, IBoardColumn, IBoardConfig, BoardPrivacy, ColumnType, IBoardGroup, ILabel } from '../models/types';
+import { IBoard, IBoardColumn, IBoardConfig, BoardPrivacy, ColumnType, IBoardGroup, ILabel, IBoardRoles } from '../models/types';
 import { getTemplate, STATUS_LABELS } from '../models/templates';
 import { F, UF, fieldXml } from '../engine/fieldMap';
 import { shortId } from '../engine/ids';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const REGISTRY_SELECT = 'Id,Title,WB_Key,WB_Description,WB_Folder,WB_Color,WB_Privacy,WB_ItemsListId,WB_UpdatesListId,WB_BoardOwnersId,WB_Config,WB_Archived';
+const REGISTRY_SELECT = 'Id,Title,WB_Key,WB_Description,WB_Folder,WB_Color,WB_Privacy,WB_ItemsListId,WB_UpdatesListId,WB_BoardOwnersId,WB_ProjectHeadId,WB_ProjectLeadId,WB_ProjectSponsorId,WB_Config,WB_Archived';
 
 export function itemsListTitle(key: string): string {
   return 'WB_Board_' + key;
@@ -32,8 +32,13 @@ export function parseConfig(raw: string | null | undefined): IBoardConfig {
     groups,
     kanbanColumnId: cfg.kanbanColumnId,
     timelineColumnId: cfg.timelineColumnId,
-    defaultView: cfg.defaultView || 'table'
+    defaultView: cfg.defaultView || 'table',
+    linksField: cfg.linksField === true
   };
+}
+
+function ids(raw: any): number[] {
+  return Array.isArray(raw) ? raw : raw && Array.isArray(raw.results) ? raw.results : [];
 }
 
 function readBoard(row: any): IBoard {
@@ -48,7 +53,8 @@ function readBoard(row: any): IBoard {
     privacy: row.WB_Privacy === 'Private' ? 'Private' : 'Main',
     itemsListId: row.WB_ItemsListId || '',
     updatesListId: row.WB_UpdatesListId || '',
-    ownerIds: Array.isArray(owners) ? owners : owners && Array.isArray(owners.results) ? owners.results : [],
+    ownerIds: ids(owners),
+    roles: { head: ids(row.WB_ProjectHeadId), lead: ids(row.WB_ProjectLeadId), sponsor: ids(row.WB_ProjectSponsorId) },
     archived: row.WB_Archived === true,
     config: parseConfig(row.WB_Config),
     etag: row['odata.etag'] || '*'
@@ -94,6 +100,7 @@ export interface ICreateBoardInput {
   privacy: BoardPrivacy;
   templateId: string;
   memberIds: number[];
+  roles?: IBoardRoles;
 }
 
 export type RoleName = 'Owner' | 'Member' | 'Viewer';
@@ -171,7 +178,8 @@ export class BoardService {
       groups: template.groups.map(g => ({ ...g })),
       kanbanColumnId: template.kanbanColumnId,
       timelineColumnId: template.timelineColumnId,
-      defaultView: template.defaultView
+      defaultView: template.defaultView,
+      linksField: true
     };
 
     onStep('Creating the board list');
@@ -192,7 +200,8 @@ export class BoardService {
       [F.Owner, fieldXml('people', F.Owner, 'Owner')],
       [F.Status, fieldXml('status', F.Status, 'Status', { indexed: true, choices: (statusCol ? statusCol.labels || [] : STATUS_LABELS).map(l => l.text) })],
       [F.StartDate, fieldXml('date', F.StartDate, 'Start date', { indexed: true })],
-      [F.DueDate, fieldXml('date', F.DueDate, 'Due date', { indexed: true })]
+      [F.DueDate, fieldXml('date', F.DueDate, 'Due date', { indexed: true })],
+      [F.Links, fieldXml('longtext', F.Links, 'Linked files')]
     ];
     for (const [name, xml] of fixed) {
       await ensureField(this.sp, itemsList.Id, name, xml);
@@ -233,6 +242,9 @@ export class BoardService {
       WB_ItemsListId: itemsList.Id,
       WB_UpdatesListId: updatesList.Id,
       WB_BoardOwnersId: { results: [meId] },
+      WB_ProjectHeadId: { results: input.roles ? input.roles.head : [] },
+      WB_ProjectLeadId: { results: input.roles ? input.roles.lead : [] },
+      WB_ProjectSponsorId: { results: input.roles ? input.roles.sponsor : [] },
       WB_Config: JSON.stringify(config),
       WB_Archived: false
     });
@@ -241,6 +253,7 @@ export class BoardService {
     if (input.privacy === 'Private') {
       onStep('Making the board private');
       board = await this.makePrivate(board, meId, input.memberIds);
+      await this.grantRoleViewers(board, input.memberIds.concat([meId]));
     }
     return board;
   }
@@ -283,7 +296,7 @@ export class BoardService {
     throw new Error('Someone else is changing this board. Try again in a moment.');
   }
 
-  public async updateProps(board: IBoard, props: Partial<Pick<IBoard, 'title' | 'description' | 'folder' | 'color' | 'archived' | 'ownerIds'>>): Promise<IBoard> {
+  public async updateProps(board: IBoard, props: Partial<Pick<IBoard, 'title' | 'description' | 'folder' | 'color' | 'archived' | 'ownerIds' | 'roles'>>): Promise<IBoard> {
     const reg = await this.registry();
     const type = await itemEntityType(this.sp, reg);
     const body: any = { __metadata: { type } };
@@ -304,6 +317,11 @@ export class BoardService {
     }
     if (props.ownerIds !== undefined) {
       body.WB_BoardOwnersId = { results: props.ownerIds };
+    }
+    if (props.roles !== undefined) {
+      body.WB_ProjectHeadId = { results: props.roles.head };
+      body.WB_ProjectLeadId = { results: props.roles.lead };
+      body.WB_ProjectSponsorId = { results: props.roles.sponsor };
     }
     await this.sp.merge(`web/lists(guid'${reg}')/items(${board.id})`, body);
     return this.getBoard(board.id);
@@ -415,6 +433,31 @@ export class BoardService {
     await recycleList(this.sp, board.updatesListId);
     const reg = await this.registry();
     await this.sp.post(`web/lists(guid'${reg}')/items(${board.id})/recycle`);
+  }
+
+  /**
+   * Older boards have no WB_Links field. Someone who can manage the board adds it once;
+   * the flag in the config then tells everyone to read it.
+   */
+  public async enableLinks(board: IBoard): Promise<IBoard> {
+    await ensureField(this.sp, board.itemsListId, F.Links, fieldXml('longtext', F.Links, 'Linked files'));
+    return this.updateConfig(board, cfg => ({ ...cfg, linksField: true }));
+  }
+
+  /**
+   * On a private board, give people in project roles read access so they can follow it.
+   * People who already have access (`skipIds`, or listed members) keep their access.
+   */
+  public async grantRoleViewers(board: IBoard, skipIds: number[] = []): Promise<void> {
+    if (board.privacy !== 'Private') {
+      return;
+    }
+    const members = await this.listMembers(board).catch(() => [] as IBoardMember[]);
+    const has = skipIds.concat(members.map(m => m.principalId));
+    const roleIds = board.roles.head.concat(board.roles.lead, board.roles.sponsor);
+    for (const id of roleIds.filter((x, i) => roleIds.indexOf(x) === i && has.indexOf(x) < 0)) {
+      await this.grant(board, id, 'Viewer', false);
+    }
   }
 
   /* ---------- Permissions ---------- */

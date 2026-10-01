@@ -1,4 +1,4 @@
-import { CellValue, IBoardColumn, IPerson, ITimelineValue, IWorkItem, ColumnType } from '../models/types';
+import { CellValue, IBoardColumn, IPerson, ITimelineValue, IWorkItem, ColumnType, ILink } from '../models/types';
 import { fromSpDate, toSpDate } from './dates';
 
 /** Fields every board list has. Cross-board features (My Work) rely on these names. */
@@ -9,7 +9,8 @@ export const F = {
   Owner: 'WB_Owner',
   Status: 'WB_Status',
   StartDate: 'WB_StartDate',
-  DueDate: 'WB_DueDate'
+  DueDate: 'WB_DueDate',
+  Links: 'WB_Links'
 };
 
 /** Fields on each board's Updates list. */
@@ -84,10 +85,13 @@ export function columnFields(col: IBoardColumn): string[] {
  * SharePoint refuses projections on these custom multi-person fields ("Cannot get value for
  * projected field"). Names and emails are looked up separately from the site's users.
  */
-export function itemQueryParts(columns: IBoardColumn[]): { select: string[]; expand: string[] } {
+export function itemQueryParts(columns: IBoardColumn[], withLinks: boolean = false): { select: string[]; expand: string[] } {
   const select = ['Id', 'Title', F.GroupId, F.SortOrder, F.ParentId, 'Created', 'Modified', 'Attachments',
     'Author/Id', 'Author/Title', 'Author/EMail', 'Editor/Id', 'Editor/Title', 'Editor/EMail'];
   const expand = ['Author', 'Editor'];
+  if (withLinks) {
+    select.push(F.Links);
+  }
   columns.forEach(col => {
     const fields = col.type === 'people' ? [col.field + 'Id'] : columnFields(col);
     fields.forEach(f => {
@@ -125,6 +129,32 @@ function readPeople(col: IBoardColumn, row: any, users?: UserMap): IPerson[] {
     return expanded.map(readPerson).filter((p): p is IPerson => p !== null);
   }
   return readIds(row[col.field + 'Id']).map(id => (users && users.get(id)) || { id, title: 'User ' + id, email: '' });
+}
+
+/** Linked files are stored as JSON in WB_Links. Bad or missing JSON reads as no links. */
+export function readLinks(raw: any): ILink[] {
+  if (!raw || typeof raw !== 'string') {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter(l => l && typeof l.url === 'string').map(l => ({ name: String(l.name || l.url), url: l.url, addedBy: l.addedBy, added: l.added }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A readable name for a link: the file name from the URL, decoded. */
+export function nameFromUrl(url: string): string {
+  const clean = url.split(/[?#]/)[0].replace(/\/+$/, '');
+  const last = clean.substring(clean.lastIndexOf('/') + 1);
+  try {
+    return decodeURIComponent(last) || url;
+  } catch {
+    return last || url;
+  }
 }
 
 /** Every person id used in people columns of the given rows, for one user lookup. */
@@ -196,6 +226,7 @@ export function readItem(columns: IBoardColumn[], row: any, users?: UserMap): IW
     author: readPerson(row.Author),
     editor: readPerson(row.Editor),
     attachments: row.Attachments === true,
+    links: readLinks(row[F.Links]),
     etag: row['odata.etag'] || row['@odata.etag'] || (row.__metadata && row.__metadata.etag) || '*'
   };
 }

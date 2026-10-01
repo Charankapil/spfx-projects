@@ -128,6 +128,7 @@ describe('provisioner', () => {
     // Fields exist under their WB_ internal names (the bug was creating "Version" instead of "WB_Version").
     expect(fake.lists.WB_Meta.fields).toEqual(expect.arrayContaining(['WB_Version', 'WB_Settings']));
     expect(fake.lists.WB_Meta.fields).not.toContain('Version');
+    expect(fake.lists.WB_Boards.fields).toEqual(expect.arrayContaining(['WB_ProjectHead', 'WB_ProjectLead', 'WB_ProjectSponsor']));
     expect(fake.lists.WB_UserPrefs.fields).toContain('WB_Prefs');
     expect(fake.lists.WB_UserPrefs.settings).toEqual(expect.objectContaining({ ReadSecurity: 2, WriteSecurity: 2, Hidden: true }));
     expect(fake.lists.WB_Meta.items).toEqual([expect.objectContaining({ Title: 'schema', WB_Version: SCHEMA_VERSION })]);
