@@ -1,7 +1,7 @@
 import { IUniqueObject, ObjectKind } from '../models/IUniqueObject';
 import { errorMessageFromBody, IBatchRequest, IBatchResponse } from './batch';
 import { runPool } from './pool';
-import { CancelledError, delay, HttpError, SpRest } from './SpRest';
+import { CancelledError, HttpError, SpRest } from './SpRest';
 
 /** SharePoint accepts up to 100 requests per $batch. */
 const BATCH_SIZE = 100;
@@ -189,8 +189,9 @@ export class InheritanceRestorer {
       if (throttled.length === 0) {
         break;
       }
-      await delay(5000 * attempt);
-      this.rest.throwIfCancelled();
+      // Tell the client, so every other request backs off too, not just this batch.
+      this.rest.noteThrottled(5 * attempt);
+      await this.rest.sleep(5000 * attempt);
       const retried = await this.runOnce(
         webUrl,
         throttled.map((i) => requests[i])

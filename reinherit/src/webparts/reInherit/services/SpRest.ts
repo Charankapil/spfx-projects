@@ -10,8 +10,20 @@ import { describeError } from './httpErrors';
  * POSTs by itself. No AAD app registration, client id or secret is needed.
  */
 
-const MAX_THROTTLE_RETRIES = 6;
+const MAX_THROTTLE_RETRIES = 8;
 const MAX_NETWORK_RETRIES = 3;
+
+/**
+ * Every request starts at least GAP ms after the previous one, across all the
+ * parallel readers. When SharePoint throttles, the gap doubles (up to MAX_GAP)
+ * and *every* request waits out the Retry-After period, not just the one that
+ * was refused; after a run of successes the gap shrinks back. Without this the
+ * parallel readers keep hammering while one of them waits, which is what
+ * turns a throttled library into tenant-wide throttling.
+ */
+const BASE_GAP_MS = 150;
+const MAX_GAP_MS = 5000;
+const RECOVERY_STREAK = 25;
 
 export class CancelledError extends Error {}
 
@@ -43,6 +55,10 @@ function retryDelayMs(response: SPHttpClientResponse, attempt: number): number {
 
 export class SpRest {
   private cancelled = false;
+  private gapMs = BASE_GAP_MS;
+  private nextSlot = 0;
+  private cooldownUntil = 0;
+  private successStreak = 0;
 
   constructor(private context: WebPartContext) {}
 
@@ -64,6 +80,47 @@ export class SpRest {
     }
   }
 
+  /** A wait that ends early with CancelledError, so Stop doesn't sit out a long Retry-After. */
+  public async sleep(ms: number): Promise<void> {
+    const until = Date.now() + ms;
+    for (;;) {
+      this.throwIfCancelled();
+      const left = until - Date.now();
+      if (left <= 0) {
+        return;
+      }
+      await delay(Math.min(left, 250));
+    }
+  }
+
+  /** Called when SharePoint throttled a request, or one inside a $batch. */
+  public noteThrottled(retryAfterSeconds: number): void {
+    this.cooldownUntil = Math.max(this.cooldownUntil, Date.now() + retryAfterSeconds * 1000);
+    this.gapMs = Math.min(MAX_GAP_MS, Math.max(this.gapMs * 2, 500));
+    this.successStreak = 0;
+  }
+
+  private noteSuccess(): void {
+    if (this.gapMs > BASE_GAP_MS && ++this.successStreak >= RECOVERY_STREAK) {
+      this.gapMs = Math.max(BASE_GAP_MS, Math.floor(this.gapMs / 2));
+      this.successStreak = 0;
+    }
+  }
+
+  /** Waits for this request's turn: after the pacing gap and any throttling cool-down. */
+  private async pace(): Promise<void> {
+    for (;;) {
+      this.throwIfCancelled();
+      const now = Date.now();
+      const earliest = Math.max(this.nextSlot, this.cooldownUntil);
+      if (earliest <= now) {
+        this.nextSlot = now + this.gapMs;
+        return;
+      }
+      await this.sleep(earliest - now);
+    }
+  }
+
   /**
    * Sends a request, waiting out 429/503 throttling (honouring Retry-After as
    * SharePoint asks) and retrying dropped connections - a run over a million
@@ -71,34 +128,42 @@ export class SpRest {
    */
   private async send(
     doFetch: () => Promise<SPHttpClientResponse>,
-    url: string
+    url: string,
+    allowNotFound = false
   ): Promise<SPHttpClientResponse> {
     let throttled = 0;
-    let networkFailures = 0;
+    let transient = 0;
     for (;;) {
-      this.throwIfCancelled();
+      await this.pace();
       let response: SPHttpClientResponse;
       try {
         response = await doFetch();
       } catch (err) {
-        if (++networkFailures > MAX_NETWORK_RETRIES) {
+        if (++transient > MAX_NETWORK_RETRIES) {
           throw err;
         }
-        await delay(2000 * networkFailures);
+        await this.sleep(2000 * transient);
         continue;
       }
       if (response.status === 429 || response.status === 503) {
         if (++throttled > MAX_THROTTLE_RETRIES) {
           throw new HttpError(response.status, 'SharePoint throttled this request too many times.');
         }
-        await delay(retryDelayMs(response, throttled));
+        this.noteThrottled(retryDelayMs(response, throttled) / 1000);
         continue;
       }
-      if (!response.ok) {
+      // Gateway errors are usually momentary; other 5xx (timeouts, list view threshold) are not retried.
+      if ((response.status === 502 || response.status === 504) && transient < MAX_NETWORK_RETRIES) {
+        transient++;
+        await this.sleep(2000 * transient);
+        continue;
+      }
+      if (!response.ok && !(allowNotFound && response.status === 404)) {
         const detail = await describeError(response);
         console.error(`[ReInherit] ${response.status} from ${url}: ${detail}`);
         throw new HttpError(response.status, detail);
       }
+      this.noteSuccess();
       return response;
     }
   }
@@ -111,16 +176,14 @@ export class SpRest {
     return (await response.json()) as T;
   }
 
+  /** The response body, or undefined for a 404. */
   public async getText(url: string): Promise<string | undefined> {
-    this.throwIfCancelled();
-    const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-    if (response.status === 404) {
-      return undefined;
-    }
-    if (!response.ok) {
-      throw new HttpError(response.status, await describeError(response));
-    }
-    return response.text();
+    const response = await this.send(
+      () => this.context.spHttpClient.get(url, SPHttpClient.configurations.v1),
+      url,
+      true
+    );
+    return response.status === 404 ? undefined : response.text();
   }
 
   public async post(url: string, body?: string): Promise<SPHttpClientResponse> {

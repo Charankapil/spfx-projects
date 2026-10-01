@@ -80,9 +80,17 @@ export class ReportStore {
     const folder = `${assets}/${FOLDER_NAME}`;
     if (create) {
       const existing = await this.rest.getText(
-        `${this.rootUrl}/_api/web/GetFolderByServerRelativeUrl('${quoteForUrl(folder)}')?$select=Name`
+        `${this.rootUrl}/_api/web/GetFolderByServerRelativeUrl('${quoteForUrl(folder)}')?$select=Exists`
       );
-      if (existing === undefined) {
+      let exists = existing !== undefined;
+      if (existing) {
+        try {
+          exists = JSON.parse(existing).Exists !== false;
+        } catch {
+          exists = true;
+        }
+      }
+      if (!exists) {
         await this.rest.post(
           `${this.rootUrl}/_api/web/GetFolderByServerRelativeUrl('${quoteForUrl(assets)}')/Folders/add('${FOLDER_NAME}')`
         );
@@ -144,7 +152,13 @@ export class ReportStore {
     await this.writeFile(folder, fileName, JSON.stringify(saved));
 
     const summary = summarizeReport(report, fileName);
-    const existing = (await this.listReports()).filter((r) => r.id !== report.id);
+    // The report itself is already saved; a missing or unreadable index only means a fresh one.
+    let existing: IReportSummary[] = [];
+    try {
+      existing = (await this.listReports()).filter((r) => r.id !== report.id);
+    } catch {
+      existing = [];
+    }
     const index: IIndexFile = {
       schemaVersion: SCHEMA_VERSION,
       reports: [summary, ...existing].slice(0, MAX_INDEX_ENTRIES)

@@ -37,7 +37,7 @@ export const LIST_SELECT =
   'Id,Title,ItemCount,BaseType,BaseTemplate,Hidden,IsCatalog,IsSystemList,HasUniqueRoleAssignments,RootFolder/ServerRelativeUrl';
 
 /** Catalogs and system lists by template, for when IsCatalog / IsSystemList can't be selected. */
-const SYSTEM_TEMPLATES = [110, 111, 112, 113, 114, 116, 117, 118, 119, 121, 122, 123, 124, 125, 130, 140, 160, 161, 175, 544, 850, 851, 2003, 3100];
+const SYSTEM_TEMPLATES = [113, 114, 116, 121, 122, 123, 124, 125, 140, 160, 544];
 
 /**
  * The web's lists. IsSystemList is SharePoint Online only; if the tenant
@@ -67,7 +67,18 @@ export async function getWebLists(rest: SpRest, webUrl: string): Promise<IListIn
  * system lists SharePoint maintains itself.
  */
 export function isContentList(list: IListInfo): boolean {
-  return !list.Hidden && !list.IsCatalog && !list.IsSystemList;
+  return !list.Hidden && !list.IsCatalog && !list.IsSystemList && !isProtectedLibrary(list);
+}
+
+/**
+ * Libraries SharePoint's own features depend on. They commonly carry unique
+ * permissions on purpose (anonymous read of the site's branding files, for
+ * one), so they are never offered or reset.
+ */
+const PROTECTED_LIBRARIES = /\/(style library|formservertemplates|_catalogs\/[^/]+)$/i;
+
+function isProtectedLibrary(list: IListInfo): boolean {
+  return PROTECTED_LIBRARIES.test(list.RootFolder.ServerRelativeUrl);
 }
 
 export class ScopeService {

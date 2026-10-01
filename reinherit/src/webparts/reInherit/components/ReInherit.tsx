@@ -200,7 +200,8 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
     setNotice(undefined);
 
     const targets = report.objects.filter(isRestorable);
-    const r: IRunReport = { ...report, mode: 'restore', restoreStartedAt: new Date().toISOString() };
+    // A retry starts clean: it must not inherit "cancelled" from the run before it.
+    const r: IRunReport = { ...report, mode: 'restore', restoreStartedAt: new Date().toISOString(), cancelled: undefined };
     setReport(r);
     setStage('restoring');
     setProgress({ ...progress, phase: 'restoring', restoreDone: 0, restoreTotal: targets.length, restored: 0, failed: 0 });
@@ -233,6 +234,8 @@ export const ReInherit: React.FC<IReInheritProps> = (props) => {
           o.message = r.cancelled ? 'Not processed: the run was cancelled.' : 'Not processed: the run stopped early.';
         }
       }
+      // Stop leaves the client in its cancelled state, which would make saving the report fail too.
+      rest.reset();
       const final: IRunReport = { ...r, objects: [...r.objects], completedAt: new Date().toISOString() };
       final.stats = computeStats(final);
       setReport(final);

@@ -33,7 +33,7 @@ in bulk.
   object with unique permissions, can filter and exclude any that should
   stay unique, and confirm before the restore starts.
 - **Built for millions of items.** Items are read 5,000 IDs at a time in
-  four parallel ID ranges, which stays under the list view threshold in a
+  two parallel ID ranges, which stays under the list view threshold in a
   library of any size. Resets go 100 per REST `$batch` request. Throttling
   (`429` / `503`) is waited out, honouring `Retry-After`.
 - **A report you can hand to someone.** Headline figures, a breakdown by
@@ -96,6 +96,9 @@ A few things are never touched:
 - Hidden lists, catalogs (master pages, web part gallery, etc.) and
   SharePoint's own system lists.
 - App webs (add-in sites).
+- **Style Library**, **Form Templates** and the `_catalogs` galleries. They
+  often have unique permissions on purpose (for example read access to a
+  site's branding files), so they are never offered or reset.
 
 ## Why it scales
 
@@ -107,7 +110,7 @@ the case ReInherit is built for.
    level at a time. None of these enumerate files.
 2. **Items are read in ID ranges, in parallel.**
    `items?$select=Id,FileRef,FSObjType,HasUniqueRoleAssignments&$filter=Id ge 1 and Id le 5000`,
-   then 5,001–10,000, and so on up to the list's highest ID, with four
+   then 5,001–10,000, and so on up to the list's highest ID, with two
    ranges in flight at once. `Id` is always indexed, so every request
    stays under the 5,000-item list view threshold no matter how big the
    library is. A million items is about 200 requests. A range that times
@@ -124,10 +127,13 @@ the case ReInherit is built for.
    at a time. Each call is in its own change set, so one failure affects
    one object only. The permission backup is batched the same way. If a
    tenant rejects `$batch`, ReInherit falls back to one call at a time.
-6. **Throttling doesn't become failure.** `429` and `503` responses, for
-   the whole batch or for single requests inside it, are retried after
-   `Retry-After` (or an increasing back-off). Dropped connections are
-   retried too.
+6. **Throttling is shared, not per request.** Requests are paced at least
+   150 ms apart across all parallel readers. When SharePoint answers `429`
+   or `503` (for a whole batch, or for one request inside it), *every*
+   request waits out `Retry-After`, and the pacing gap doubles, up to 5
+   seconds, then eases back after a run of successes. Gateway errors
+   (`502`, `504`) and dropped connections are retried. **Stop** ends a long
+   wait straight away.
 
 **Rough timings.** Scanning costs about one request per 5,000 item IDs.
 Restoring costs about one request per 100 objects, or two with backup on.

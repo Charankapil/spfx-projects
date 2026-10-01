@@ -4,7 +4,7 @@
     "name": "reinherit-client-side-solution",
     "title": "ReInherit",
     "id": "cd1d0922-945c-4360-9a2f-2fcc95156f25",
-    "version": "1.0.0.0",
+    "version": "1.0.1.0",
     "iconPath": "images/ReInheritAppIcon.png",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
@@ -30,7 +30,7 @@
         "title": "ReInherit Feature",
         "description": "The feature that activates elements of the ReInherit solution.",
         "id": "b5f79e57-b3ce-49bb-b1c1-e546ae0f0c0c",
-        "version": "1.0.0.0"
+        "version": "1.0.1.0"
       }
     ]
   },

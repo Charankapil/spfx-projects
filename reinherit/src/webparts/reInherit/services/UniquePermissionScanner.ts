@@ -16,15 +16,20 @@ import { CancelledError, HttpError, SpRest } from './SpRest';
  */
 const ID_RANGE = 5000;
 const MIN_ID_RANGE = 250;
-const PARALLEL_RANGES = 4;
+const PARALLEL_RANGES = 2;
 
-const ITEM_SELECT = 'Id,Title,FileRef,FileLeafRef,FSObjType,HasUniqueRoleAssignments';
+/** Libraries need no Title (the file name comes from FileRef), which keeps each row light. */
+const LIBRARY_SELECT = 'Id,FileRef,FSObjType,HasUniqueRoleAssignments';
+const LIST_ITEM_SELECT = 'Id,Title,FileRef,FSObjType,HasUniqueRoleAssignments';
+
+function itemSelect(list: IListInfo): string {
+  return list.BaseType === 1 ? LIBRARY_SELECT : LIST_ITEM_SELECT;
+}
 
 interface IItemRow {
   Id: number;
   Title?: string;
   FileRef: string;
-  FileLeafRef: string;
   FSObjType: number | string;
   HasUniqueRoleAssignments: boolean;
 }
@@ -295,7 +300,7 @@ export class UniquePermissionScanner {
         this.progress.currentItem = folder.serverRelativeUrl;
         this.report();
         const row = await this.rest.getJson<IItemRow>(
-          `${folder.webUrl}/_api/web/lists(guid'${list.Id}')/items(${folder.itemId})?$select=${ITEM_SELECT}`
+          `${folder.webUrl}/_api/web/lists(guid'${list.Id}')/items(${folder.itemId})?$select=${itemSelect(list)}`
         );
         this.stats.itemsChecked++;
         if (row.HasUniqueRoleAssignments) {
@@ -393,7 +398,7 @@ export class UniquePermissionScanner {
   private async fetchRange(listApi: string, list: IListInfo, from: number, to: number): Promise<IItemRow[]> {
     try {
       const json = await this.rest.getJson<{ value: IItemRow[] }>(
-        `${listApi}/items?$select=${ITEM_SELECT}&$filter=Id ge ${from} and Id le ${to}&$top=${to - from + 1}`
+        `${listApi}/items?$select=${itemSelect(list)}&$filter=Id ge ${from} and Id le ${to}&$top=${to - from + 1}`
       );
       return json.value || [];
     } catch (err) {
@@ -417,7 +422,7 @@ export class UniquePermissionScanner {
     return {
       key: `item|${list.Id}|${row.Id}`,
       kind: isFolder ? 'folder' : isLibrary ? 'file' : 'item',
-      name: isFolder || isLibrary ? row.FileLeafRef : row.Title || row.FileLeafRef,
+      name: isLibrary || !row.Title ? row.FileRef.substring(row.FileRef.lastIndexOf('/') + 1) : row.Title,
       path: row.FileRef,
       webUrl,
       listId: list.Id,

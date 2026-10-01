@@ -68,7 +68,8 @@ function objectHref(o: IUniqueObject): string {
   if (o.kind === 'web') {
     return o.webUrl;
   }
-  return `${new URL(o.webUrl).origin}${o.path}`;
+  // Encode each segment: a "#" or "?" in a file name would otherwise cut the link short.
+  return `${new URL(o.webUrl).origin}${o.path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 interface IReportViewProps {
