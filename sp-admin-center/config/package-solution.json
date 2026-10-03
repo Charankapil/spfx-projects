@@ -1,0 +1,34 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "sharepoint-admin-center-client-side-solution",
+    "id": "4639d2c3-aef2-467b-8e1a-a112818bce95",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "undefined"
+    },
+    "metadata": {
+      "shortDescription": { "default": "SharePoint Admin Center - one dashboard for everyday SharePoint administration" },
+      "longDescription": { "default": "Administer SharePoint sites from one place as the signed-in user, with no app registration or client ID: tenant site inventory, people and permissions, bulk user management, lists and libraries, storage insights, recycle bin, activity feed and a health check. Throttle-safe by design: paced requests, Retry-After handling, caching, and search-index aggregates instead of file enumeration." },
+      "screenshotPaths": []
+    },
+    "features": [
+      {
+        "title": "SharePoint Admin Center Feature",
+        "description": "Activates the SharePoint Admin Center web part.",
+        "id": "2ac1d77f-52e5-4d0e-8159-1d67485e1b16",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/sharepoint-admin-center.sppkg"
+  }
+}

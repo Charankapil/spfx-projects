@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/core-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "admin-center-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/adminCenter/AdminCenterWebPart.js",
+          "manifest": "./src/webparts/adminCenter/AdminCenterWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "AdminCenterWebPartStrings": "lib/webparts/adminCenter/loc/{locale}.js"
+  }
+}

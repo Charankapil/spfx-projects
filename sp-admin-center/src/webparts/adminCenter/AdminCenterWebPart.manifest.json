@@ -1,0 +1,21 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "be42f04e-2307-4ee6-b7f1-2a60f5360221",
+  "alias": "AdminCenterWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportsThemeVariants": true,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "Other" },
+      "title": { "default": "SharePoint Admin Center" },
+      "description": { "default": "One dashboard for SharePoint admins: sites, people and permissions, content, storage, recycle bin, activity and health. Runs as the signed-in user, no app registration." },
+      "officeFabricIconFontName": "Admin",
+      "properties": { "heading": "SharePoint Admin Center" }
+    }
+  ]
+}
