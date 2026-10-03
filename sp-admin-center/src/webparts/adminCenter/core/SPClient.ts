@@ -310,6 +310,18 @@ export class SPClient {
     }
   }
 
+  /** GET a text file (e.g. a CSV). Never cached: files can be large and are read once per import. */
+  public async getText(url: string): Promise<string> {
+    this.assertSameOrigin(url);
+    return this.enqueue<string>(async () => {
+      const response = await this.execute(url, {}, false, 'GET');
+      if (!response.ok) {
+        throw await this.readError(response, url);
+      }
+      return response.text();
+    });
+  }
+
   /** POST (or MERGE / DELETE via X-HTTP-Method). Any write drops the read cache. */
   public async post<T = undefined>(url: string, body?: unknown, options: IRequestOptions = {}, webUrl?: string): Promise<T | undefined> {
     this.assertSameOrigin(url);

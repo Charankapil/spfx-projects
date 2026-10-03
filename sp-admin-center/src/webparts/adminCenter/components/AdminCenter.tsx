@@ -16,6 +16,7 @@ import { IActionLogEntry, ITarget, ViewKey } from '../models';
 import { AdminApi } from '../services/AdminApi';
 import { GrowthStore } from '../services/GrowthStore';
 import { SearchApi } from '../services/SearchApi';
+import { TenantStore } from '../services/TenantStore';
 import styles from './AdminCenter.module.scss';
 import { AdminContext, IAdminContext, IConfirmOptions } from './shared/context';
 import { ActivityView } from './views/ActivityView';
@@ -80,6 +81,7 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
   const api = React.useMemo(() => new AdminApi(client), [client]);
   const search = React.useMemo(() => new SearchApi(client), [client]);
   const growth = React.useMemo(() => new GrowthStore(client, api, trimSlash(homeWebUrl)), [client, api, homeWebUrl]);
+  const tenant = React.useMemo(() => new TenantStore(client, trimSlash(homeWebUrl)), [client, homeWebUrl]);
   const home: ITarget = React.useMemo(() => ({ webUrl: trimSlash(homeWebUrl), siteUrl: trimSlash(homeSiteUrl), title: homeTitle }), [homeWebUrl, homeSiteUrl, homeTitle]);
 
   const [view, setView] = React.useState<ViewKey>('overview');
@@ -132,6 +134,7 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
     api,
     search,
     growth,
+    tenant,
     homeWebUrl: home.webUrl,
     target,
     setTarget,

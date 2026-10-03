@@ -637,6 +637,276 @@ test('client: raw bodies are sent as-is (file content), not double-encoded', asy
   assert.strictEqual(body, '{"a":1}');
 });
 
+// ---------------------------------------------------------------- tenant CSV import
+const { parseCsv, detectDelimiter } = src('services/csv');
+const SI = src('services/StorageImport');
+const TG = src('services/TenantGrowth');
+const { TenantStore, INDEX_FILE } = src('services/TenantStore');
+
+test('csv: quotes, embedded commas/newlines, CRLF, BOM, blank lines', () => {
+  const bom = String.fromCharCode(0xfeff);
+  const rows = parseCsv(bom + 'Url,Title,Note\r\nhttps://a/sites/x,"Finance, Global","say ""hi""\nline2"\r\n\r\nhttps://a/sites/y,Plain,\r\n');
+  assert.deepStrictEqual(rows, [['Url', 'Title', 'Note'], ['https://a/sites/x', 'Finance, Global', 'say "hi"\nline2'], ['https://a/sites/y', 'Plain', '']]);
+  assert.deepStrictEqual(parseCsv('a;b\n1;2'), [['a', 'b'], ['1', '2']], 'semicolon detected');
+  assert.strictEqual(detectDelimiter('a\tb\tc'), '\t');
+  assert.deepStrictEqual(parseCsv('a,b\n1,2'), [['a', 'b'], ['1', '2']], 'no trailing newline');
+  assert.deepStrictEqual(parseCsv(''), []);
+});
+
+test('import: parseNumber handles locales and junk', () => {
+  const n = SI.parseNumber;
+  assert.strictEqual(n('1234'), 1234);
+  assert.strictEqual(n('1,234,567'), 1234567);
+  assert.strictEqual(n('1,234.56'), 1234.56);
+  assert.strictEqual(n('1.234,56'), 1234.56);
+  assert.strictEqual(n('12,5'), 12.5);
+  assert.strictEqual(n(' 42 GB '), 42);
+  assert.strictEqual(n('1.2E+9'), 1.2e9);
+  assert.ok(isNaN(n('')) && isNaN(n('n/a')) && isNaN(n(undefined)));
+});
+
+test('import: column and unit detection for typical exports', () => {
+  const spo = [['Url', 'Title', 'StorageUsageCurrent', 'StorageQuota', 'LastContentModifiedDate'], ['https://t.sharepoint.com/sites/a', 'A', '1500', '1048576', ''], ['https://t.sharepoint.com/sites/b', 'B', '300', '1048576', '']];
+  const m1 = SI.detectMapping(spo[0], spo);
+  assert.deepStrictEqual([m1.url, m1.storage, m1.storageUnit, m1.quota, m1.quotaUnit, m1.title], ['Url', 'StorageUsageCurrent', 'mb', 'StorageQuota', 'mb', 'Title']);
+  const flow = [['SiteUrl', 'StorageUsed', 'StorageQuota', 'TimeDeleted'], ['https://t.sharepoint.com/sites/a', '5368709120', '1099511627776', ''], ['https://t.sharepoint.com/sites/b', '104857600', '1099511627776', '']];
+  const m2 = SI.detectMapping(flow[0], flow);
+  assert.deepStrictEqual([m2.url, m2.storage, m2.storageUnit, m2.quotaUnit, m2.deleted], ['SiteUrl', 'StorageUsed', 'bytes', 'bytes', 'TimeDeleted']);
+  const gb = [['Site URL', 'Storage used (GB)'], ['https://t.sharepoint.com/sites/a', '12.5']];
+  assert.strictEqual(SI.detectMapping(gb[0], gb).storageUnit, 'gb');
+  assert.strictEqual(SI.detectMapping(['Name', 'Foo'], [['Name', 'Foo']]), undefined, 'no url/storage columns -> no guess');
+  assert.strictEqual(SI.unitFromHeader('StorageUsedMB'), 'mb');
+  assert.strictEqual(SI.unitFromHeader('SizeInBytes'), 'bytes');
+  assert.strictEqual(SI.unitFromHeader('StorageUsageCurrent'), undefined);
+});
+
+test('import: buildSnapshot converts units, skips deleted / OneDrive / bad rows, de-duplicates, stores relative paths', () => {
+  const O = 'https://t.sharepoint.com';
+  const rows = [
+    ['SiteUrl', 'Title', 'Used', 'Quota', 'Deleted'],
+    [O + '/sites/a/', 'Alpha', '2048', '1048576', ''],
+    [O + '/sites/b', 'Beta', '1,024', '', ''],
+    [O + '/sites/gone', 'Gone', '5', '', '2025-01-01'],
+    ['https://t-my.sharepoint.com/personal/bob', 'Bob', '9', '', ''],
+    [O + '/sites/bad', 'Bad', 'n/a', '', ''],
+    ['not a url', 'x', '1', '', ''],
+    [O + '/SITES/A', 'Alpha again', '4096', '1048576', ''],
+    [O, 'Root', '10', '', '']
+  ];
+  const map = { url: 'SiteUrl', storage: 'Used', storageUnit: 'mb', quota: 'Quota', quotaUnit: 'mb', title: 'Title', deleted: 'Deleted', excludeOneDrive: true };
+  const r = SI.buildSnapshot(rows, map, O, 1000);
+  assert.deepStrictEqual(r.data.u, ['/sites/a', '/sites/b', '/']);
+  assert.strictEqual(r.data.b[0], 4096 * 1048576, 'duplicate (case-insensitive) keeps the later row');
+  assert.strictEqual(r.data.b[1], 1024 * 1048576, 'thousands separator');
+  assert.strictEqual(r.data.q[0], 4, 'per-mille of quota (4096/1048576 = 0.39% -> 4)');
+  assert.strictEqual(r.data.q[1], 0, 'no quota');
+  assert.deepStrictEqual({ ...r.stats }, { rows: 8, kept: 3, noUrl: 1, badNumber: 1, deleted: 1, oneDrive: 1, duplicates: 1 });
+  assert.strictEqual(r.titles['/sites/b'], 'Beta');
+  assert.strictEqual(SI.fromPath('/sites/a', O), O + '/sites/a');
+  assert.strictEqual(SI.fromPath('/', O), O);
+  const withOd = SI.buildSnapshot(rows, Object.assign({}, map, { excludeOneDrive: false }), O, 1);
+  assert.strictEqual(withOd.stats.oneDrive, 0);
+  assert.ok(withOd.data.u.indexOf('https://t-my.sharepoint.com/personal/bob') >= 0, 'other origins stay absolute');
+});
+
+const snap = (t, sites) => ({ t, u: Object.keys(sites), b: Object.values(sites).map((g) => Math.round(g * GBYTES)), q: Object.keys(sites).map(() => 0) });
+const D = 86400;
+
+test('tenant: selectSnapshots keeps latest + nearest to 7/1/14… days, at most 8', () => {
+  const metas = Array.from({ length: 40 }, (_, i) => ({ t: NOW - (39 - i) * D, file: 'f' + i, sites: 1, bytes: 1 }));
+  const sel = TG.selectSnapshots(metas, 8);
+  assert.strictEqual(sel.length, 8);
+  assert.strictEqual(sel[sel.length - 1].file, 'f39');
+  assert.ok(sel.some((m) => NOW - m.t === 7 * D), 'a snapshot exactly 7 days back');
+  assert.ok(sel.every((m, i) => i === 0 || m.t > sel[i - 1].t), 'ascending, no duplicates');
+  assert.strictEqual(TG.selectSnapshots(metas.slice(0, 1)).length, 1);
+  assert.deepStrictEqual(TG.selectSnapshots([]), []);
+});
+
+test('tenant: analyzeTenant finds the fast grower across snapshots, matching paths case-insensitively', () => {
+  const O = 'https://t.sharepoint.com';
+  const days = [7, 5, 3, 2, 1, 0];
+  const snaps = days.map((d, i) => snap(NOW - d * D, {
+    '/sites/Fast': 20 + i * 6,          // 20 -> 50 GB in 5 steps
+    '/sites/calm': 100 + i * 0.1,
+    '/sites/shrink': 80 - i * 3,
+    ...(i === days.length - 1 ? { '/sites/new': 7 } : {})
+  }));
+  snaps[snaps.length - 1].u[0] = '/sites/fast'; // case differs in the latest snapshot
+  const s = TG.analyzeTenant(snaps, GE.DEFAULT_SETTINGS, { '/sites/fast': 'Fast Site' }, O, NOW);
+  assert.strictEqual(s.sites, 4);
+  assert.strictEqual(s.basedOnSnapshots, 6);
+  assert.strictEqual(s.anomalies.length, 1);
+  assert.strictEqual(s.anomalies[0].url, O + '/sites/fast');
+  assert.strictEqual(s.anomalies[0].title, 'Fast Site');
+  assert.ok(s.anomalies[0].spark.length === 6, 'full series found despite the case change');
+  assert.strictEqual(s.growers[0].url, O + '/sites/fast');
+  assert.strictEqual(s.largest[0].url, O + '/sites/calm');
+  assert.ok(s.totalBytes > 0 && s.growth7Bytes > 0);
+  assert.strictEqual(TG.analyzeTenant([], GE.DEFAULT_SETTINGS, {}, O, NOW).sites, 0);
+});
+
+test('tenant: analysis of 17,000 sites x 8 snapshots is fast and bounded', () => {
+  const sites = {};
+  for (let i = 0; i < 17000; i++) sites['/sites/s' + i] = 10 + (i % 50);
+  const snaps = [7, 6, 5, 4, 3, 2, 1, 0].map((d, i) => {
+    const o = {};
+    Object.keys(sites).forEach((k, j) => (o[k] = sites[k] + (j % 997 === 0 ? i * 3 : i * 0.01)));
+    return snap(NOW - d * D, o);
+  });
+  const t0 = Date.now();
+  const s = TG.analyzeTenant(snaps, GE.DEFAULT_SETTINGS, {}, 'https://t.sharepoint.com', NOW);
+  const ms = Date.now() - t0;
+  assert.strictEqual(s.sites, 17000);
+  assert.ok(s.anomalies.length > 0 && s.anomalies.length <= TG.MAX_ANOMALIES);
+  assert.ok(s.largest.length === TG.TOP_N);
+  assert.ok(ms < 8000, 'took ' + ms + 'ms');
+  const size = JSON.stringify(s).length;
+  assert.ok(size < 400000, 'summary stays small: ' + size);
+});
+
+// In-memory SharePoint document library for the TenantStore.
+function tenantEnv(opts = {}) {
+  const env = { files: Object.assign({}, opts.files), calls: [], deleted: [], writes: [] };
+  const client = make(async (m, url, cfg, o) => {
+    const u = decodeURIComponent(url);
+    env.calls.push(m + ' ' + u.replace(ORIGIN, ''));
+    const fileM = /GetFileByServerRelativeUrl\('([^']+)'\)(\/\$value)?/.exec(u);
+    if (fileM && m === 'GET') {
+      const p = fileM[1];
+      if (env.files[p] === undefined) return json({ error: { message: 'File Not Found.' } }, 404);
+      if (fileM[2]) return new Response(env.files[p], { status: 200 });
+      return json({ Name: p.split('/').pop(), ServerRelativeUrl: p, TimeLastModified: '2026-10-02T03:00:00Z', Length: String(env.files[p].length) });
+    }
+    if (fileM && o.headers && o.headers['X-HTTP-Method'] === 'DELETE') {
+      env.deleted.push(fileM[1]);
+      delete env.files[fileM[1]];
+      return new Response(null, { status: 204 });
+    }
+    const add = /GetFolderByServerRelativeUrl\('([^']+)'\)\/Files\/add\(url='([^']+)',overwrite=true\)/.exec(u);
+    if (add && m === 'POST') {
+      env.files[add[1] + '/' + add[2]] = o.body;
+      env.writes.push(add[2]);
+      return json({ Name: add[2] });
+    }
+    if (/GetFolderByServerRelativeUrl\('([^']+)'\)\/Files\?/.test(u)) {
+      return json({ value: [{ Name: 'old.csv', ServerRelativeUrl: '/sites/admin/Shared Documents/old.csv', TimeLastModified: '2026-09-01T00:00:00Z', Length: '10' }, { Name: 'notes.txt', ServerRelativeUrl: '/x/notes.txt' }, { Name: 'New.CSV', ServerRelativeUrl: '/sites/admin/Shared Documents/New.CSV', TimeLastModified: '2026-10-02T00:00:00Z', Length: '2048' }] });
+    }
+    if (/\/Folders\?/.test(u)) return json({ value: [{ Name: 'Forms', ServerRelativeUrl: '/a/Forms' }, { Name: 'Storage', ServerRelativeUrl: '/a/Storage' }] });
+    if (/web\/lists\?/.test(u)) return json({ value: [{ Title: 'Documents', Hidden: false, RootFolder: { ServerRelativeUrl: '/sites/admin/Shared Documents' } }, { Title: 'Hidden', Hidden: true, RootFolder: { ServerRelativeUrl: '/x' } }] });
+    return json({ error: { message: 'unexpected ' + u } }, 500);
+  });
+  return { env, store: new TenantStore(client, ORIGIN + '/sites/admin'), client };
+}
+
+const csvFor = (gbBySite) => 'SiteUrl,Title,StorageUsed\r\n' + Object.keys(gbBySite).map((k) => `${ORIGIN}${k},"${k.slice(7)}",${Math.round(gbBySite[k] * GBYTES)}`).join('\r\n') + '\r\n';
+const MAPPING = { url: 'SiteUrl', storage: 'StorageUsed', storageUnit: 'bytes', quotaUnit: 'mb', title: 'Title', excludeOneDrive: true };
+
+test('tenant store: first import writes one snapshot + index; baseline has no anomalies', async () => {
+  const { env, store } = tenantEnv();
+  const r = await store.importCsv(csvFor({ '/sites/a': 10, '/sites/b': 20 }), MAPPING, { t: NOW, fileName: 'sites.csv', modified: NOW }, GE.DEFAULT_SETTINGS);
+  assert.strictEqual(r.stats.kept, 2);
+  assert.strictEqual(r.summary.anomalies.length, 0);
+  assert.deepStrictEqual(env.writes.sort(), [INDEX_FILE, `admin-center-snap-${NOW}.json`].sort());
+  const idx = JSON.parse(env.files['/sites/admin/SiteAssets/' + INDEX_FILE]);
+  assert.strictEqual(idx.snapshots.length, 1);
+  assert.strictEqual(idx.summary.sites, 2);
+  assert.strictEqual(idx.mapping.storage, 'StorageUsed', 'mapping remembered for next time');
+  assert.deepStrictEqual(Object.keys(JSON.parse(env.files[`/sites/admin/SiteAssets/admin-center-snap-${NOW}.json`])).sort(), ['b', 'q', 'u', 'v']);
+});
+
+test('tenant store: later imports detect fast growth; the index summary is what the dashboard reads', async () => {
+  const { env, store } = tenantEnv();
+  for (let d = 7; d >= 0; d--) {
+    await store.importCsv(csvFor({ '/sites/hot': 20 + (7 - d) * 5, '/sites/calm': 100 }), MAPPING, { t: NOW - d * D, fileName: 'sites.csv' }, GE.DEFAULT_SETTINGS);
+  }
+  const idx = await store.loadIndex(true);
+  assert.strictEqual(idx.snapshots.length, 8);
+  assert.strictEqual(idx.summary.anomalies.length, 1);
+  assert.strictEqual(idx.summary.anomalies[0].title, 'hot');
+  assert.ok(/Grew/.test(idx.summary.anomalies[0].reasons[0]));
+});
+
+test('tenant store: a snapshot within 6 h replaces the earlier one (and its file is deleted)', async () => {
+  const { env, store } = tenantEnv();
+  await store.importCsv(csvFor({ '/sites/a': 10 }), MAPPING, { t: NOW, fileName: 'a.csv' }, GE.DEFAULT_SETTINGS);
+  const r = await store.importCsv(csvFor({ '/sites/a': 11 }), MAPPING, { t: NOW + 3600, fileName: 'a.csv' }, GE.DEFAULT_SETTINGS);
+  assert.strictEqual(r.replaced, true);
+  const idx = JSON.parse(env.files['/sites/admin/SiteAssets/' + INDEX_FILE]);
+  assert.strictEqual(idx.snapshots.length, 1);
+  assert.deepStrictEqual(env.deleted, [`/sites/admin/SiteAssets/admin-center-snap-${NOW}.json`]);
+});
+
+test('tenant store: retention keeps the newest 60 snapshots and deletes older files', async () => {
+  const { env, store } = tenantEnv();
+  const snapshots = Array.from({ length: 60 }, (_, i) => ({ t: NOW - (60 - i) * D, file: `admin-center-snap-${NOW - (60 - i) * D}.json`, sites: 1, bytes: 1 }));
+  snapshots.forEach((s) => (env.files['/sites/admin/SiteAssets/' + s.file] = JSON.stringify({ v: 1, u: ['/sites/a'], b: [1], q: [0] })));
+  env.files['/sites/admin/SiteAssets/' + INDEX_FILE] = JSON.stringify({ v: 1, snapshots });
+  await store.importCsv(csvFor({ '/sites/a': 10 }), MAPPING, { t: NOW, fileName: 'a.csv' }, GE.DEFAULT_SETTINGS);
+  const idx = JSON.parse(env.files['/sites/admin/SiteAssets/' + INDEX_FILE]);
+  assert.strictEqual(idx.snapshots.length, 60);
+  assert.deepStrictEqual(env.deleted, [`/sites/admin/SiteAssets/${snapshots[0].file}`]);
+});
+
+test('tenant store: an import costs about a dozen requests however many sites (17,000 here)', async () => {
+  const { env, store } = tenantEnv();
+  const big = {};
+  for (let i = 0; i < 17000; i++) big['/sites/s' + i] = 10 + (i % 40);
+  for (let d = 10; d >= 1; d--) {
+    const sn = snap(NOW - d * D, big);
+    env.files[`/sites/admin/SiteAssets/admin-center-snap-${sn.t}.json`] = JSON.stringify({ v: 1, u: sn.u, b: sn.b, q: sn.q });
+  }
+  env.files['/sites/admin/SiteAssets/' + INDEX_FILE] = JSON.stringify({ v: 1, snapshots: Array.from({ length: 10 }, (_, k) => ({ t: NOW - (10 - k) * D, file: `admin-center-snap-${NOW - (10 - k) * D}.json`, sites: 17000, bytes: 1 })) });
+  env.calls.length = 0;
+  const csv = csvFor(Object.assign({}, big, { '/sites/s5': 400 }));
+  const r = await store.importCsv(csv, MAPPING, { t: NOW, fileName: 'sites.csv' }, GE.DEFAULT_SETTINGS);
+  assert.strictEqual(r.stats.kept, 17000);
+  assert.ok(env.calls.length <= 14, 'requests: ' + env.calls.length + '\n' + env.calls.join('\n'));
+  assert.ok(r.summary.anomalies.some((a) => a.url.endsWith('/sites/s5')), 'the 400 GB jump is flagged');
+  const idxSize = env.files['/sites/admin/SiteAssets/' + INDEX_FILE].length;
+  assert.ok(idxSize < 400000, 'index (read by the dashboard) stays small: ' + idxSize);
+});
+
+test('tenant store: recalculate re-analyses stored snapshots with new thresholds; empty store is handled', async () => {
+  const { store } = tenantEnv();
+  assert.strictEqual(await store.recalculate(GE.DEFAULT_SETTINGS), undefined);
+  for (let d = 7; d >= 0; d--) await store.importCsv(csvFor({ '/sites/hot': 20 + (7 - d) * 2, '/sites/calm': 100 }), MAPPING, { t: NOW - d * D, fileName: 'a.csv' }, GE.DEFAULT_SETTINGS);
+  assert.strictEqual((await store.loadIndex(true)).summary.anomalies.length, 1, '+14 GB (+70%) in a week is flagged by default');
+  const strict = await store.recalculate(Object.assign({}, GE.DEFAULT_SETTINGS, { pctPerWeek: 200, hugeGbPerWeek: 500 }));
+  assert.strictEqual(strict.anomalies.length, 0);
+  assert.strictEqual((await store.loadIndex(true)).summary.anomalies.length, 0, 'recalculated summary is saved');
+  const back = await store.recalculate(GE.DEFAULT_SETTINGS);
+  assert.strictEqual(back.anomalies.length, 1);
+  assert.strictEqual(back.anomalies[0].title, 'hot', 'titles survive a recalculation');
+});
+
+test('tenant store: lists libraries, folders (not Forms) and CSV files newest first; reads text', async () => {
+  const { env, store } = tenantEnv({ files: { '/sites/admin/Shared Documents/New.CSV': 'a,b' } });
+  assert.deepStrictEqual((await store.listLibraries()).map((l) => l.title), ['Documents']);
+  assert.deepStrictEqual((await store.listFolders('/a')).map((f) => f.name), ['Storage']);
+  const files = await store.listCsvFiles('/sites/admin/Shared Documents');
+  assert.deepStrictEqual(files.map((f) => f.name), ['New.CSV', 'old.csv']);
+  assert.strictEqual(await store.readCsv('/sites/admin/Shared Documents/New.CSV'), 'a,b');
+  const info = await store.getFileInfo('/sites/admin/Shared Documents/New.CSV');
+  assert.strictEqual(info.name, 'New.CSV');
+});
+
+test('tenant store: file and folder listings are never served from cache (a new CSV must be found)', async () => {
+  let n = 0;
+  const c = make(async (m, url) => {
+    n++;
+    return /Files\?/.test(decodeURIComponent(url)) ? json({ value: Array.from({ length: n }, (_, i) => ({ Name: `f${i}.csv`, ServerRelativeUrl: `/a/f${i}.csv`, TimeLastModified: '2026-01-0' + (i + 1) + 'T00:00:00Z', Length: '1' })) }) : json({ value: [] });
+  });
+  const store = new TenantStore(c, ORIGIN + '/sites/admin');
+  assert.strictEqual((await store.listCsvFiles('/a')).length, 1);
+  assert.strictEqual((await store.listCsvFiles('/a')).length, 2, 'second listing reflects the new file');
+});
+
+test('tenant store: a CSV with the wrong columns explains itself instead of saving nothing silently', async () => {
+  const { store } = tenantEnv();
+  await assert.rejects(() => store.importCsv('a,b\n1,2\n', { url: 'a', storage: 'b', storageUnit: 'mb', quotaUnit: 'mb', excludeOneDrive: true }, { t: NOW, fileName: 'x.csv' }, GE.DEFAULT_SETTINGS), /No usable site rows/);
+});
+
 // ---------------------------------------------------------------- runner
 (async () => {
   let failed = 0;

@@ -50,3 +50,12 @@ export function relativeTime(d?: Date): string {
   }
   return `${(n / 365).toFixed(1)} yr ago`;
 }
+
+/** 0.0016 -> "0.2%", 0.37 -> "37%"; 0 (unknown) -> "-". */
+export function formatPercent(fraction: number): string {
+  if (!fraction) {
+    return '-';
+  }
+  const p = fraction * 100;
+  return p < 10 ? `${p.toFixed(1)}%` : `${Math.round(p)}%`;
+}

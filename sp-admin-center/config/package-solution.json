@@ -3,7 +3,7 @@
   "solution": {
     "name": "sharepoint-admin-center-client-side-solution",
     "id": "4639d2c3-aef2-467b-8e1a-a112818bce95",
-    "version": "1.1.0.0",
+    "version": "1.2.0.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -28,7 +28,7 @@
         "title": "SharePoint Admin Center Feature",
         "description": "Activates the SharePoint Admin Center web part.",
         "id": "2ac1d77f-52e5-4d0e-8159-1d67485e1b16",
-        "version": "1.1.0.0"
+        "version": "1.2.0.0"
       }
     ]
   },

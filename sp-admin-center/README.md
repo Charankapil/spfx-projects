@@ -44,25 +44,56 @@ Everything goes through one client (`core/SPClient.ts`):
 
 ## Storage growth tracking
 
-- **Where the history lives:** one JSON file, `Site Assets/admin-center-storage-history.json`,
-  on the site hosting the web part. Reading it is one request; saving it is one request,
-  however many sites are tracked. Every save re-reads the file and merges, so two admins
-  capturing at once do not overwrite each other.
-- **What a capture costs:** SharePoint exposes a site's storage per site, so a capture is
-  one small request per tracked site, paced by the same throttle-safe client (about 6 a
-  second at most). The watchlist is capped at **500 sites** (about 90 seconds), a capture over
-  100 sites asks for confirmation, can be cancelled (what was captured is kept), and stops
-  itself after 10 consecutive failures instead of hammering.
-- **When it runs:** only when an admin clicks **Capture now**. A web part cannot run on a
-  schedule; for a hands-off daily capture, run the capture from something external
-  (for example Power Automate calling the same `_api/site?$select=Usage` endpoint).
-  Snapshots less than 6 hours apart replace each other, and each site keeps its last 90.
-- **What counts as unusual** (all thresholds editable): projected weekly growth of at
-  least 25% *and* 5 GB; or at least 50 GB a week whatever the percentage; or a latest daily
-  growth far above the site's own pattern (3 standard deviations); or the quota projected to
-  fill within 30 days (critical within 14). Rates are scaled to a week from the snapshots you
-  have, so uneven gaps are fine. A new site needs at least two snapshots 20 hours or more
-  apart before it can be judged.
+Two sources feed the same alert rules, the Dashboard pop-up and the nav badge.
+
+### All sites: import the CSV your flow writes (built for 17,000+ sites)
+
+If a flow (Power Automate, PowerShell, anything) saves the SharePoint admin center
+site list to a CSV in a library on this site, **Storage growth > All sites > Import CSV**
+lets you pick that file (browse a library and folder, or upload from your computer).
+
+- **Column detection.** The site address and storage-used columns are found by name
+  (`SiteUrl`, `Url`, `StorageUsed`, `StorageUsageCurrent`, `Storage used (GB)`, and similar),
+  with optional quota, title and deleted-marker columns. The unit comes from the header or,
+  if the header does not say, from the size of the values. You always see the mapping, a
+  total, the largest site and sample rows before importing, and can change any of it.
+  The mapping is remembered, so the next import needs no review.
+- **Snapshot date** is the file's modified date (or one you choose). Growth is calculated
+  between snapshot dates, so import after each flow run. A snapshot within 6 hours of an
+  earlier one replaces it; the newest 60 are kept.
+- **Skipped rows:** no address, no valid number, deleted sites, OneDrive sites (switchable),
+  duplicates.
+- **One click next time:** *Import newest from last folder* picks the newest CSV in the
+  folder of the last import, skips it if it has not changed since, and otherwise imports it.
+- **Cost, however many sites:** an import takes about a dozen requests in total (list, read
+  the CSV, write the snapshot, read up to 7 earlier snapshots, write the index). Each
+  snapshot is one small file in Site Assets (about half a megabyte for 17,000 sites). The
+  analysis runs once, at import time, and its result (flagged sites, top 25 largest and
+  fastest growing, totals) is stored in a small index file. The Dashboard and this tab read
+  only that index; they never load the snapshots. *Recalculate* re-runs the analysis over
+  the stored snapshots after you change thresholds.
+- **Files:** `Site Assets/admin-center-storage-index.json` and
+  `admin-center-snap-<epoch>.json`.
+
+### Watchlist: live per-site snapshots (up to 500 sites)
+
+One JSON file, `Site Assets/admin-center-storage-history.json`. A capture is one small
+request per tracked site, paced by the throttle-safe client; the list is capped at 500,
+captures over 100 sites ask for confirmation, can be cancelled, skip snapshots newer than
+6 hours, and stop after 10 consecutive failures. Every save re-reads and merges, so two
+admins capturing at once do not overwrite each other. Use it for fresh numbers on the sites
+you care most about; use the CSV import for the whole tenant.
+
+### What counts as unusual (all thresholds editable, shared)
+
+Projected weekly growth of at least 25% *and* 5 GB; or at least 50 GB a week whatever the
+percentage; or a latest daily growth far above the site's own pattern (3 standard
+deviations, needs 5+ snapshots); or the quota projected to fill within 30 days (critical
+within 14). Rates are scaled to a week from the snapshots available, so uneven gaps are
+fine. A site needs two snapshots at least 20 hours apart before it can be judged.
+
+Nothing here runs on a schedule by itself (a web part cannot): the flow produces the CSV,
+and an admin imports it.
 
 ## How it runs without app registration
 
@@ -111,8 +142,8 @@ npm run test:unit
 
 Runs the real service code (throttling queue, retry / pause behaviour,
 concurrency and spacing, caching, origin guard, search parsing for OData v3 and
-v4, REST call shapes, health rules, CSV-injection escaping, growth anomaly rules
-and the history store) under Node, once at
+v4, REST call shapes, health rules, CSV-injection escaping, growth anomaly rules,
+the watchlist store, CSV parsing and column detection, and the 17,000-site import) under Node, once at
 a modern target and once compiled to ES5 (the shipped target, where subclassing
 `Error` behaves differently).
 
@@ -122,7 +153,8 @@ a modern target and once compiled to ES5 (the shipped target, where subclassing
 src/webparts/adminCenter/
   core/SPClient.ts            Throttle-safe request queue, cache, retry, origin guard
   services/                   AdminApi (REST), SearchApi (search index), HealthEngine,
-                              GrowthEngine (anomaly rules), GrowthStore (history file),
+                              GrowthEngine (anomaly rules), GrowthStore (watchlist file),
+                              csv, StorageImport, TenantGrowth, TenantStore (CSV import),
                               exportCsv, addresses, format
   components/AdminCenter.tsx  Shell: nav, site switcher, request meter, confirm dialog
   components/views/           One file per section

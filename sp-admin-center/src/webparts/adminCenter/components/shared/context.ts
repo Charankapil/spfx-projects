@@ -4,6 +4,7 @@ import { IActionLogEntry, ITarget, ViewKey } from '../../models';
 import { AdminApi } from '../../services/AdminApi';
 import { GrowthStore } from '../../services/GrowthStore';
 import { SearchApi } from '../../services/SearchApi';
+import { TenantStore } from '../../services/TenantStore';
 
 export interface IConfirmOptions {
   title: string;
@@ -17,6 +18,7 @@ export interface IAdminContext {
   api: AdminApi;
   search: SearchApi;
   growth: GrowthStore;
+  tenant: TenantStore;
   /** Web the page lives on (used for tenant-wide search). */
   homeWebUrl: string;
   target: ITarget;

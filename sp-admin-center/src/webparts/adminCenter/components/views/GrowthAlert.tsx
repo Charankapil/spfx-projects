@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Icon, DefaultButton } from '@fluentui/react';
+import { GrowthStatus } from '../../services/GrowthEngine';
 import { formatBytes } from '../../services/format';
 import { analyzeAll, anomaliesOf } from '../../services/GrowthEngine';
 import styles from '../AdminCenter.module.scss';
@@ -16,8 +17,26 @@ import { growthSummary } from './GrowthView';
 export const GrowthAlert: React.FC = () => {
   const ctx = useAdmin();
   const { growth } = ctx;
-  const loader = useLoader(() => growth.load().catch(() => undefined), []);
-  const anomalies = React.useMemo(() => (loader.data ? anomaliesOf(analyzeAll(loader.data)) : []), [loader.data]);
+  // Two small file reads (the watchlist history and the tenant import index); both stay silent on failure.
+  const loader = useLoader(async () => {
+    const [doc, index] = await Promise.all([growth.load().catch(() => undefined), ctx.tenant.loadIndex().catch(() => undefined)]);
+    return { doc, index };
+  }, []);
+  const anomalies = React.useMemo(() => {
+    const list: Array<{ url: string; title: string; latestBytes: number; status: GrowthStatus; reasons: string[]; growth7Bytes: number; spark: number[] }> = [];
+    if (loader.data && loader.data.doc) {
+      anomaliesOf(analyzeAll(loader.data.doc)).forEach((a) => list.push(a));
+    }
+    if (loader.data && loader.data.index && loader.data.index.summary) {
+      loader.data.index.summary.anomalies.forEach((a) => list.push(a));
+    }
+    const rank = { critical: 2, warning: 1 } as { [k: string]: number };
+    // A site tracked in both places is listed once (the watchlist entry is the fresher one).
+    const seen: { [u: string]: boolean } = {};
+    return list
+      .filter((a) => (seen[a.url.toLowerCase()] ? false : (seen[a.url.toLowerCase()] = true)))
+      .sort((a, b) => (rank[b.status] || 0) - (rank[a.status] || 0) || b.growth7Bytes - a.growth7Bytes);
+  }, [loader.data]);
   const count = anomalies.length;
   React.useEffect(() => {
     if (!loader.loading) {
