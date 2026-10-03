@@ -14,11 +14,13 @@ import {
 import { SPClient, trimSlash } from '../core/SPClient';
 import { IActionLogEntry, ITarget, ViewKey } from '../models';
 import { AdminApi } from '../services/AdminApi';
+import { GrowthStore } from '../services/GrowthStore';
 import { SearchApi } from '../services/SearchApi';
 import styles from './AdminCenter.module.scss';
 import { AdminContext, IAdminContext, IConfirmOptions } from './shared/context';
 import { ActivityView } from './views/ActivityView';
 import { ContentView } from './views/ContentView';
+import { GrowthView } from './views/GrowthView';
 import { HealthView } from './views/HealthView';
 import { OverviewView } from './views/OverviewView';
 import { PeopleView } from './views/PeopleView';
@@ -41,6 +43,7 @@ const NAV: Array<{ key: ViewKey; text: string; icon: string }> = [
   { key: 'people', text: 'People & permissions', icon: 'Permissions' },
   { key: 'content', text: 'Lists & libraries', icon: 'DocumentLibrary' },
   { key: 'storage', text: 'Storage insights', icon: 'Database' },
+  { key: 'growth', text: 'Storage growth', icon: 'AreaChart' },
   { key: 'recycle', text: 'Recycle bin', icon: 'RecycleBin' },
   { key: 'activity', text: 'Activity', icon: 'History' },
   { key: 'health', text: 'Health check', icon: 'HealthSolid' },
@@ -76,6 +79,7 @@ function writeRecent(t: ITarget): void {
 export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, homeSiteUrl, homeTitle, heading }) => {
   const api = React.useMemo(() => new AdminApi(client), [client]);
   const search = React.useMemo(() => new SearchApi(client), [client]);
+  const growth = React.useMemo(() => new GrowthStore(client, api, trimSlash(homeWebUrl)), [client, api, homeWebUrl]);
   const home: ITarget = React.useMemo(() => ({ webUrl: trimSlash(homeWebUrl), siteUrl: trimSlash(homeSiteUrl), title: homeTitle }), [homeWebUrl, homeSiteUrl, homeTitle]);
 
   const [view, setView] = React.useState<ViewKey>('overview');
@@ -84,6 +88,7 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
   const [actionLog, setActionLog] = React.useState<IActionLogEntry[]>([]);
   const [toasts, setToasts] = React.useState<IToast[]>([]);
   const [badge, setBadge] = React.useState(0);
+  const [growthBadge, setGrowthBadge] = React.useState(0);
   const [stats, setStats] = React.useState({ ...client.stats });
   const [now, setNow] = React.useState(Date.now());
   const [switchOpen, setSwitchOpen] = React.useState(false);
@@ -126,6 +131,7 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
     client,
     api,
     search,
+    growth,
     homeWebUrl: home.webUrl,
     target,
     setTarget,
@@ -139,7 +145,8 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
       setReloadToken((n) => n + 1);
     },
     notify,
-    setHealthBadge: setBadge
+    setHealthBadge: setBadge,
+    setGrowthBadge
   };
 
   const resolveConfirm = (v: boolean): void => {
@@ -159,6 +166,8 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
         return <ContentView />;
       case 'storage':
         return <StorageView />;
+      case 'growth':
+        return <GrowthView />;
       case 'recycle':
         return <RecycleView />;
       case 'activity':
@@ -211,6 +220,7 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
               <button key={n.key} type="button" className={`${styles.navItem} ${view === n.key ? styles.navItemActive : ''}`} onClick={() => setView(n.key)} aria-current={view === n.key ? 'page' : undefined}>
                 <Icon iconName={n.icon} aria-hidden="true" />
                 {n.text}
+                {n.key === 'growth' && growthBadge > 0 && <span className={styles.navBadge} aria-label={`${growthBadge} sites growing fast`}>{growthBadge}</span>}
                 {n.key === 'health' && badge > 0 && <span className={styles.navBadge} aria-label={`${badge} findings`}>{badge}</span>}
               </button>
             ))}

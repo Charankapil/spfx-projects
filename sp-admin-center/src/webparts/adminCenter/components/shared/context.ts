@@ -2,6 +2,7 @@ import * as React from 'react';
 import { SPClient } from '../../core/SPClient';
 import { IActionLogEntry, ITarget, ViewKey } from '../../models';
 import { AdminApi } from '../../services/AdminApi';
+import { GrowthStore } from '../../services/GrowthStore';
 import { SearchApi } from '../../services/SearchApi';
 
 export interface IConfirmOptions {
@@ -15,6 +16,7 @@ export interface IAdminContext {
   client: SPClient;
   api: AdminApi;
   search: SearchApi;
+  growth: GrowthStore;
   /** Web the page lives on (used for tenant-wide search). */
   homeWebUrl: string;
   target: ITarget;
@@ -29,6 +31,8 @@ export interface IAdminContext {
   notify: (message: string, kind?: 'success' | 'error' | 'info') => void;
   /** Findings count for the Health badge in the nav. */
   setHealthBadge: (n: number) => void;
+  /** Number of sites flagged for unusual storage growth (nav badge). */
+  setGrowthBadge: (n: number) => void;
 }
 
 export const AdminContext = React.createContext<IAdminContext | undefined>(undefined);

@@ -13,6 +13,7 @@ tenant-admin consent. One `.sppkg`, and whatever permissions you already have.
 | **People & permissions** | SharePoint groups and their members (add / remove), all users and guests, make or remove site collection admin, remove a user from the site, who has direct access, "what can this person do here?" checker, **bulk add** from pasted e-mail addresses |
 | **Lists & libraries** | Item counts, view-threshold warnings, version history and search visibility toggles (single or bulk), unique-permission flags, CSV export |
 | **Storage insights** | Files by type, files untouched for 1 / 2 / 3+ years, largest files (top 50 above 10 MB to 1 GB), all from the search index |
+| **Storage growth** | Snapshots the storage of a watchlist of site collections over time, draws a trend per site, and **flags sites growing unusually fast** (also shown as a pop-up on the Dashboard and a badge in the nav). Thresholds are adjustable and shared |
 | **Recycle bin** | Newest 300 items of the site collection, search, bulk restore, bulk delete permanently |
 | **Activity** | Permission and structure changes (members added or removed, role changes, lists / webs / groups created or deleted) for 24 h to 60 days |
 | **Health check** | Rule-based findings: storage nearly full, single or too many admins, guests, organisation-wide groups, lists near the 5,000-item threshold, libraries without version history, hidden-from-search lists, inactive site |
@@ -40,6 +41,28 @@ Everything goes through one client (`core/SPClient.ts`):
 - GET responses are cached for 5 minutes and identical in-flight requests are
   shared, so switching views never repeats a call. A write clears the cache.
 - Requests to any origin other than the tenant the page is on are refused.
+
+## Storage growth tracking
+
+- **Where the history lives:** one JSON file, `Site Assets/admin-center-storage-history.json`,
+  on the site hosting the web part. Reading it is one request; saving it is one request,
+  however many sites are tracked. Every save re-reads the file and merges, so two admins
+  capturing at once do not overwrite each other.
+- **What a capture costs:** SharePoint exposes a site's storage per site, so a capture is
+  one small request per tracked site, paced by the same throttle-safe client (about 6 a
+  second at most). The watchlist is capped at **500 sites** (about 90 seconds), a capture over
+  100 sites asks for confirmation, can be cancelled (what was captured is kept), and stops
+  itself after 10 consecutive failures instead of hammering.
+- **When it runs:** only when an admin clicks **Capture now**. A web part cannot run on a
+  schedule; for a hands-off daily capture, run the capture from something external
+  (for example Power Automate calling the same `_api/site?$select=Usage` endpoint).
+  Snapshots less than 6 hours apart replace each other, and each site keeps its last 90.
+- **What counts as unusual** (all thresholds editable): projected weekly growth of at
+  least 25% *and* 5 GB; or at least 50 GB a week whatever the percentage; or a latest daily
+  growth far above the site's own pattern (3 standard deviations); or the quota projected to
+  fill within 30 days (critical within 14). Rates are scaled to a week from the snapshots you
+  have, so uneven gaps are fine. A new site needs at least two snapshots 20 hours or more
+  apart before it can be judged.
 
 ## How it runs without app registration
 
@@ -88,7 +111,8 @@ npm run test:unit
 
 Runs the real service code (throttling queue, retry / pause behaviour,
 concurrency and spacing, caching, origin guard, search parsing for OData v3 and
-v4, REST call shapes, health rules, CSV-injection escaping) under Node, once at
+v4, REST call shapes, health rules, CSV-injection escaping, growth anomaly rules
+and the history store) under Node, once at
 a modern target and once compiled to ES5 (the shipped target, where subclassing
 `Error` behaves differently).
 
@@ -98,6 +122,7 @@ a modern target and once compiled to ES5 (the shipped target, where subclassing
 src/webparts/adminCenter/
   core/SPClient.ts            Throttle-safe request queue, cache, retry, origin guard
   services/                   AdminApi (REST), SearchApi (search index), HealthEngine,
+                              GrowthEngine (anomaly rules), GrowthStore (history file),
                               exportCsv, addresses, format
   components/AdminCenter.tsx  Shell: nav, site switcher, request meter, confirm dialog
   components/views/           One file per section

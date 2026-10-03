@@ -160,6 +160,7 @@ export type ViewKey =
   | 'people'
   | 'content'
   | 'storage'
+  | 'growth'
   | 'recycle'
   | 'activity'
   | 'health'

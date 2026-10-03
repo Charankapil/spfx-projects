@@ -427,6 +427,216 @@ test('format and address parsing', () => {
   assert.deepStrictEqual(parseAddresses('a@b.com, A@B.com;c@d.com\nnot-an-email\n\n e@f.com '), ['a@b.com', 'c@d.com', 'e@f.com']);
 });
 
+// ---------------------------------------------------------------- storage growth
+const GE = src('services/GrowthEngine');
+const { GrowthStore, HISTORY_FILE } = src('services/GrowthStore');
+const GBYTES = 1073741824;
+const NOW = 1_800_000_000;
+const pts = (gbList, stepDays = 1, frac = 0) => gbList.map((g, i) => [NOW - (gbList.length - 1 - i) * stepDays * 86400, Math.round(g * GBYTES), frac]);
+const analyze = (gbList, step, frac, settings) => GE.analyzeSite('u', 't', pts(gbList, step, frac), Object.assign({}, GE.DEFAULT_SETTINGS, settings));
+
+test('growth: single snapshot or <20h apart is a baseline, not an anomaly', () => {
+  assert.strictEqual(analyze([10]).status, 'baseline');
+  const close = GE.analyzeSite('u', 't', [[NOW - 3600, 1e9, 0], [NOW, 9e10, 0]], GE.DEFAULT_SETTINGS);
+  assert.strictEqual(close.status, 'baseline');
+});
+
+test('growth: steady growth is ok', () => {
+  const r = analyze([100, 100.2, 100.4, 100.6, 100.8, 101, 101.2, 101.4]);
+  assert.strictEqual(r.status, 'ok');
+  assert.deepStrictEqual(r.reasons, []);
+});
+
+test('growth: +40% and 8 GB in a week is flagged; small sites with big % are not', () => {
+  const r = analyze([20, 21, 22, 23, 24, 25, 26, 28]); // 20 -> 28 GB in 7 days
+  assert.ok(r.status === 'warning' || r.status === 'critical', r.status);
+  assert.ok(/Grew 8\.0 GB \(\+40%\) in 7\.0 days/.test(r.reasons[0]), r.reasons[0]);
+  const tiny = analyze([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]); // +700% but under 5 GB
+  assert.strictEqual(tiny.status, 'ok');
+});
+
+test('growth: huge absolute growth is critical even if the site is big (percentage small)', () => {
+  const r = analyze([1000, 1010, 1020, 1030, 1040, 1050, 1060, 1100]); // +100 GB / week = 10%
+  assert.strictEqual(r.status, 'critical');
+});
+
+test('growth: shrinking sites are never flagged for growth', () => {
+  assert.strictEqual(analyze([100, 90, 80, 70, 60, 50, 40, 30]).status, 'ok');
+});
+
+test('growth: a spike far above the usual daily rate is flagged', () => {
+  const r = analyze([50, 50.1, 50.2, 50.3, 50.4, 50.5, 50.6, 50.7, 50.8, 56.8], 1, 0, { gbPerWeek: 5, pctPerWeek: 500 });
+  assert.ok(r.reasons.some((x) => /Latest growth/.test(x)), JSON.stringify(r.reasons));
+  assert.strictEqual(r.status, 'warning');
+});
+
+test('growth: quota forecast warns at <=30 days and is critical at <=14 days', () => {
+  // 100 GB used = 80% of a 125 GB quota, +1 GB/day -> 25 days to full
+  const warn = analyze([93, 94, 95, 96, 97, 98, 99, 100], 1, 800, { gbPerWeek: 500, hugeGbPerWeek: 500 });
+  assert.strictEqual(warn.status, 'warning');
+  assert.ok(Math.round(warn.daysToFull) === 25);
+  // +2 GB/day -> 12.5 days
+  const crit = analyze([86, 88, 90, 92, 94, 96, 98, 100], 1, 800, { gbPerWeek: 500, hugeGbPerWeek: 500 });
+  assert.strictEqual(crit.status, 'critical');
+  const calm = analyze([99, 99.1, 99.2, 99.3, 99.4, 99.5, 99.6, 99.7], 1, 800);
+  assert.strictEqual(calm.status, 'ok');
+});
+
+test('growth: irregular intervals are normalised per day', () => {
+  // 2 snapshots 14 days apart, +14 GB (1 GB/day = 7 GB/week on 28 GB = 25%)
+  const r = GE.analyzeSite('u', 't', [[NOW - 14 * 86400, 28 * GBYTES, 0], [NOW, 42 * GBYTES, 0]], GE.DEFAULT_SETTINGS);
+  assert.ok(Math.abs(r.growth7Bytes - 7 * GBYTES) < GBYTES * 0.01);
+  assert.strictEqual(r.status, 'warning');
+});
+
+test('growth: addPoint replaces within 6h, appends after, sorts and caps at 90', () => {
+  let p = [[1000, 1, 0]];
+  p = GE.addPoint(p, [1000 + 3600, 2, 0]);
+  assert.deepStrictEqual(p, [[4600, 2, 0]]);
+  p = GE.addPoint(p, [4600 + 7 * 3600, 3, 0]);
+  assert.strictEqual(p.length, 2);
+  let big = [];
+  for (let i = 0; i < 120; i++) big = GE.addPoint(big, [i * 86400, i, 0]);
+  assert.strictEqual(big.length, GE.MAX_POINTS);
+  assert.strictEqual(big[big.length - 1][1], 119);
+});
+
+test('growth: normalizeDoc survives junk and keeps valid data', () => {
+  assert.deepStrictEqual(GE.normalizeDoc(null).sites, {});
+  assert.deepStrictEqual(GE.normalizeDoc('x').sites, {});
+  const d = GE.normalizeDoc({ settings: { pctPerWeek: 40, gbPerWeek: -1, bogus: 1 }, sites: { a: { title: 'A', s: [[2, 5, 0], ['x', 1], [1, 4, 10], [3, -5, 0]] }, b: 'nope', c: { s: 'nope' } }, lastCapture: '77' });
+  assert.strictEqual(d.settings.pctPerWeek, 40);
+  assert.strictEqual(d.settings.gbPerWeek, GE.DEFAULT_SETTINGS.gbPerWeek, 'invalid value falls back');
+  assert.deepStrictEqual(Object.keys(d.sites), ['a']);
+  assert.deepStrictEqual(d.sites.a.s, [[1, 4, 10], [2, 5, 0]], 'sorted, junk dropped');
+  assert.strictEqual(d.lastCapture, 77);
+});
+
+test('growth: analyzeAll sorts critical first, then by weekly growth', () => {
+  const doc = GE.emptyDoc();
+  doc.sites.calm = { title: 'calm', s: pts([10, 10, 10, 10, 10, 10, 10, 10]) };
+  doc.sites.bad = { title: 'bad', s: pts([100, 110, 120, 130, 140, 150, 160, 200]) };
+  const all = GE.analyzeAll(doc);
+  assert.deepStrictEqual(all.map((a) => a.url), ['bad', 'calm']);
+  assert.strictEqual(GE.anomaliesOf(all).length, 1);
+});
+
+// A tiny in-memory SharePoint for the history file and per-site usage.
+function growthEnv(opts = {}) {
+  const env = { file: opts.file === undefined ? undefined : opts.file, writes: 0, usageCalls: [], usage: opts.usage || {}, failUsage: opts.failUsage || (() => false), clock: 0 };
+  const client = make(async (m, url, cfg, o) => {
+    const u = decodeURIComponent(url);
+    if (u.includes('GetFileByServerRelativeUrl')) {
+      assert.ok(u.includes(`/sites/admin/SiteAssets/${HISTORY_FILE}`), u);
+      return env.file === undefined ? json({ error: { message: 'File Not Found.' } }, 404) : new Response(env.file, { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (u.includes('Files/add')) {
+      assert.ok(u.includes(`GetFolderByServerRelativeUrl('/sites/admin/SiteAssets')`) && u.includes(`url='${HISTORY_FILE}',overwrite=true`), u);
+      assert.strictEqual(typeof o.body, 'string');
+      env.file = o.body;
+      env.writes++;
+      return json({ Name: HISTORY_FILE });
+    }
+    const site = u.replace(/\/_api.*/, '');
+    env.usageCalls.push(site);
+    if (env.failUsage(site)) return json({ error: { message: 'Access denied' } }, 403);
+    return json({ Usage: { Storage: String(env.usage[site] || 1000), StoragePercentageUsed: 0.5 } });
+  });
+  const store = new GrowthStore(client, new AdminApi(client), ORIGIN + '/sites/admin/');
+  return { env, store, client };
+}
+
+test('store: missing file loads as empty; track writes one file with the right path/body', async () => {
+  const { env, store } = growthEnv();
+  assert.deepStrictEqual((await store.load()).sites, {});
+  const r = await store.track([{ url: ORIGIN + '/sites/a/', title: 'A' }, { url: ORIGIN + '/sites/b', title: 'B' }, { url: ORIGIN + '/sites/a', title: 'dup' }]);
+  assert.strictEqual(r.added, 2);
+  assert.deepStrictEqual(Object.keys(JSON.parse(env.file).sites), [ORIGIN + '/sites/a', ORIGIN + '/sites/b']);
+});
+
+test('store: tracking is capped at 500 sites', async () => {
+  const { store } = growthEnv();
+  const many = Array.from({ length: 520 }, (_, i) => ({ url: ORIGIN + '/sites/s' + i, title: 'S' + i }));
+  const r = await store.track(many);
+  assert.strictEqual(r.added, 500);
+  assert.strictEqual(r.capped, true);
+});
+
+test('store: capture takes one usage request per site, merges, and skips fresh snapshots', async () => {
+  const { env, store } = growthEnv({ usage: { [ORIGIN + '/sites/a']: 5 * GBYTES, [ORIGIN + '/sites/b']: 7 } });
+  await store.track([{ url: ORIGIN + '/sites/a', title: 'A' }, { url: ORIGIN + '/sites/b', title: 'B' }]);
+  let progress = 0;
+  const r = await store.capture({ onProgress: () => progress++ });
+  assert.strictEqual(r.captured, 2);
+  assert.strictEqual(env.usageCalls.length, 2);
+  assert.strictEqual(progress, 2);
+  const doc = JSON.parse(env.file);
+  assert.strictEqual(doc.sites[ORIGIN + '/sites/a'].s[0][1], 5 * GBYTES);
+  assert.strictEqual(doc.sites[ORIGIN + '/sites/a'].s[0][2], 500, 'per-mille of quota');
+  assert.ok(doc.lastCapture > 0);
+  const again = await store.capture();
+  assert.strictEqual(again.skipped, 2);
+  assert.strictEqual(env.usageCalls.length, 2, 'no requests for fresh snapshots');
+  const forced = await store.capture({ force: true });
+  assert.strictEqual(forced.captured, 2);
+  assert.strictEqual(JSON.parse(env.file).sites[ORIGIN + '/sites/a'].s.length, 1, 'forced re-capture within 6h replaces the point');
+});
+
+test('store: failures are reported per site and do not stop the others', async () => {
+  const { env, store } = growthEnv({ failUsage: (s) => s.endsWith('/bad') });
+  await store.track([{ url: ORIGIN + '/sites/ok', title: 'ok' }, { url: ORIGIN + '/sites/bad', title: 'bad' }]);
+  const r = await store.capture();
+  assert.strictEqual(r.captured, 1);
+  assert.strictEqual(r.failed.length, 1);
+  assert.ok(/Access denied/.test(r.failed[0].message));
+  assert.strictEqual(JSON.parse(env.file).sites[ORIGIN + '/sites/ok'].s.length, 1);
+});
+
+test('store: circuit breaker stops after 10 consecutive failures instead of hammering', async () => {
+  const { env, store } = growthEnv({ failUsage: () => true });
+  await store.track(Array.from({ length: 60 }, (_, i) => ({ url: ORIGIN + '/sites/s' + i, title: 'S' })));
+  const r = await store.capture();
+  assert.strictEqual(r.aborted, true);
+  assert.ok(env.usageCalls.length <= 12, 'requests made: ' + env.usageCalls.length);
+});
+
+test('store: cancel stops early but keeps what was captured', async () => {
+  const { env, store } = growthEnv();
+  await store.track(Array.from({ length: 30 }, (_, i) => ({ url: ORIGIN + '/sites/s' + i, title: 'S' })));
+  let n = 0;
+  const r = await store.capture({ shouldCancel: () => n >= 6, onProgress: () => n++ });
+  assert.strictEqual(r.cancelled, true);
+  assert.ok(r.captured >= 6 && r.captured < 30);
+  const saved = Object.keys(JSON.parse(env.file).sites).filter((u) => JSON.parse(env.file).sites[u].s.length === 1).length;
+  assert.strictEqual(saved, r.captured);
+});
+
+test('store: writes merge with another admin\'s concurrent changes (re-read before write)', async () => {
+  const { env, store } = growthEnv();
+  await store.track([{ url: ORIGIN + '/sites/a', title: 'A' }]);
+  // another admin tracks site c in between
+  const other = JSON.parse(env.file);
+  other.sites[ORIGIN + '/sites/c'] = { title: 'C', s: [[1, 1, 0]] };
+  env.file = JSON.stringify(other);
+  await store.track([{ url: ORIGIN + '/sites/b', title: 'B' }]);
+  assert.deepStrictEqual(Object.keys(JSON.parse(env.file).sites).sort(), [ORIGIN + '/sites/a', ORIGIN + '/sites/b', ORIGIN + '/sites/c']);
+});
+
+test('store: a 404 on save explains the Site Assets requirement; invalid JSON is reported', async () => {
+  const bad = make(async (m, url) => (url.includes('Files/add') ? json({ error: { message: 'not found' } }, 404) : json({ error: { message: 'File Not Found.' } }, 404)));
+  const s1 = new GrowthStore(bad, new AdminApi(bad), ORIGIN + '/sites/admin');
+  await assert.rejects(() => s1.track([{ url: ORIGIN + '/sites/a', title: 'A' }]), /Site Assets library was not found/);
+  const junk = make(async () => new Response('not json', { status: 200 }));
+  await assert.rejects(() => new GrowthStore(junk, new AdminApi(junk), ORIGIN + '/sites/admin').load(), /not valid JSON/);
+});
+
+test('client: raw bodies are sent as-is (file content), not double-encoded', async () => {
+  let body;
+  const c = make(async (m, u, cfg, o) => { body = o.body; return json({}); });
+  await c.post(ORIGIN + '/_api/x', '{"a":1}', { raw: true });
+  assert.strictEqual(body, '{"a":1}');
+});
+
 // ---------------------------------------------------------------- runner
 (async () => {
   let failed = 0;

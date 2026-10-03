@@ -151,6 +151,13 @@ export class AdminApi {
     return info;
   }
 
+  /** Storage of one site collection: a single small request (never cached; used for snapshots). */
+  public async getSiteUsage(siteUrl: string): Promise<{ bytes: number; fraction: number }> {
+    const j = await this.client.get<{ [k: string]: unknown }>(this.api(siteUrl, 'site?$select=Usage'), { cacheTtlMs: 0 });
+    const usage = (entityOf<{ [k: string]: unknown }>(j).Usage || {}) as { [k: string]: unknown };
+    return { bytes: num(usage.Storage), fraction: num(usage.StoragePercentageUsed) };
+  }
+
   public async getSubWebs(webUrl: string): Promise<ISubWeb[]> {
     const j = await this.client.get(
       this.api(webUrl, 'web/webs?$select=Id,Title,Url,WebTemplate,Created,LastItemModifiedDate,HasUniqueRoleAssignments&$top=500')

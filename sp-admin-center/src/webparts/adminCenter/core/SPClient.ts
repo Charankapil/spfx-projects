@@ -65,6 +65,8 @@ export interface IRequestOptions {
   headers?: { [name: string]: string };
   /** HTTP verb override sent as X-HTTP-Method (MERGE / DELETE / PATCH). */
   method?: 'MERGE' | 'DELETE' | 'PATCH' | 'PUT';
+  /** Send the body as-is (a string such as file content) instead of JSON-encoding it. */
+  raw?: boolean;
 }
 
 interface ICacheEntry {
@@ -316,7 +318,7 @@ export class SPClient {
       headers['X-HTTP-Method'] = options.method;
       headers['IF-MATCH'] = '*';
     }
-    const init: ISPHttpClientOptions = { headers, body: body === undefined ? undefined : JSON.stringify(body) };
+    const init: ISPHttpClientOptions = { headers, body: body === undefined ? undefined : options.raw ? String(body) : JSON.stringify(body) };
     if (webUrl) {
       this.assertSameOrigin(webUrl);
       (init as { webUrl?: string }).webUrl = webUrl;

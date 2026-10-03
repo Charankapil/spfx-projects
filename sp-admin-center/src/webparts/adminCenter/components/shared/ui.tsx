@@ -203,3 +203,21 @@ export const FindingRow: React.FC<{ severity: string; title: string; detail?: st
   );
 };
 
+
+/** Tiny trend line for a history of values. */
+export const Sparkline: React.FC<{ values: number[]; color?: string; width?: number; height?: number }> = ({ values, color = '#2563eb', width = 110, height = 28 }) => {
+  if (values.length < 2) {
+    return <span className={styles.muted}>no trend yet</span>;
+  }
+  const min = Math.min.apply(null, values);
+  const max = Math.max.apply(null, values);
+  const range = max - min || 1;
+  const pts = values.map((v, i) => `${((i / (values.length - 1)) * (width - 4) + 2).toFixed(1)},${(height - 3 - ((v - min) / range) * (height - 6)).toFixed(1)}`);
+  const last = pts[pts.length - 1].split(',');
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Trend over ${values.length} snapshots`}>
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={last[0]} cy={last[1]} r={2.4} fill={color} />
+    </svg>
+  );
+};
