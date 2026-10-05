@@ -334,7 +334,7 @@ $shadow-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.05);
 .statGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
 }
 
 .card {
@@ -462,7 +462,7 @@ $shadow-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.05);
 }
 
 .statValue {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -552,7 +552,7 @@ $shadow-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.05);
 
 .bucketRow {
   display: grid;
-  grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) minmax(86px, auto) 78px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(24px, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   padding: 5px 0;
@@ -567,12 +567,15 @@ $shadow-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.05);
 }
 
 .bucketValue {
+  white-space: nowrap;
   text-align: right;
   color: $ink;
   font-weight: 600;
 }
 
 .bucketBytes {
+  white-space: nowrap;
+  min-width: 52px;
   text-align: right;
   color: $ink-3;
 }
@@ -591,6 +594,7 @@ $shadow-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.05);
   gap: 12px;
   align-items: center;
   padding: 9px 4px;
+  font-size: 13px;
   border-top: 1px solid #eef2f6;
 
   &:first-child {

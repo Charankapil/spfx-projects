@@ -93,15 +93,26 @@ export const TenantDashboardView: React.FC = () => {
           </>
         ) : null}
         <StatTile icon="Database" label="Storage used" value={formatTB(cap.usedBytes)} sub={countDeleted ? 'active + recycle bin' : 'active sites'} tone="brand" />
+        {cap.leftBytes !== undefined && cap.leftBytes < 0 ? (
+          <StatTile icon="Warning" label="Over capacity by" value={formatTB(-cap.leftBytes)} sub={`beyond ${formatTB(cap.capacityBytes || 0)} allocated`} tone="critical" onClick={() => setEditCap(true)} />
+        ) : (
+          <StatTile
+            icon="CloudUpload"
+            label="Storage left"
+            value={cap.leftBytes !== undefined ? formatTB(cap.leftBytes) : '—'}
+            sub={cap.capacityBytes ? `of ${formatTB(cap.capacityBytes)} allocated` : 'set the tenant capacity'}
+            tone={cap.fraction !== undefined && cap.fraction >= 0.9 ? 'critical' : cap.fraction !== undefined && cap.fraction >= 0.75 ? 'warning' : 'good'}
+            onClick={() => setEditCap(true)}
+          />
+        )}
         <StatTile
-          icon="CloudUpload"
-          label="Storage left"
-          value={cap.leftBytes !== undefined ? formatTB(cap.leftBytes) : '—'}
-          sub={cap.capacityBytes ? `of ${formatTB(cap.capacityBytes)} allocated` : 'set the tenant capacity'}
-          tone={cap.fraction !== undefined && cap.fraction >= 0.9 ? 'critical' : cap.fraction !== undefined && cap.fraction >= 0.75 ? 'warning' : 'good'}
+          icon="Diagnostic"
+          label="Capacity used"
+          value={cap.fraction !== undefined ? `${(cap.fraction * 100).toFixed(2)}%` : '—'}
+          sub={cap.capacityBytes ? `of ${formatTB(cap.capacityBytes)}` : 'set the tenant capacity'}
+          tone={cap.fraction !== undefined && cap.fraction >= 1 ? 'critical' : undefined}
           onClick={() => setEditCap(true)}
         />
-        <StatTile icon="Diagnostic" label="Storage used" value={cap.fraction !== undefined ? `${(cap.fraction * 100).toFixed(2)}%` : '—'} sub="of tenant capacity" onClick={() => setEditCap(true)} />
       </div>
 
       <CapacityCard overview={o} cap={cap} index={index} editing={editCap} setEditing={setEditCap} onSaved={loader.reload} />
@@ -181,11 +192,17 @@ const CapacityCard: React.FC<{ overview: ITenantOverview; cap: ICapacity; index:
           </div>
           <div className={styles.meterLegend}>
             <span>
-              <span className={styles.swatch} style={{ background: SERIES[0] }} /> Used <strong>{formatTB(cap.usedBytes)}</strong> ({(usedPct * 100).toFixed(1)}%)
+              <span className={styles.swatch} style={{ background: SERIES[0] }} /> Used <strong>{formatTB(cap.usedBytes)}</strong> ({((cap.fraction || 0) * 100).toFixed(1)}%)
             </span>
-            <span>
-              <span className={styles.swatch} style={{ background: '#d9dee7' }} /> Left <strong>{formatTB(Math.max(0, cap.leftBytes || 0))}</strong>
-            </span>
+            {(cap.leftBytes || 0) >= 0 ? (
+              <span>
+                <span className={styles.swatch} style={{ background: '#d9dee7' }} /> Left <strong>{formatTB(cap.leftBytes || 0)}</strong>
+              </span>
+            ) : (
+              <span style={{ color: '#a11d1d' }}>
+                Over capacity by <strong>{formatTB(-(cap.leftBytes || 0))}</strong> ({((cap.fraction || 0) * 100).toFixed(1)}% of allocated)
+              </span>
+            )}
             <span>
               Allocated <strong>{formatTB(cap.capacityBytes)}</strong>
             </span>
