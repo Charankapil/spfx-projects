@@ -24,7 +24,7 @@ import { buildSnapshot, detectMapping, IMapping, Unit } from '../../services/Sto
 import { ICsvFile, IImportResult, ITenantIndex } from '../../services/TenantStore';
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
-import { ErrorBar, Loading } from '../shared/ui';
+import { ErrorBar, Loading, Pill } from '../shared/ui';
 
 const UNITS: IDropdownOption[] = [
   { key: 'bytes', text: 'Bytes' },
@@ -275,9 +275,11 @@ export const ImportPanel: React.FC<{ open: boolean; onDismiss: () => void; index
             <Dropdown className={styles.field} label="Quota unit" selectedKey={mapping.quotaUnit} options={UNITS} onChange={(_, o) => o && set({ quotaUnit: String(o.key) as Unit })} disabled={!mapping.quota} />
             <Dropdown className={styles.field} label="Site title column (optional)" selectedKey={mapping.title || ''} options={colOptions(true)} onChange={(_, o) => o && set({ title: String(o.key) || undefined })} />
             <Dropdown className={styles.field} label="Deleted marker column (optional)" selectedKey={mapping.deleted || ''} options={colOptions(true)} onChange={(_, o) => o && set({ deleted: String(o.key) || undefined })} />
+            <Dropdown className={styles.field} label="Archive status column (optional)" selectedKey={mapping.archived || ''} options={colOptions(true)} onChange={(_, o) => o && set({ archived: String(o.key) || undefined })} />
           </div>
           <div className={styles.filters}>
             <Toggle label="Skip OneDrive sites" inlineLabel checked={mapping.excludeOneDrive} onChange={(_, c) => set({ excludeOneDrive: !!c })} />
+            <Toggle label="Keep deleted sites as their own group" inlineLabel checked={mapping.includeDeleted !== false} onChange={(_, c) => set({ includeDeleted: !!c })} disabled={!mapping.deleted} />
             <TextField className={styles.field} label="Snapshot date (leave empty to use the file's modified date)" type="date" value={dateOverride} onChange={(_, v) => setDateOverride(v || '')} />
           </div>
 
@@ -295,8 +297,16 @@ export const ImportPanel: React.FC<{ open: boolean; onDismiss: () => void; index
                   </>
                 )}
               </p>
+              <p style={{ margin: '0 0 6px' }}>
+                <Pill kind="good">{(preview.stats.kept - preview.stats.archived - (mapping.includeDeleted !== false ? preview.stats.deleted : 0)).toLocaleString()} active</Pill>{' '}
+                <Pill kind="info">{preview.stats.archived.toLocaleString()} archived</Pill>{' '}
+                <Pill kind="warning">
+                  {preview.stats.deleted.toLocaleString()} deleted{mapping.includeDeleted !== false ? '' : ' (skipped)'}
+                </Pill>
+                {!mapping.archived && <span className={styles.muted}> · choose an archive status column to separate archived sites</span>}
+              </p>
               <p className={styles.muted}>
-                Skipped: {preview.stats.noUrl} without an address, {preview.stats.badNumber} without a valid number, {preview.stats.deleted} deleted, {preview.stats.oneDrive} OneDrive, {preview.stats.duplicates} duplicates.
+                Skipped: {preview.stats.noUrl} without an address, {preview.stats.badNumber} without a valid number, {preview.stats.oneDrive} OneDrive, {preview.stats.duplicates} duplicates.
                 If the total or the largest site looks wrong by a factor of 1,000 or 1,024, change the unit.
               </p>
               <DetailsList

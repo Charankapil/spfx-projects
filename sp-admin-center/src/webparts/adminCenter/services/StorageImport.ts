@@ -17,8 +17,16 @@ export interface IMapping {
   quotaUnit: Unit;
   title?: string;
   deleted?: string;
+  /** Column holding the Microsoft 365 Archive state (e.g. NotArchived / RecentlyArchived / FullyArchived). */
+  archived?: string;
+  /** Keep deleted sites (still in the site recycle bin) as their own group instead of skipping them. */
+  includeDeleted?: boolean;
   excludeOneDrive: boolean;
 }
+
+/** Site state codes stored in snapshots: 0 active, 1 archived, 2 deleted. */
+export type SiteState = 0 | 1 | 2;
+export const STATE_NAMES = ['Active', 'Archived', 'Deleted'];
 
 /** One snapshot: parallel arrays so 17,000 sites stay around half a megabyte of JSON. */
 export interface ISnapshotData {
@@ -30,6 +38,8 @@ export interface ISnapshotData {
   b: number[];
   /** Per-mille of quota used (0 = unknown). */
   q: number[];
+  /** Site state per entry (0 active, 1 archived, 2 deleted). Missing in older snapshots = all active. */
+  s?: number[];
 }
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -39,8 +49,20 @@ const CANDIDATES = {
   storage: ['storageusagecurrent', 'storageused', 'storageusedmb', 'storageusedgb', 'storageusedbytes', 'storageusage', 'storageinuse', 'currentstorage', 'sizemb', 'sizegb', 'sizebytes', 'storage', 'usage', 'size'],
   quota: ['storagequota', 'storagequotamb', 'storagequotagb', 'quota', 'quotamb', 'storagemaximumlevel', 'storagelimit', 'maxstorage', 'allocated', 'storageallocated'],
   title: ['title', 'sitename', 'name', 'displayname'],
-  deleted: ['timedeleted', 'isdeleted', 'deleted', 'deleteddate', 'deletiontime']
+  deleted: ['timedeleted', 'isdeleted', 'deleted', 'deleteddate', 'deletiontime'],
+  archived: ['archivestatus', 'archivedstatus', 'archivestate', 'm365archivestatus', 'isarchived', 'archived', 'archivedby', 'archivedtime', 'archivedate', 'timearchived']
 };
+
+/** Any non-empty value other than an explicit "not archived" / false means archived (RecentlyArchived, FullyArchived, Reactivating, True, a date…). */
+export function isArchivedValue(raw: string | undefined): boolean {
+  const v = (raw || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  return !!v && ['notarchived', 'none', 'false', '0', 'no', 'active', 'null', 'unarchived'].indexOf(v) < 0;
+}
+
+export function isDeletedValue(raw: string | undefined): boolean {
+  const v = (raw || '').trim().toLowerCase();
+  return !!v && v !== 'false' && v !== '0' && v !== 'no' && v !== 'null';
+}
 
 function pick(headers: string[], names: string[]): string | undefined {
   const normalized = headers.map(norm);
@@ -127,6 +149,8 @@ export function detectMapping(headers: string[], rows: string[][]): IMapping | u
     quotaUnit: quota ? unitFromHeader(quota) || guessUnitFromValues(col(quota), 'quota') : 'mb',
     title: pick(headers, CANDIDATES.title),
     deleted: pick(headers, CANDIDATES.deleted),
+    archived: pick(headers, CANDIDATES.archived),
+    includeDeleted: true,
     excludeOneDrive: true
   };
 }
@@ -145,7 +169,9 @@ export interface IBuildStats {
   kept: number;
   noUrl: number;
   badNumber: number;
+  /** Deleted rows (kept as their own group when includeDeleted, otherwise skipped). */
   deleted: number;
+  archived: number;
   oneDrive: number;
   duplicates: number;
 }
@@ -165,9 +191,12 @@ export function buildSnapshot(rows: string[][], mapping: IMapping, origin: strin
   const iQuota = idx(mapping.quota);
   const iTitle = idx(mapping.title);
   const iDeleted = idx(mapping.deleted);
-  const stats: IBuildStats = { rows: Math.max(0, rows.length - 1), kept: 0, noUrl: 0, badNumber: 0, deleted: 0, oneDrive: 0, duplicates: 0 };
+  const iArchived = idx(mapping.archived);
+  const includeDeleted = mapping.includeDeleted !== false;
+  const stats: IBuildStats = { rows: Math.max(0, rows.length - 1), kept: 0, noUrl: 0, badNumber: 0, deleted: 0, archived: 0, oneDrive: 0, duplicates: 0 };
   const seen: { [k: string]: number } = {};
-  const data: ISnapshotData = { t, u: [], b: [], q: [] };
+  const data: ISnapshotData = { t, u: [], b: [], q: [], s: [] };
+  const states = data.s as number[];
   const titles: { [k: string]: string } = {};
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
@@ -176,12 +205,15 @@ export function buildSnapshot(rows: string[][], mapping: IMapping, origin: strin
       stats.noUrl++;
       continue;
     }
-    if (iDeleted >= 0) {
-      const d = (row[iDeleted] || '').trim().toLowerCase();
-      if (d && d !== 'false' && d !== '0' && d !== 'no' && d !== 'null') {
+    let state: SiteState = 0;
+    if (iDeleted >= 0 && isDeletedValue(row[iDeleted])) {
+      if (!includeDeleted) {
         stats.deleted++;
         continue;
       }
+      state = 2;
+    } else if (iArchived >= 0 && isArchivedValue(row[iArchived])) {
+      state = 1;
     }
     if (mapping.excludeOneDrive && /-my\.sharepoint\.com|\/personal\//i.test(rawUrl)) {
       stats.oneDrive++;
@@ -204,18 +236,33 @@ export function buildSnapshot(rows: string[][], mapping: IMapping, origin: strin
     const key = path.toLowerCase();
     if (seen[key] !== undefined) {
       stats.duplicates++;
+      // A later row for the same address wins (e.g. an active site that replaced a deleted one).
+      const prev = states[seen[key]];
       data.b[seen[key]] = bytes;
       data.q[seen[key]] = pm;
+      states[seen[key]] = state;
+      countState(stats, prev, -1);
+      countState(stats, state, 1);
       continue;
     }
     seen[key] = data.u.length;
     data.u.push(path);
     data.b.push(bytes);
     data.q.push(pm);
+    states.push(state);
+    countState(stats, state, 1);
     if (iTitle >= 0 && row[iTitle]) {
       titles[key] = row[iTitle].trim();
     }
     stats.kept++;
   }
   return { data, titles, stats };
+}
+
+function countState(stats: IBuildStats, state: number, delta: number): void {
+  if (state === 1) {
+    stats.archived += delta;
+  } else if (state === 2) {
+    stats.deleted += delta;
+  }
 }

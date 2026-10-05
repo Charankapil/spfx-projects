@@ -18,6 +18,7 @@ import { GrowthStore } from '../services/GrowthStore';
 import { SearchApi } from '../services/SearchApi';
 import { TenantStore } from '../services/TenantStore';
 import styles from './AdminCenter.module.scss';
+import { Logo } from './shared/ui';
 import { AdminContext, IAdminContext, IConfirmOptions } from './shared/context';
 import { ActivityView } from './views/ActivityView';
 import { ContentView } from './views/ContentView';
@@ -36,13 +37,14 @@ export interface IAdminCenterProps {
   homeSiteUrl: string;
   homeTitle: string;
   heading: string;
+  currentUser: string;
 }
 
 const NAV: Array<{ key: ViewKey; text: string; icon: string }> = [
   { key: 'overview', text: 'Dashboard', icon: 'ViewDashboard' },
   { key: 'sites', text: 'Sites', icon: 'Globe' },
   { key: 'people', text: 'People & permissions', icon: 'Permissions' },
-  { key: 'content', text: 'Lists & libraries', icon: 'DocumentLibrary' },
+  { key: 'content', text: 'Lists & libraries', icon: 'Library' },
   { key: 'storage', text: 'Storage insights', icon: 'Database' },
   { key: 'growth', text: 'Storage growth', icon: 'AreaChart' },
   { key: 'recycle', text: 'Recycle bin', icon: 'RecycleBin' },
@@ -77,7 +79,7 @@ function writeRecent(t: ITarget): void {
   }
 }
 
-export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, homeSiteUrl, homeTitle, heading }) => {
+export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, homeSiteUrl, homeTitle, heading, currentUser }) => {
   const api = React.useMemo(() => new AdminApi(client), [client]);
   const search = React.useMemo(() => new SearchApi(client), [client]);
   const growth = React.useMemo(() => new GrowthStore(client, api, trimSlash(homeWebUrl)), [client, api, homeWebUrl]);
@@ -136,6 +138,7 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
     growth,
     tenant,
     homeWebUrl: home.webUrl,
+    currentUser: (currentUser || '').toLowerCase(),
     target,
     setTarget,
     openView: setView,
@@ -190,9 +193,12 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
     <AdminContext.Provider value={ctx}>
       <div className={styles.root}>
         <header className={styles.header}>
-          <div>
+          <div className={styles.brand}>
+            <Logo size={44} />
+            <div>
             <h1 className={styles.headerTitle}>{heading}</h1>
             <p className={styles.headerSub}>Administer SharePoint sites as yourself: no app registration, nothing runs in the background.</p>
+            </div>
           </div>
           <div className={styles.headerRight}>
             {paused ? (

@@ -221,3 +221,27 @@ export const Sparkline: React.FC<{ values: number[]; color?: string; width?: num
     </svg>
   );
 };
+
+/** The solution's mark: a shield (governance) holding rising bars (the dashboard) with an insight dot. */
+export const Logo: React.FC<{ size?: number }> = ({ size = 40 }) => (
+  <svg width={size} height={size} viewBox="0 0 96 96" aria-hidden="true" focusable="false" style={{ flex: 'none' }}>
+    <defs>
+      <linearGradient id="spacLogoBg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor="#3A3FD9" />
+        <stop offset="0.55" stopColor="#2563EB" />
+        <stop offset="1" stopColor="#0EA5A0" />
+      </linearGradient>
+      <linearGradient id="spacLogoBar" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0" stopColor="#3A3FD9" />
+        <stop offset="1" stopColor="#14B8A6" />
+      </linearGradient>
+    </defs>
+    <rect width="96" height="96" rx="22" fill="url(#spacLogoBg)" />
+    <path d="M0 22A22 22 0 0 1 22 0H74A22 22 0 0 1 96 22V38C68 28 28 28 0 44Z" fill="#FFFFFF" opacity="0.1" />
+    <path d="M48 14 74 23.5V45C74 62.8 63 75.4 48 82 33 75.4 22 62.8 22 45V23.5Z" fill="#FFFFFF" />
+    <rect x="33" y="51" width="8" height="14" rx="2.6" fill="url(#spacLogoBar)" />
+    <rect x="44" y="42" width="8" height="23" rx="2.6" fill="url(#spacLogoBar)" />
+    <rect x="55" y="33" width="8" height="32" rx="2.6" fill="url(#spacLogoBar)" />
+    <circle cx="66.5" cy="26.5" r="5" fill="#F59E0B" stroke="#FFFFFF" strokeWidth="2" />
+  </svg>
+);

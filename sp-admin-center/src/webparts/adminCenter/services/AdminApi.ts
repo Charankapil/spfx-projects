@@ -345,6 +345,11 @@ export class AdminApi {
     await this.client.post(this.api(webUrl, `web/siteusers/removebyid(${userId})`), undefined, {}, webUrl);
   }
 
+  /** Removes a principal's direct permission on the web (the web must have its own permissions). */
+  public async removeRoleAssignment(webUrl: string, principalId: number): Promise<void> {
+    await this.client.post(this.api(webUrl, `web/roleassignments/getbyprincipalid(${principalId})`), undefined, { method: 'DELETE' }, webUrl);
+  }
+
   public async setSiteAdmin(webUrl: string, userId: number, isAdmin: boolean): Promise<void> {
     await this.client.post(this.api(webUrl, `web/siteusers/getbyid(${userId})`), { IsSiteAdmin: isAdmin }, { method: 'MERGE' }, webUrl);
   }
@@ -446,7 +451,6 @@ export class AdminApi {
         List: true,
         Group: true,
         User: true,
-        Feature: true,
         Item: false,
         File: false,
         Folder: false,
@@ -460,9 +464,61 @@ export class AdminApi {
         ChangeTokenStart: { __metadata: { type: 'SP.ChangeToken' }, StringValue: token }
       }
     };
-    const j = await this.client.post<unknown>(this.api(webUrl, 'site/getchanges'), body, { odata3: true }, webUrl);
+    // SharePoint rejects the whole query when it meets a ChangeQuery property it does not know
+    // (the set differs between versions). Drop the named property and retry, a few times at most.
+    let j: unknown;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        j = await this.client.post<unknown>(this.api(webUrl, 'site/getchanges'), body, { odata3: true }, webUrl);
+        break;
+      } catch (e) {
+        const badProp = unsupportedChangeQueryProperty(e);
+        const q = body.query as { [k: string]: unknown };
+        if (!badProp || attempt >= 4 || !(badProp in q) || badProp === 'ChangeTokenStart') {
+          throw e;
+        }
+        console.warn(`[SharePoint Admin Center] ChangeQuery.${badProp} is not supported here; retrying without it.`);
+        delete q[badProp];
+      }
+    }
     return rowsOf<{ [k: string]: unknown }>(j).map(describeChange).reverse();
   }
+}
+
+export function unsupportedChangeQueryProperty(e: unknown): string | undefined {
+  const status = (e as { status?: number }).status;
+  const m = /property '([A-Za-z]+)' does not exist on type 'SP\.ChangeQuery'/.exec(String((e as Error).message || ''));
+  return status === 400 && m ? m[1] : undefined;
+}
+
+/** "Everyone" and "Everyone except external users" claims. */
+export function isOrgWideLogin(login: string): boolean {
+  const l = (login || '').toLowerCase();
+  return l.indexOf('spo-grid-all-users') >= 0 || l === 'c:0(.s|true';
+}
+
+/**
+ * Matches pasted e-mail addresses / logins against the site's users.
+ * Compares e-mail, full claims login and the account part of the login, all case-insensitively.
+ */
+export function matchUsers(entries: string[], users: IUserInfo[]): { matched: IUserInfo[]; unmatched: string[] } {
+  const matched: IUserInfo[] = [];
+  const unmatched: string[] = [];
+  const seen: { [id: number]: boolean } = {};
+  entries.forEach((raw) => {
+    const e = raw.trim().toLowerCase();
+    const u = users.filter((x) => {
+      const login = x.loginName.toLowerCase();
+      return (x.email && x.email.toLowerCase() === e) || login === e || login.substring(login.lastIndexOf('|') + 1) === e;
+    })[0];
+    if (!u) {
+      unmatched.push(raw.trim());
+    } else if (!seen[u.id]) {
+      seen[u.id] = true;
+      matched.push(u);
+    }
+  });
+  return { matched, unmatched };
 }
 
 const CHANGE_TYPES: { [n: number]: string } = {

@@ -12,10 +12,13 @@ import {
   PrimaryButton,
   SearchBox,
   SelectionMode,
-  TextField
+  TextField,
+  Toggle
 } from '@fluentui/react';
 import { IGroupInfo, IUserInfo } from '../../models';
 import { parseAddresses } from '../../services/addresses';
+import { isOrgWideLogin, matchUsers } from '../../services/AdminApi';
+import { IRoleAssignment } from '../../models';
 import { downloadCsv } from '../../services/exportCsv';
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
@@ -96,6 +99,16 @@ export const PeopleView: React.FC = () => {
         <PivotItem headerText="Bulk add">
           <div style={{ paddingTop: 12 }}>
             <BulkAdd groups={groups} onChanged={people.reload} />
+          </div>
+        </PivotItem>
+        <PivotItem headerText="Bulk remove">
+          <div style={{ paddingTop: 12 }}>
+            <BulkRemove users={users} onChanged={people.reload} />
+          </div>
+        </PivotItem>
+        <PivotItem headerText="Everyone groups" itemCount={users.filter((u) => u.kind === 'OrgWide').length || undefined}>
+          <div style={{ paddingTop: 12 }}>
+            <OrgWideTab users={users} groups={groups} onChanged={people.reload} />
           </div>
         </PivotItem>
       </Pivot>
@@ -508,3 +521,294 @@ const BulkAdd: React.FC<{ groups: IGroupInfo[]; onChanged: () => void }> = ({ gr
     </Card>
   );
 };
+
+// ---- Bulk remove ------------------------------------------------------------
+
+type RemovePlan = { user: IUserInfo; skip?: string };
+
+const BulkRemove: React.FC<{ users: IUserInfo[]; onChanged: () => void }> = ({ users, onChanged }) => {
+  const ctx = useAdmin();
+  const { api, target } = ctx;
+  const [text, setText] = React.useState('');
+  const [includeAdmins, setIncludeAdmins] = React.useState(false);
+  const [plan, setPlan] = React.useState<{ rows: RemovePlan[]; unmatched: string[] } | undefined>();
+  const [results, setResults] = React.useState<Array<{ who: string; ok: boolean; message?: string }>>([]);
+  const [busy, setBusy] = React.useState(false);
+
+  const isMe = (u: IUserInfo): boolean => {
+    const me = ctx.currentUser;
+    const login = u.loginName.toLowerCase();
+    return !!me && (u.email.toLowerCase() === me || login.substring(login.lastIndexOf('|') + 1) === me);
+  };
+
+  const find = (): void => {
+    const entries = parseAddresses(text);
+    const m = matchUsers(entries, users);
+    setResults([]);
+    setPlan({
+      unmatched: m.unmatched,
+      rows: m.matched.map((u) => ({
+        user: u,
+        skip: isMe(u) ? 'That is you' : u.kind === 'System' ? 'System account' : u.isSiteAdmin && !includeAdmins ? 'Site collection admin' : undefined
+      }))
+    });
+  };
+
+  const removable = plan ? plan.rows.filter((r) => !r.skip) : [];
+
+  const run = async (): Promise<void> => {
+    if (!removable.length) {
+      return;
+    }
+    if (removable.length > MAX_BULK) {
+      ctx.notify(`Please remove at most ${MAX_BULK} people per run to stay within SharePoint's limits.`, 'error');
+      return;
+    }
+    const ok = await ctx.confirm({
+      title: 'Remove people from the site collection',
+      message: `Remove ${removable.length} ${removable.length === 1 ? 'person' : 'people'} from ${target.siteUrl}? They lose every permission in this site collection (site, lists, libraries and items) and are removed from all its SharePoint groups. Their content is not deleted. For a Microsoft 365 group-connected site, also remove them from the group, or they keep access through it.`,
+      confirmText: `Remove ${removable.length}`,
+      danger: true
+    });
+    if (!ok) {
+      return;
+    }
+    setBusy(true);
+    const out: Array<{ who: string; ok: boolean; message?: string }> = [];
+    for (const r of removable) {
+      const who = r.user.email || r.user.title;
+      try {
+        await api.removeUserFromSite(target.siteUrl, r.user.id);
+        out.push({ who, ok: true });
+        ctx.log('Bulk remove from site collection', `${who} ← ${target.siteUrl}`, true);
+      } catch (e) {
+        out.push({ who, ok: false, message: (e as Error).message });
+        ctx.log('Bulk remove from site collection', `${who} ← ${target.siteUrl}`, false, (e as Error).message);
+      }
+      setResults(out.slice());
+    }
+    setBusy(false);
+    setPlan(undefined);
+    ctx.notify(`${out.filter((r) => r.ok).length} of ${out.length} removed.`, out.every((r) => r.ok) ? 'success' : 'error');
+    onChanged();
+  };
+
+  return (
+    <Card title="Remove many people from this site collection">
+      <TextField
+        label="E-mail addresses or logins (one per line, or separated by commas / semicolons)"
+        multiline
+        rows={6}
+        value={text}
+        onChange={(_, v) => {
+          setText(v || '');
+          setPlan(undefined);
+        }}
+        placeholder={'alex@contoso.com\npartner_fabrikam.com#ext#@contoso.onmicrosoft.com'}
+      />
+      <div className={styles.actions} style={{ marginTop: 10 }}>
+        <DefaultButton onClick={find} disabled={busy || !parseAddresses(text).length}>
+          Find these people
+        </DefaultButton>
+        <Toggle
+          label="Also remove site collection admins"
+          inlineLabel
+          checked={includeAdmins}
+          onChange={(_, c) => {
+            setIncludeAdmins(!!c);
+            setPlan(undefined);
+          }}
+        />
+      </div>
+
+      {plan && (
+        <div style={{ marginTop: 12 }}>
+          {plan.unmatched.length > 0 && (
+            <MessageBar messageBarType={MessageBarType.warning} isMultiline>
+              Not found on this site ({plan.unmatched.length}): {plan.unmatched.slice(0, 15).join(', ')}
+              {plan.unmatched.length > 15 ? '…' : ''}
+            </MessageBar>
+          )}
+          {plan.rows.length === 0 ? (
+            <Empty text="None of these people are on this site." />
+          ) : (
+            <ul className={styles.memberList}>
+              {plan.rows.map((r) => (
+                <li key={r.user.id} className={styles.memberRow}>
+                  <span>
+                    <strong>{r.user.title}</strong> <span className={styles.muted}>· {r.user.email || r.user.loginName}</span> {kindPill(r.user)}
+                  </span>
+                  {r.skip ? <Pill>Skipped: {r.skip}</Pill> : <Pill kind="warning">Will be removed</Pill>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className={styles.actions} style={{ marginTop: 10 }}>
+            <PrimaryButton onClick={run} disabled={busy || removable.length === 0} styles={{ root: { background: '#c4314b', borderColor: '#c4314b' }, rootHovered: { background: '#a4262c', borderColor: '#a4262c' } }}>
+              Remove {removable.length} from the site collection
+            </PrimaryButton>
+            <span className={styles.muted}>Up to {MAX_BULK} per run, one at a time.</span>
+          </div>
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <ul className={styles.memberList} style={{ marginTop: 12 }}>
+          {results.map((r) => (
+            <li key={r.who} className={styles.memberRow}>
+              <span>{r.who}</span>
+              {r.ok ? <Pill kind="good">Removed</Pill> : <Pill kind="critical">{r.message ? r.message.substring(0, 80) : 'Failed'}</Pill>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+};
+
+// ---- Everyone / Everyone except external users --------------------------------
+
+const MAX_GROUP_SCAN = 60;
+
+interface IOrgWideFinding {
+  user: IUserInfo;
+  groups: IGroupInfo[];
+  direct?: IRoleAssignment;
+}
+
+const OrgWideTab: React.FC<{ users: IUserInfo[]; groups: IGroupInfo[]; onChanged: () => void }> = ({ users, groups, onChanged }) => {
+  const ctx = useAdmin();
+  const { api, target } = ctx;
+  const orgUsers = users.filter((u) => u.kind === 'OrgWide');
+  // One request for the site's direct permissions plus one per group (at most 60), only when this tab is opened.
+  const scan = useLoader(async (): Promise<IOrgWideFinding[]> => {
+    if (!orgUsers.length) {
+      return [];
+    }
+    const assignments = await api.getRoleAssignments(target.webUrl).catch((): IRoleAssignment[] => []);
+    const inGroups: { [userId: number]: IGroupInfo[] } = {};
+    for (const g of groups.slice(0, MAX_GROUP_SCAN)) {
+      const members = await api.getGroupMembers(target.webUrl, g.id).catch((): IUserInfo[] => []);
+      members.filter((m) => isOrgWideLogin(m.loginName)).forEach((m) => (inGroups[m.id] = (inGroups[m.id] || []).concat(g)));
+    }
+    return orgUsers.map((u) => ({
+      user: u,
+      groups: inGroups[u.id] || [],
+      direct: assignments.filter((a) => a.principalId === u.id || a.principalLogin.toLowerCase() === u.loginName.toLowerCase())[0]
+    }));
+  }, [target.webUrl, orgUsers.length, groups.length]);
+
+  const act = async (title: string, message: string, label: string, fn: () => Promise<void>, logText: string): Promise<void> => {
+    const ok = await ctx.confirm({ title, message, confirmText: label, danger: true });
+    if (!ok) {
+      return;
+    }
+    try {
+      await fn();
+      ctx.log(title, logText, true);
+      ctx.notify(`${title}: done.`, 'success');
+      scan.reload();
+      onChanged();
+    } catch (e) {
+      ctx.log(title, logText, false, (e as Error).message);
+      ctx.notify((e as Error).message, 'error');
+    }
+  };
+
+  if (orgUsers.length === 0) {
+    return (
+      <Card title="Everyone and Everyone except external users">
+        <FindingRowLite good text="Neither group has been added to this site collection. Content here is not opened up to the whole organisation through them." />
+      </Card>
+    );
+  }
+  if (scan.loading && !scan.data) {
+    return <Loading text={`Checking ${Math.min(groups.length, MAX_GROUP_SCAN)} groups and the site's permissions…`} />;
+  }
+  if (scan.error || !scan.data) {
+    return <ErrorBar error={scan.error || 'Nothing loaded.'} onRetry={scan.reload} />;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <MessageBar messageBarType={MessageBarType.warning} isMultiline>
+        These claims stand for the whole organisation (<em>Everyone except external users</em>) or everyone including guests (<em>Everyone</em>). Wherever they have a permission, every one of those people can open that content, and it shows up in their search results and Copilot answers.
+      </MessageBar>
+      {scan.data.map((f) => (
+        <Card key={f.user.id} title={f.user.title} right={<Pill kind="critical">Organisation-wide</Pill>}>
+          <div className={styles.muted} style={{ fontSize: 12, marginBottom: 8 }}>
+            {f.user.loginName}
+          </div>
+
+          <strong style={{ fontSize: 13 }}>Member of SharePoint groups</strong>
+          {f.groups.length === 0 ? (
+            <p className={styles.muted} style={{ marginTop: 4 }}>
+              None{groups.length > MAX_GROUP_SCAN ? ` (first ${MAX_GROUP_SCAN} groups checked)` : ''}.
+            </p>
+          ) : (
+            <ul className={styles.memberList}>
+              {f.groups.map((g) => (
+                <li key={g.id} className={styles.memberRow}>
+                  <span>
+                    {g.title} {g.role && <Pill kind="info">{g.role}</Pill>}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.link}
+                    onClick={() => act('Remove from group', `Remove "${f.user.title}" from "${g.title}"? People who only had access through it lose that access.`, 'Remove', () => api.removeUserFromGroup(target.webUrl, g.id, f.user.id), `${f.user.title} ← ${g.title}`)}
+                  >
+                    Remove from group
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <strong style={{ fontSize: 13, display: 'block', marginTop: 10 }}>Direct permission on {target.title}</strong>
+          {f.direct ? (
+            <div className={styles.memberRow}>
+              <span>{f.direct.roles.join(', ') || 'Limited access'}</span>
+              <button
+                type="button"
+                className={styles.link}
+                onClick={() => act('Remove direct permission', `Remove the "${f.direct ? f.direct.roles.join(', ') : ''}" permission that "${f.user.title}" has directly on ${target.title}?`, 'Remove permission', () => api.removeRoleAssignment(target.webUrl, f.user.id), `${f.user.title} on ${target.webUrl}`)}
+              >
+                Remove permission
+              </button>
+            </div>
+          ) : (
+            <p className={styles.muted} style={{ marginTop: 4 }}>
+              None.
+            </p>
+          )}
+
+          <div className={styles.actions} style={{ marginTop: 12 }}>
+            <PrimaryButton
+              styles={{ root: { background: '#c4314b', borderColor: '#c4314b' }, rootHovered: { background: '#a4262c', borderColor: '#a4262c' } }}
+              onClick={() =>
+                act(
+                  'Remove from site collection',
+                  `Remove "${f.user.title}" from the whole site collection ${target.siteUrl}? This also clears permissions it was given on individual lists, libraries, folders and items, which this page cannot list.`,
+                  'Remove everywhere',
+                  () => api.removeUserFromSite(target.siteUrl, f.user.id),
+                  `${f.user.title} ← ${target.siteUrl}`
+                )
+              }
+            >
+              Remove from the whole site collection
+            </PrimaryButton>
+            {f.groups.length === 0 && !f.direct && <span className={styles.muted}>Not in a group or on the site itself; it may still be granted on lists, libraries or items.</span>}
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+};
+
+const FindingRowLite: React.FC<{ good?: boolean; text: string }> = ({ text }) => (
+  <div className={styles.memberRow}>
+    <span>
+      <Pill kind="good">All clear</Pill> {text}
+    </span>
+  </div>
+);

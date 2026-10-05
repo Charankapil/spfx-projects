@@ -693,14 +693,14 @@ test('import: buildSnapshot converts units, skips deleted / OneDrive / bad rows,
     [O + '/SITES/A', 'Alpha again', '4096', '1048576', ''],
     [O, 'Root', '10', '', '']
   ];
-  const map = { url: 'SiteUrl', storage: 'Used', storageUnit: 'mb', quota: 'Quota', quotaUnit: 'mb', title: 'Title', deleted: 'Deleted', excludeOneDrive: true };
+  const map = { url: 'SiteUrl', storage: 'Used', storageUnit: 'mb', quota: 'Quota', quotaUnit: 'mb', title: 'Title', deleted: 'Deleted', includeDeleted: false, excludeOneDrive: true };
   const r = SI.buildSnapshot(rows, map, O, 1000);
   assert.deepStrictEqual(r.data.u, ['/sites/a', '/sites/b', '/']);
   assert.strictEqual(r.data.b[0], 4096 * 1048576, 'duplicate (case-insensitive) keeps the later row');
   assert.strictEqual(r.data.b[1], 1024 * 1048576, 'thousands separator');
   assert.strictEqual(r.data.q[0], 4, 'per-mille of quota (4096/1048576 = 0.39% -> 4)');
   assert.strictEqual(r.data.q[1], 0, 'no quota');
-  assert.deepStrictEqual({ ...r.stats }, { rows: 8, kept: 3, noUrl: 1, badNumber: 1, deleted: 1, oneDrive: 1, duplicates: 1 });
+  assert.deepStrictEqual({ ...r.stats }, { rows: 8, kept: 3, noUrl: 1, badNumber: 1, deleted: 1, archived: 0, oneDrive: 1, duplicates: 1 });
   assert.strictEqual(r.titles['/sites/b'], 'Beta');
   assert.strictEqual(SI.fromPath('/sites/a', O), O + '/sites/a');
   assert.strictEqual(SI.fromPath('/', O), O);
@@ -812,7 +812,7 @@ test('tenant store: first import writes one snapshot + index; baseline has no an
   assert.strictEqual(idx.snapshots.length, 1);
   assert.strictEqual(idx.summary.sites, 2);
   assert.strictEqual(idx.mapping.storage, 'StorageUsed', 'mapping remembered for next time');
-  assert.deepStrictEqual(Object.keys(JSON.parse(env.files[`/sites/admin/SiteAssets/admin-center-snap-${NOW}.json`])).sort(), ['b', 'q', 'u', 'v']);
+  assert.deepStrictEqual(Object.keys(JSON.parse(env.files[`/sites/admin/SiteAssets/admin-center-snap-${NOW}.json`])).sort(), ['b', 'q', 's', 'u', 'v']);
 });
 
 test('tenant store: later imports detect fast growth; the index summary is what the dashboard reads', async () => {
@@ -905,6 +905,105 @@ test('tenant store: file and folder listings are never served from cache (a new 
 test('tenant store: a CSV with the wrong columns explains itself instead of saving nothing silently', async () => {
   const { store } = tenantEnv();
   await assert.rejects(() => store.importCsv('a,b\n1,2\n', { url: 'a', storage: 'b', storageUnit: 'mb', quotaUnit: 'mb', excludeOneDrive: true }, { t: NOW, fileName: 'x.csv' }, GE.DEFAULT_SETTINGS), /No usable site rows/);
+});
+
+// ---------------------------------------------------------------- v1.3: activity fix, bulk remove, org-wide, site states
+const AA = src('services/AdminApi');
+
+test('activity: ChangeQuery no longer sends Feature, and drops any property SharePoint rejects, then retries', async () => {
+  const sent = [];
+  const c = make(async (m, url, cfg, o) => {
+    const body = JSON.parse(o.body);
+    sent.push(Object.keys(body.query));
+    if ('Navigation' in body.query) {
+      return json({ error: { code: '-1, Microsoft.SharePoint.Client.InvalidClientQueryException', message: { lang: 'en-US', value: "The property 'Navigation' does not exist on type 'SP.ChangeQuery'. Make sure to only use property names that are defined by the type." } } }, 400);
+    }
+    return json({ d: { results: [{ __metadata: { type: 'SP.ChangeGroup' }, ChangeType: 13, GroupId: 4, Time: '2026-10-01T00:00:00Z' }] } });
+  });
+  const rows = await new AdminApi(c).getChanges(ORIGIN, 'SITE', 7);
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(sent.length, 2, 'one retry');
+  assert.ok(sent.every((k) => k.indexOf('Feature') < 0), 'Feature is never sent');
+  assert.ok(sent[1].indexOf('Navigation') < 0 && sent[1].indexOf('ChangeTokenStart') >= 0, 'only the rejected property is dropped');
+});
+
+test('activity: other errors are not retried, and the retry loop is bounded', async () => {
+  let n = 0;
+  const denied = make(async () => { n++; return json({ error: { message: { value: 'Access denied.' } } }, 403); });
+  await assert.rejects(() => new AdminApi(denied).getChanges(ORIGIN, 'S', 7), /Access denied/);
+  assert.strictEqual(n, 1);
+  let m = 0;
+  const props = ['Add', 'Update', 'DeleteObject', 'Restore', 'Rename', 'Site'];
+  const stubborn = make(async () => { const p = props[m++ % props.length]; return json({ error: { message: { value: `The property '${p}' does not exist on type 'SP.ChangeQuery'.` } } }, 400); });
+  await assert.rejects(() => new AdminApi(stubborn).getChanges(ORIGIN, 'S', 7), /does not exist/);
+  assert.ok(m <= 5, 'gave up after ' + m + ' attempts');
+  assert.strictEqual(AA.unsupportedChangeQueryProperty({ status: 400, message: "400: The property 'Feature' does not exist on type 'SP.ChangeQuery'." }), 'Feature');
+  assert.strictEqual(AA.unsupportedChangeQueryProperty({ status: 500, message: "The property 'Feature' does not exist on type 'SP.ChangeQuery'." }), undefined);
+});
+
+test('people: matchUsers finds users by e-mail, claims login or account name; reports the rest', () => {
+  const users = [
+    { id: 1, title: 'Ann', email: 'Ann@Contoso.com', loginName: 'i:0#.f|membership|ann@contoso.com', principalType: 1, isSiteAdmin: false, kind: 'Member' },
+    { id: 2, title: 'Guest', email: '', loginName: 'i:0#.f|membership|bob_fabrikam.com#ext#@contoso.onmicrosoft.com', principalType: 1, isSiteAdmin: false, kind: 'Guest' },
+    { id: 3, title: 'Everyone', email: '', loginName: 'c:0(.s|true', principalType: 4, isSiteAdmin: false, kind: 'OrgWide' }
+  ];
+  const r = AA.matchUsers(['ann@contoso.com', 'ANN@contoso.com', 'bob_fabrikam.com#ext#@contoso.onmicrosoft.com', 'c:0(.s|true', 'nobody@x.com'], users);
+  assert.deepStrictEqual(r.matched.map((u) => u.id), [1, 2, 3]);
+  assert.deepStrictEqual(r.unmatched, ['nobody@x.com']);
+  assert.ok(AA.isOrgWideLogin('c:0-.f|rolemanager|spo-grid-all-users/abc') && AA.isOrgWideLogin('c:0(.s|true'));
+  assert.ok(!AA.isOrgWideLogin('i:0#.f|membership|a@b.com'));
+});
+
+test('people: removing a direct permission deletes the role assignment of that principal', async () => {
+  let seen;
+  const c = make(async (m, url, cfg, o) => { seen = { url: decodeURIComponent(url), o }; return new Response(null, { status: 204 }); });
+  await new AdminApi(c).removeRoleAssignment(ORIGIN + '/sites/a', 17);
+  assert.ok(seen.url.endsWith('/sites/a/_api/web/roleassignments/getbyprincipalid(17)'));
+  assert.strictEqual(seen.o.headers['X-HTTP-Method'], 'DELETE');
+});
+
+test('import: archive values and deleted values are recognised', () => {
+  ['FullyArchived', 'RecentlyArchived', 'Reactivating', 'True', 'Archived', '2026-01-02'].forEach((v) => assert.ok(SI.isArchivedValue(v), v));
+  ['', 'NotArchived', 'Not Archived', 'none', 'false', '0', 'No', 'null'].forEach((v) => assert.ok(!SI.isArchivedValue(v), v));
+  assert.ok(SI.isDeletedValue('2026-01-01') && !SI.isDeletedValue('') && !SI.isDeletedValue('null'));
+  const m = SI.detectMapping(['SiteUrl', 'StorageUsed', 'ArchiveStatus', 'TimeDeleted'], [['SiteUrl', 'StorageUsed', 'ArchiveStatus', 'TimeDeleted']]);
+  assert.strictEqual(m.archived, 'ArchiveStatus');
+  assert.strictEqual(m.includeDeleted, true);
+});
+
+test('import: sites are kept as active / archived / deleted; deleted can still be skipped', () => {
+  const O = 'https://t.sharepoint.com';
+  const rows = [
+    ['SiteUrl', 'StorageUsed', 'ArchiveStatus', 'TimeDeleted'],
+    [O + '/sites/a', '10', 'NotArchived', ''],
+    [O + '/sites/b', '20', 'FullyArchived', ''],
+    [O + '/sites/c', '30', '', '2026-09-01'],
+    [O + '/sites/d', '40', 'RecentlyArchived', '2026-09-02']
+  ];
+  const map = { url: 'SiteUrl', storage: 'StorageUsed', storageUnit: 'mb', quotaUnit: 'mb', archived: 'ArchiveStatus', deleted: 'TimeDeleted', includeDeleted: true, excludeOneDrive: true };
+  const r = SI.buildSnapshot(rows, map, O, 1);
+  assert.deepStrictEqual(r.data.s, [0, 1, 2, 2], 'deleted wins over archived');
+  assert.strictEqual(r.stats.kept, 4);
+  assert.strictEqual(r.stats.archived, 1);
+  assert.strictEqual(r.stats.deleted, 2);
+  const skip = SI.buildSnapshot(rows, Object.assign({}, map, { includeDeleted: false }), O, 1);
+  assert.deepStrictEqual(skip.data.u, ['/sites/a', '/sites/b']);
+  assert.strictEqual(skip.stats.deleted, 2);
+});
+
+test('tenant: segments total each state; deleted sites never raise growth alerts', () => {
+  const O = 'https://t.sharepoint.com';
+  const mk = (t, gbA, gbB, gbC) => ({ t, u: ['/sites/a', '/sites/b', '/sites/c'], b: [gbA, gbB, gbC].map((g) => g * GBYTES), q: [0, 0, 0], s: [0, 1, 2] });
+  const snaps = [mk(NOW - 7 * D, 10, 50, 30), mk(NOW, 40, 51, 90)];
+  const s = TG.analyzeTenant(snaps, GE.DEFAULT_SETTINGS, {}, O, NOW);
+  assert.deepStrictEqual([s.segments.active.sites, s.segments.archived.sites, s.segments.deleted.sites], [1, 1, 1]);
+  assert.strictEqual(s.segments.deleted.bytes, 90 * GBYTES);
+  assert.strictEqual(s.segments.active.bytes, 40 * GBYTES);
+  assert.deepStrictEqual(s.anomalies.map((a) => a.url), [O + '/sites/a'], 'the deleted site grew 60 GB but is not alerted');
+  assert.ok(s.largest.every((r) => r.state !== 2));
+  assert.strictEqual(s.anomalies[0].state, 0);
+  const old = TG.analyzeTenant([{ t: NOW, u: ['/x'], b: [1], q: [0] }], GE.DEFAULT_SETTINGS, {}, O, NOW);
+  assert.strictEqual(old.segments.active.sites, 1, 'snapshots without states count as active');
 });
 
 // ---------------------------------------------------------------- runner

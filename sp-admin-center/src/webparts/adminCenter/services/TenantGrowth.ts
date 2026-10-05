@@ -26,6 +26,14 @@ export interface ISummaryRow {
   growth7Pct: number;
   daysToFull?: number;
   spark: number[];
+  /** 0 active, 1 archived, 2 deleted (from the latest snapshot). */
+  state?: number;
+}
+
+export interface ISegment {
+  sites: number;
+  bytes: number;
+  growth7Bytes: number;
 }
 
 export interface ITenantSummary {
@@ -38,6 +46,8 @@ export interface ITenantSummary {
   anomalies: ISummaryRow[];
   largest: ISummaryRow[];
   growers: ISummaryRow[];
+  /** Totals per site state; absent in summaries saved before v1.3. */
+  segments?: { active: ISegment; archived: ISegment; deleted: ISegment };
 }
 
 export const MAX_ANOMALIES = 300;
@@ -74,7 +84,9 @@ const rank: { [k in GrowthStatus]: number } = { baseline: 0, ok: 1, warning: 2, 
 export function analyzeTenant(snaps: ISnapshotData[], settings: IGrowthSettings, titles: { [pathLower: string]: string }, origin: string, now: number): ITenantSummary {
   const sorted = snaps.slice().sort((a, b) => a.t - b.t);
   const latest = sorted[sorted.length - 1];
-  const summary: ITenantSummary = { at: now, sites: 0, totalBytes: 0, growth7Bytes: 0, basedOnSnapshots: sorted.length, anomalies: [], largest: [], growers: [] };
+  const seg = (): ISegment => ({ sites: 0, bytes: 0, growth7Bytes: 0 });
+  const segments = { active: seg(), archived: seg(), deleted: seg() };
+  const summary: ITenantSummary = { at: now, sites: 0, totalBytes: 0, growth7Bytes: 0, basedOnSnapshots: sorted.length, anomalies: [], largest: [], growers: [], segments };
   if (!latest) {
     return summary;
   }
@@ -99,13 +111,22 @@ export function analyzeTenant(snaps: ISnapshotData[], settings: IGrowthSettings,
     }
     const url = path.charAt(0) === '/' ? (path === '/' ? origin : origin + path) : path;
     const title = titles[key] || path.substring(path.lastIndexOf('/') + 1) || url;
+    const state = latest.s && latest.s[i] ? latest.s[i] : 0;
     const a = analyzeSite(url, title, points, settings);
+    const bucket = state === 2 ? segments.deleted : state === 1 ? segments.archived : segments.active;
+    bucket.sites++;
+    bucket.bytes += a.latestBytes;
     summary.sites++;
     summary.totalBytes += a.latestBytes;
     if (a.status !== 'baseline') {
+      bucket.growth7Bytes += a.growth7Bytes;
       summary.growth7Bytes += a.growth7Bytes;
     }
-    rows.push({ url, title, latestBytes: a.latestBytes, fraction: a.fraction, status: a.status, reasons: a.reasons, growth7Bytes: a.growth7Bytes, growth7Pct: a.growth7Pct, daysToFull: a.daysToFull, spark: a.spark });
+    if (state === 2) {
+      // Deleted sites are counted in their group but never raise growth alerts.
+      continue;
+    }
+    rows.push({ url, title, latestBytes: a.latestBytes, fraction: a.fraction, status: a.status, reasons: a.reasons, growth7Bytes: a.growth7Bytes, growth7Pct: a.growth7Pct, daysToFull: a.daysToFull, spark: a.spark, state });
   }
   summary.anomalies = rows
     .filter((r) => r.status === 'warning' || r.status === 'critical')

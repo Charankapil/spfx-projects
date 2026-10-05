@@ -4,11 +4,11 @@ import { parseCsv } from '../../services/csv';
 import { downloadCsv } from '../../services/exportCsv';
 import { formatPercent, formatBytes, formatCompact, formatDateTime, relativeTime } from '../../services/format';
 import { IGrowthDoc, IGrowthSettings } from '../../services/GrowthEngine';
-import { ISummaryRow } from '../../services/TenantGrowth';
+import { ISegment, ISummaryRow } from '../../services/TenantGrowth';
 import { ITenantIndex } from '../../services/TenantStore';
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
-import { BarList, Card, Empty, ErrorBar, Kpi, Loading, Sparkline } from '../shared/ui';
+import { BarList, Card, Donut, Empty, ErrorBar, Kpi, Loading, Pill, Sparkline } from '../shared/ui';
 import { growthSummary, statusPill } from './growthShared';
 import { ImportPanel } from './ImportPanel';
 
@@ -116,7 +116,16 @@ export const TenantTab: React.FC<{ doc: IGrowthDoc; index?: ITenantIndex; indexE
       )
     },
     { key: 'trend', name: 'Trend', minWidth: 120, onRender: (s: ISummaryRow) => <Sparkline values={s.spark} color={s.status === 'critical' ? '#c4314b' : '#b87400'} /> },
-    { key: 'status', name: 'Status', minWidth: 100, onRender: (s: ISummaryRow) => statusPill(s) },
+    {
+      key: 'status',
+      name: 'Status',
+      minWidth: 110,
+      onRender: (s: ISummaryRow) => (
+        <span>
+          {statusPill(s)} {s.state === 1 && <Pill kind="info">Archived</Pill>}
+        </span>
+      )
+    },
     { key: 'why', name: 'Why', minWidth: 260, isResizable: true, onRender: (s: ISummaryRow) => <span className={styles.muted}>{growthSummary(s)}</span> },
     {
       key: 'act',
@@ -175,6 +184,11 @@ export const TenantTab: React.FC<{ doc: IGrowthDoc; index?: ITenantIndex; indexE
             {last && Date.now() - last.getTime() > 8 * 86400000 && (
               <MessageBar messageBarType={MessageBarType.warning}>The newest snapshot is more than 8 days old, so recent growth may not show yet. Import the latest CSV.</MessageBar>
             )}
+            {summary.segments ? (
+              <SegmentsCard segments={summary.segments} total={summary.totalBytes} />
+            ) : (
+              <MessageBar messageBarType={MessageBarType.info}>Press &ldquo;Recalculate with current thresholds&rdquo; (or import again) to see storage split by active, archived and deleted sites.</MessageBar>
+            )}
             <div className={styles.kpiRow}>
               <Kpi label="Sites" value={formatCompact(summary.sites)} sub="in the latest snapshot" />
               <Kpi label="Total storage" value={formatBytes(summary.totalBytes)} />
@@ -210,5 +224,47 @@ export const TenantTab: React.FC<{ doc: IGrowthDoc; index?: ITenantIndex; indexE
 
       <ImportPanel open={importOpen} onDismiss={() => setImportOpen(false)} index={index} settings={doc.settings} onImported={() => reload()} />
     </div>
+  );
+};
+
+const STATE_COLORS = { active: '#2563eb', archived: '#0d9488', deleted: '#b45309' };
+
+/** Storage split by site state: where the space actually goes, and what deleting or archiving could free. */
+const SegmentsCard: React.FC<{ segments: { active: ISegment; archived: ISegment; deleted: ISegment }; total: number }> = ({ segments, total }) => {
+  const parts: Array<{ key: 'active' | 'archived' | 'deleted'; label: string; hint: string }> = [
+    { key: 'active', label: 'Active sites', hint: 'in normal use' },
+    { key: 'archived', label: 'Archived sites', hint: 'Microsoft 365 Archive' },
+    { key: 'deleted', label: 'Deleted sites', hint: 'still in the site recycle bin' }
+  ];
+  const pct = (b: number): string => (total > 0 ? `${((b / total) * 100).toFixed(b / total < 0.1 ? 1 : 0)}%` : '-');
+  return (
+    <Card title="Storage by site state">
+      <div className={styles.donutWrap} style={{ alignItems: 'stretch' }}>
+        <Donut
+          slices={parts.map((p) => ({ label: p.label, value: segments[p.key].bytes, color: STATE_COLORS[p.key] }))}
+          centre={formatBytes(total)}
+          centreSub="in total"
+          format={formatBytes}
+        />
+        <div className={styles.kpiRow} style={{ flex: 1, minWidth: 260 }}>
+          {parts.map((p) => {
+            const s = segments[p.key];
+            return (
+              <div key={p.key} className={styles.kpi} style={{ borderTop: `3px solid ${STATE_COLORS[p.key]}` }}>
+                <div className={styles.kpiLabel}>{p.label}</div>
+                <div className={styles.kpiValue}>{formatCompact(s.sites)}</div>
+                <div className={styles.kpiSub}>
+                  {formatBytes(s.bytes)} · {pct(s.bytes)} of storage
+                </div>
+                <div className={styles.kpiSub}>
+                  {s.growth7Bytes >= 0 ? '+' : '-'}
+                  {formatBytes(Math.abs(s.growth7Bytes))} / week · {p.hint}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
   );
 };

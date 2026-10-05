@@ -7,15 +7,26 @@
   "manifestVersion": 2,
   "requiresCustomScript": false,
   "supportsThemeVariants": true,
-  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
   "preconfiguredEntries": [
     {
       "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
-      "group": { "default": "Other" },
-      "title": { "default": "SharePoint Admin Center" },
-      "description": { "default": "One dashboard for SharePoint admins: sites, people and permissions, content, storage, recycle bin, activity and health. Runs as the signed-in user, no app registration." },
-      "officeFabricIconFontName": "Admin",
-      "properties": { "heading": "SharePoint Admin Center" }
+      "group": {
+        "default": "Other"
+      },
+      "title": {
+        "default": "SharePoint Admin Center"
+      },
+      "description": {
+        "default": "One dashboard for SharePoint admins: sites, people and permissions, content, storage, recycle bin, activity and health. Runs as the signed-in user, no app registration."
+      },
+      "properties": {
+        "heading": "SharePoint Admin Center"
+      },
+      "iconImageUrl": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA5NiA5NiIgd2lkdGg9Ijk2IiBoZWlnaHQ9Ijk2IiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IlNoYXJlUG9pbnQgQWRtaW4gQ2VudGVyIj4gPGRlZnM+IDxsaW5lYXJHcmFkaWVudCBpZD0ic3BhY0JnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+IDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzNBM0ZEOSIvPiA8c3RvcCBvZmZzZXQ9IjAuNTUiIHN0b3AtY29sb3I9IiMyNTYzRUIiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMEVBNUEwIi8+IDwvbGluZWFyR3JhZGllbnQ+IDxsaW5lYXJHcmFkaWVudCBpZD0ic3BhY0JhciIgeDE9IjAiIHkxPSIxIiB4Mj0iMCIgeTI9IjAiPiA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMzQTNGRDkiLz4gPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMTRCOEE2Ii8+IDwvbGluZWFyR3JhZGllbnQ+IDxmaWx0ZXIgaWQ9InNwYWNTaGFkb3ciIHg9Ii0yMCUiIHk9Ii0yMCUiIHdpZHRoPSIxNDAlIiBoZWlnaHQ9IjE0MCUiPiA8ZmVEcm9wU2hhZG93IGR4PSIwIiBkeT0iMiIgc3RkRGV2aWF0aW9uPSIyLjIiIGZsb29kLWNvbG9yPSIjMEIxQjREIiBmbG9vZC1vcGFjaXR5PSIwLjI4Ii8+IDwvZmlsdGVyPiA8L2RlZnM+IDxyZWN0IHdpZHRoPSI5NiIgaGVpZ2h0PSI5NiIgcng9IjIyIiBmaWxsPSJ1cmwoI3NwYWNCZykiLz4gPHBhdGggZD0iTTAgMjJBMjIgMjIgMCAwIDEgMjIgMEg3NEEyMiAyMiAwIDAgMSA5NiAyMlYzOEM2OCAyOCAyOCAyOCAwIDQ0WiIgZmlsbD0iI0ZGRkZGRiIgb3BhY2l0eT0iMC4xMCIvPiA8cGF0aCBkPSJNNDggMTQgNzQgMjMuNVY0NUM3NCA2Mi44IDYzIDc1LjQgNDggODIgMzMgNzUuNCAyMiA2Mi44IDIyIDQ1VjIzLjVaIiBmaWxsPSIjRkZGRkZGIiBmaWx0ZXI9InVybCgjc3BhY1NoYWRvdykiLz4gPHJlY3QgeD0iMzMiIHk9IjUxIiB3aWR0aD0iOCIgaGVpZ2h0PSIxNCIgcng9IjIuNiIgZmlsbD0idXJsKCNzcGFjQmFyKSIvPiA8cmVjdCB4PSI0NCIgeT0iNDIiIHdpZHRoPSI4IiBoZWlnaHQ9IjIzIiByeD0iMi42IiBmaWxsPSJ1cmwoI3NwYWNCYXIpIi8+IDxyZWN0IHg9IjU1IiB5PSIzMyIgd2lkdGg9IjgiIGhlaWdodD0iMzIiIHJ4PSIyLjYiIGZpbGw9InVybCgjc3BhY0JhcikiLz4gPGNpcmNsZSBjeD0iNjYuNSIgY3k9IjI2LjUiIHI9IjUiIGZpbGw9IiNGNTlFMEIiIHN0cm9rZT0iI0ZGRkZGRiIgc3Ryb2tlLXdpZHRoPSIyIi8+IDwvc3ZnPiA="
     }
   ]
 }

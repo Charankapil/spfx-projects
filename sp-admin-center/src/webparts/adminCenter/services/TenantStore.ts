@@ -131,7 +131,7 @@ export class TenantStore {
     if (!d || !Array.isArray(d.u) || !Array.isArray(d.b)) {
       throw new Error(`Snapshot ${meta.file} is damaged.`);
     }
-    return { t: meta.t, u: d.u, b: d.b, q: Array.isArray(d.q) ? d.q : [] };
+    return { t: meta.t, u: d.u, b: d.b, q: Array.isArray(d.q) ? d.q : [], s: Array.isArray(d.s) ? d.s : undefined };
   }
 
   // ---- finding the CSV -------------------------------------------------------
@@ -194,7 +194,7 @@ export class TenantStore {
     const near = index.snapshots.filter((s) => Math.abs(s.t - when.t) < MIN_GAP_SEC);
     const file = `${SNAP_PREFIX}${when.t}.json`;
     say('Saving the snapshot…');
-    await this.writeFile(file, JSON.stringify({ v: 1, u: built.data.u, b: built.data.b, q: built.data.q }));
+    await this.writeFile(file, JSON.stringify({ v: 1, u: built.data.u, b: built.data.b, q: built.data.q, s: built.data.s }));
 
     const meta: ISnapshotMeta = { t: when.t, file, sites: built.data.u.length, bytes: built.data.b.reduce((s, x) => s + x, 0), source: when.fileName };
     const kept = index.snapshots.filter((s) => near.indexOf(s) < 0);

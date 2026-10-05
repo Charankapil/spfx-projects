@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo-wordmark.svg" alt="SharePoint Admin Center" width="640"></p>
+
 # SharePoint Admin Center
 
 **One dashboard for everyday SharePoint administration, running as you.**
@@ -10,7 +12,7 @@ tenant-admin consent. One `.sppkg`, and whatever permissions you already have.
 | --- | --- |
 | **Dashboard** | Storage vs quota, libraries / items / people / guests / subsites, health score, what needs attention, quick actions |
 | **Sites** | Inventory of every site collection you can see (type, created, last activity, inactive 90/180/365+ days, M365-group or not), CSV export, **Manage** any site from the same screen |
-| **People & permissions** | SharePoint groups and their members (add / remove), all users and guests, make or remove site collection admin, remove a user from the site, who has direct access, "what can this person do here?" checker, **bulk add** from pasted e-mail addresses |
+| **People & permissions** | SharePoint groups and their members (add / remove), all users and guests, make or remove site collection admin, remove a user from the site, who has direct access, "what can this person do here?" checker, **bulk add** from pasted e-mail addresses, **bulk remove** a pasted list of people from the site collection (preview first; never removes you; site admins only when you allow it), and an **Everyone groups** tab that shows where *Everyone* / *Everyone except external users* have access (SharePoint groups, direct site permission) and removes them from each place or from the whole site collection |
 | **Lists & libraries** | Item counts, view-threshold warnings, version history and search visibility toggles (single or bulk), unique-permission flags, CSV export |
 | **Storage insights** | Files by type, files untouched for 1 / 2 / 3+ years, largest files (top 50 above 10 MB to 1 GB), all from the search index |
 | **Storage growth** | Snapshots the storage of a watchlist of site collections over time, draws a trend per site, and **flags sites growing unusually fast** (also shown as a pop-up on the Dashboard and a badge in the nav). Thresholds are adjustable and shared |
@@ -21,6 +23,12 @@ tenant-admin consent. One `.sppkg`, and whatever permissions you already have.
 
 **Switch site** (or **Manage** in Sites) points every section at another site or
 subsite on the same tenant, so one page administers many sites.
+
+## Logo
+
+`assets/logo.svg` (app tile), `assets/logo-wordmark.svg` (README / banner), `assets/logo-512.png`,
+and `sharepoint/images/AppIcon.png` (App Catalog icon). The web part's toolbox icon is the
+same mark, embedded in the manifest.
 
 ## Throttling: designed in, not bolted on
 
@@ -47,6 +55,12 @@ Everything goes through one client (`core/SPClient.ts`):
 Two sources feed the same alert rules, the Dashboard pop-up and the nav badge.
 
 ### All sites: import the CSV your flow writes (built for 17,000+ sites)
+
+Storage is shown **by site state**: active, archived (Microsoft 365 Archive) and deleted
+(still in the site recycle bin), with sites, storage, share and weekly growth for each.
+Choose the archive status and deleted columns in the mapping (detected automatically when
+named like `ArchiveStatus` / `TimeDeleted`). Deleted sites are counted but never raise
+growth alerts.
 
 If a flow (Power Automate, PowerShell, anything) saves the SharePoint admin center
 site list to a CSV in a library on this site, **Storage growth > All sites > Import CSV**

@@ -28,7 +28,8 @@ export default class AdminCenterWebPart extends BaseClientSideWebPart<IAdminCent
       homeWebUrl: this.context.pageContext.web.absoluteUrl,
       homeSiteUrl: this.context.pageContext.site.absoluteUrl,
       homeTitle: this.context.pageContext.web.title,
-      heading: this.properties.heading || strings.DefaultHeading
+      heading: this.properties.heading || strings.DefaultHeading,
+      currentUser: this.context.pageContext.user.email || this.context.pageContext.user.loginName || ''
     });
     ReactDom.render(element, this.domElement);
   }

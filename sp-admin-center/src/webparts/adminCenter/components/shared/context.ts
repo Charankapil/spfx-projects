@@ -21,6 +21,8 @@ export interface IAdminContext {
   tenant: TenantStore;
   /** Web the page lives on (used for tenant-wide search). */
   homeWebUrl: string;
+  /** Signed-in user's e-mail / UPN (lower-case), so bulk actions never remove you. */
+  currentUser: string;
   target: ITarget;
   setTarget: (t: ITarget) => void;
   openView: (v: ViewKey) => void;
