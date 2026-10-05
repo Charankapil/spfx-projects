@@ -2,7 +2,9 @@ import * as React from 'react';
 import { DefaultButton, Icon, MessageBar, MessageBarType } from '@fluentui/react';
 import styles from '../AdminCenter.module.scss';
 
-export const PALETTE = ['#2563eb', '#e07b00', '#0d9488', '#9333ea', '#d6336c', '#65a30d', '#b45309', '#64748b'];
+/** Categorical series colours in a fixed, colour-blind-validated order (never cycled or re-ordered). */
+export const SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+export const PALETTE = SERIES;
 
 export const Loading: React.FC<{ text?: string }> = ({ text }) => (
   <div className={styles.spinnerWrap} role="status" aria-live="polite">
@@ -59,6 +61,30 @@ export const Kpi: React.FC<{ label: string; value: string; sub?: string; onClick
     </button>
   ) : (
     <div className={styles.kpi}>{inner}</div>
+  );
+};
+
+/** Headline figure with an icon chip; optionally clickable. Tone colours the chip only (status never by colour alone). */
+export const StatTile: React.FC<{ icon: string; label: string; value: string; sub?: string; tone?: 'brand' | 'good' | 'warning' | 'critical'; onClick?: () => void }> = ({ icon, label, value, sub, tone, onClick }) => {
+  const toneCls = tone === 'brand' ? styles.statBrand : tone === 'good' ? styles.statGood : tone === 'warning' ? styles.statWarning : tone === 'critical' ? styles.statCritical : '';
+  const inner = (
+    <>
+      <span className={styles.statIcon}>
+        <Icon iconName={icon} aria-hidden="true" />
+      </span>
+      <span className={styles.kpiLabel}>{label}</span>
+      <span className={styles.statValue} title={value}>
+        {value}
+      </span>
+      {sub && <span className={styles.kpiSub}>{sub}</span>}
+    </>
+  );
+  return onClick ? (
+    <button type="button" className={`${styles.stat} ${styles.statAction} ${toneCls}`} onClick={onClick}>
+      {inner}
+    </button>
+  ) : (
+    <div className={`${styles.stat} ${toneCls}`}>{inner}</div>
   );
 };
 

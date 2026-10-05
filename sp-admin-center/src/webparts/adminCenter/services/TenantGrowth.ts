@@ -139,3 +139,159 @@ export function analyzeTenant(snaps: ISnapshotData[], settings: IGrowthSettings,
     .slice(0, TOP_N);
   return summary;
 }
+
+// ---- tenant inventory overview (the "tenant dashboard") -----------------------------
+
+export interface IBucket {
+  label: string;
+  count: number;
+  bytes: number;
+}
+
+export interface ITopSite {
+  url: string;
+  title: string;
+  bytes: number;
+  /** Per-mille of the site's own quota (0 unknown). */
+  pm: number;
+  state: number;
+  type: string;
+}
+
+export interface ITenantOverview {
+  at: number;
+  /** Snapshot this overview describes. */
+  snapshotT: number;
+  sites: number;
+  activeSites: number;
+  archivedSites: number;
+  deletedSites: number;
+  activeBytes: number;
+  archivedBytes: number;
+  deletedBytes: number;
+  /** Sites connected to Teams; undefined when the CSV has no Teams column. */
+  teamsSites?: number;
+  /** Sites on a group-connected template; undefined when the CSV has no template column. */
+  groupSites?: number;
+  byType?: IBucket[];
+  sizeBands: IBucket[];
+  activity?: IBucket[];
+  top: ITopSite[];
+}
+
+const GB = 1073741824;
+export const SIZE_BANDS: Array<{ label: string; max: number }> = [
+  { label: 'Under 1 GB', max: GB },
+  { label: '1 – 10 GB', max: 10 * GB },
+  { label: '10 – 100 GB', max: 100 * GB },
+  { label: '100 GB – 1 TB', max: 1024 * GB },
+  { label: '1 TB and more', max: Infinity }
+];
+export const ACTIVITY_BANDS: Array<{ label: string; maxDays: number }> = [
+  { label: 'Last 30 days', maxDays: 30 },
+  { label: '1 – 3 months', maxDays: 90 },
+  { label: '3 – 6 months', maxDays: 180 },
+  { label: '6 – 12 months', maxDays: 365 },
+  { label: 'Over a year', maxDays: Infinity }
+];
+export const TOP_SITES = 50;
+
+/**
+ * Counts and breakdowns over every site in one snapshot. Deleted sites are counted in
+ * their own figures but left out of the type / size / activity breakdowns and the top list.
+ */
+export function summarizeInventory(
+  snap: ISnapshotData,
+  titles: { [pathLower: string]: string },
+  origin: string,
+  now: number,
+  typeOf: (template: string) => string
+): ITenantOverview {
+  const o: ITenantOverview = {
+    at: now,
+    snapshotT: snap.t,
+    sites: 0,
+    activeSites: 0,
+    archivedSites: 0,
+    deletedSites: 0,
+    activeBytes: 0,
+    archivedBytes: 0,
+    deletedBytes: 0,
+    sizeBands: SIZE_BANDS.map((b) => ({ label: b.label, count: 0, bytes: 0 })),
+    top: []
+  };
+  const hasTpl = !!(snap.tp && snap.tpl);
+  const hasTeams = !!snap.tm;
+  const hasActivity = !!snap.la;
+  const types: { [label: string]: IBucket } = {};
+  const activity = hasActivity ? ACTIVITY_BANDS.map((b) => ({ label: b.label, count: 0, bytes: 0 })).concat([{ label: 'Unknown', count: 0, bytes: 0 }]) : undefined;
+  if (hasTeams) {
+    o.teamsSites = 0;
+  }
+  if (hasTpl) {
+    o.groupSites = 0;
+  }
+  const today = Math.floor((now * 1000) / 86400000);
+  const candidates: ITopSite[] = [];
+  for (let i = 0; i < snap.u.length; i++) {
+    const state = snap.s && snap.s[i] ? snap.s[i] : 0;
+    const bytes = snap.b[i] || 0;
+    o.sites++;
+    if (state === 2) {
+      o.deletedSites++;
+      o.deletedBytes += bytes;
+      continue;
+    }
+    if (state === 1) {
+      o.archivedSites++;
+      o.archivedBytes += bytes;
+    } else {
+      o.activeSites++;
+      o.activeBytes += bytes;
+    }
+    const template = hasTpl ? (snap.tpl as string[])[(snap.tp as number[])[i]] || '' : '';
+    const type = hasTpl ? typeOf(template) : '';
+    if (hasTpl) {
+      const t = (types[type] = types[type] || { label: type, count: 0, bytes: 0 });
+      t.count++;
+      t.bytes += bytes;
+      if (template.indexOf('GROUP') === 0 || template.indexOf('TEAMCHANNEL') === 0) {
+        o.groupSites = (o.groupSites || 0) + 1;
+      }
+    }
+    if (hasTeams && (snap.tm as number[])[i] === 1) {
+      o.teamsSites = (o.teamsSites || 0) + 1;
+    }
+    for (let k = 0; k < SIZE_BANDS.length; k++) {
+      if (bytes < SIZE_BANDS[k].max) {
+        o.sizeBands[k].count++;
+        o.sizeBands[k].bytes += bytes;
+        break;
+      }
+    }
+    if (activity) {
+      const day = (snap.la as number[])[i] || 0;
+      const age = day ? today - day : -1;
+      const k = age < 0 ? ACTIVITY_BANDS.length : ACTIVITY_BANDS.findIndex((b) => age < b.maxDays);
+      activity[k].count++;
+      activity[k].bytes += bytes;
+    }
+    const path = snap.u[i];
+    candidates.push({
+      url: path.charAt(0) === '/' ? (path === '/' ? origin : origin + path) : path,
+      title: titles[path.toLowerCase()] || path.substring(path.lastIndexOf('/') + 1) || path,
+      bytes,
+      pm: snap.q[i] || 0,
+      state,
+      type
+    });
+  }
+  o.top = candidates.sort((a, b) => b.bytes - a.bytes).slice(0, TOP_SITES);
+  if (hasTpl) {
+    o.byType = Object.keys(types)
+      .map((k) => types[k])
+      .sort((a, b) => b.count - a.count);
+  }
+  o.activity = activity;
+  return o;
+}

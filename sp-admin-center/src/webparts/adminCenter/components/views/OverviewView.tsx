@@ -59,7 +59,7 @@ export const OverviewView: React.FC = () => {
 
   return (
     <div className={styles.view}>
-      <ViewHeader title="Dashboard" hint={`${web.title} · ${web.url}`}>
+      <ViewHeader title="Site dashboard" hint={`${web.title} · ${web.url}`}>
         <DefaultButton iconProps={{ iconName: 'Refresh' }} onClick={ctx.reloadAll} disabled={data.loading}>
           Refresh
         </DefaultButton>

@@ -278,6 +278,11 @@ export const ImportPanel: React.FC<{ open: boolean; onDismiss: () => void; index
             <Dropdown className={styles.field} label="Archive status column (optional)" selectedKey={mapping.archived || ''} options={colOptions(true)} onChange={(_, o) => o && set({ archived: String(o.key) || undefined })} />
           </div>
           <div className={styles.filters}>
+            <Dropdown className={styles.field} label="Template column (optional)" selectedKey={mapping.template || ''} options={colOptions(true)} onChange={(_, o) => o && set({ template: String(o.key) || undefined })} />
+            <Dropdown className={styles.field} label="Teams-connected column (optional)" selectedKey={mapping.teams || ''} options={colOptions(true)} onChange={(_, o) => o && set({ teams: String(o.key) || undefined })} />
+            <Dropdown className={styles.field} label="Last activity column (optional)" selectedKey={mapping.lastActivity || ''} options={colOptions(true)} onChange={(_, o) => o && set({ lastActivity: String(o.key) || undefined })} />
+          </div>
+          <div className={styles.filters}>
             <Toggle label="Skip OneDrive sites" inlineLabel checked={mapping.excludeOneDrive} onChange={(_, c) => set({ excludeOneDrive: !!c })} />
             <Toggle label="Keep deleted sites as their own group" inlineLabel checked={mapping.includeDeleted !== false} onChange={(_, c) => set({ includeDeleted: !!c })} disabled={!mapping.deleted} />
             <TextField className={styles.field} label="Snapshot date (leave empty to use the file's modified date)" type="date" value={dateOverride} onChange={(_, v) => setDateOverride(v || '')} />

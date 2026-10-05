@@ -271,7 +271,7 @@ const SitePicker: React.FC<{ open: boolean; onDismiss: () => void; trackedUrls: 
     setBusy(true);
     setError(undefined);
     try {
-      const r = await ctx.search.listSites(ctx.homeWebUrl, 10);
+      const r = await ctx.search.listSites(ctx.homeWebUrl);
       setSites(r.sites);
     } catch (e) {
       setError((e as Error).message);

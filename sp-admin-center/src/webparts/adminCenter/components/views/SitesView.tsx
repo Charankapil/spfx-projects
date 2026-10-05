@@ -2,41 +2,12 @@ import * as React from 'react';
 import { DefaultButton, DetailsList, DetailsListLayoutMode, Dropdown, IColumn, MessageBar, MessageBarType, PrimaryButton, SearchBox, SelectionMode } from '@fluentui/react';
 import { ISiteRow } from '../../models';
 import { downloadCsv } from '../../services/exportCsv';
-import { daysAgo, formatDate, relativeTime } from '../../services/format';
+import { siteType } from '../../services/siteTypes';
+import { daysAgo, formatBytes, formatDate, relativeTime } from '../../services/format';
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
 import { Card, Donut, Empty, ErrorBar, Kpi, Loading, Pill, ViewHeader } from '../shared/ui';
 
-const MAX_PAGES = 10; // 10 x 500 = 5,000 sites, one search request per page
-
-export function siteType(template: string, groupConnected: boolean): string {
-  const t = (template || '').toUpperCase();
-  if (t.indexOf('SITEPAGEPUBLISHING') === 0) {
-    return 'Communication site';
-  }
-  if (t.indexOf('GROUP') === 0 || (t.indexOf('STS#3') === 0 && groupConnected)) {
-    return 'Team site (M365 group)';
-  }
-  if (t.indexOf('STS#3') === 0) {
-    return 'Team site (no group)';
-  }
-  if (t.indexOf('STS') === 0) {
-    return 'Classic team site';
-  }
-  if (t.indexOf('TEAMCHANNEL') === 0) {
-    return 'Teams channel site';
-  }
-  if (t.indexOf('SPSPERS') === 0) {
-    return 'OneDrive';
-  }
-  if (t.indexOf('APPCATALOG') === 0) {
-    return 'App catalog';
-  }
-  if (t.indexOf('SRCHCEN') === 0 || t.indexOf('SRCHCENTERLITE') === 0) {
-    return 'Search center';
-  }
-  return template || 'Other';
-}
 
 /**
  * Tenant inventory from the search index: up to 5,000 site collections in at
@@ -48,7 +19,9 @@ export const SitesView: React.FC = () => {
   const [sites, setSites] = React.useState<ISiteRow[] | undefined>();
   const [truncated, setTruncated] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const [page, setPage] = React.useState(0);
+  const [loaded, setLoaded] = React.useState(0);
+  const [sizes, setSizes] = React.useState<{ [urlLower: string]: number } | undefined>();
+  const [sortBySize, setSortBySize] = React.useState(false);
   const [error, setError] = React.useState<string | undefined>();
   const [text, setText] = React.useState('');
   const [type, setType] = React.useState('all');
@@ -57,12 +30,24 @@ export const SitesView: React.FC = () => {
   const load = async (): Promise<void> => {
     setBusy(true);
     setError(undefined);
-    setPage(0);
+    setLoaded(0);
     try {
       ctx.client.clearCache();
-      const r = await ctx.search.listSites(ctx.homeWebUrl, MAX_PAGES, setPage);
+      const r = await ctx.search.listSites(ctx.homeWebUrl, 100000, setLoaded);
       setSites(r.sites);
       setTruncated(r.truncated);
+      // Storage per site from the latest CSV import, if there is one (one request).
+      try {
+        const snap = await ctx.tenant.loadLatestSnapshot();
+        if (snap) {
+          const origin = (/^(https:\/\/[^/]+)/i.exec(ctx.homeWebUrl) || [''])[1];
+          const m: { [k: string]: number } = {};
+          snap.u.forEach((p, i) => (m[(p.charAt(0) === '/' ? (p === '/' ? origin : origin + p) : p).toLowerCase()] = snap.b[i]));
+          setSizes(m);
+        }
+      } catch {
+        /* storage column is optional */
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -81,7 +66,8 @@ export const SitesView: React.FC = () => {
       .sort((a, b) => b.value - a.value);
   }, [typed]);
 
-  const filtered = typed.filter((s) => {
+  const sizeOf = (s: ISiteRow): number | undefined => (sizes ? sizes[s.url.toLowerCase()] : undefined);
+  const filteredRaw = typed.filter((s) => {
     if (type !== 'all' && s.type !== type) {
       return false;
     }
@@ -95,6 +81,7 @@ export const SitesView: React.FC = () => {
     return !q || s.title.toLowerCase().indexOf(q) >= 0 || s.url.toLowerCase().indexOf(q) >= 0;
   });
 
+  const filtered = sortBySize && sizes ? filteredRaw.slice().sort((a, b) => (sizeOf(b) || 0) - (sizeOf(a) || 0)) : filteredRaw;
   const stale180 = typed.filter((s) => (daysAgo(s.lastModified) || 0) >= 180).length;
   const noGroup = typed.filter((s) => s.type === 'Team site (no group)' || s.type === 'Classic team site').length;
 
@@ -114,6 +101,22 @@ export const SitesView: React.FC = () => {
       )
     },
     { key: 'type', name: 'Type', minWidth: 140, isResizable: true, onRender: (s: ISiteRow & { type: string }) => s.type },
+    ...(sizes
+      ? [
+          {
+            key: 'size',
+            name: 'Storage',
+            minWidth: 80,
+            isSorted: sortBySize,
+            isSortedDescending: true,
+            onColumnClick: () => setSortBySize(!sortBySize),
+            onRender: (s: ISiteRow) => {
+              const b = sizeOf(s);
+              return b === undefined ? <span className={styles.muted}>-</span> : formatBytes(b);
+            }
+          } as IColumn
+        ]
+      : []),
     { key: 'created', name: 'Created', minWidth: 90, onRender: (s: ISiteRow) => formatDate(s.created) },
     {
       key: 'last',
@@ -153,8 +156,8 @@ export const SitesView: React.FC = () => {
             onClick={() =>
               downloadCsv(
                 'sites.csv',
-                ['Title', 'URL', 'Type', 'Template', 'Created', 'Last activity'],
-                filtered.map((s) => [s.title, s.url, s.type, s.template, s.created, s.lastModified])
+                ['Title', 'URL', 'Type', 'Template', 'Storage (bytes)', 'Created', 'Last activity'],
+                filtered.map((s) => [s.title, s.url, s.type, s.template, sizeOf(s), s.created, s.lastModified])
               )
             }
           >
@@ -164,18 +167,18 @@ export const SitesView: React.FC = () => {
       </ViewHeader>
 
       {error && <ErrorBar error={error} onRetry={load} />}
-      {busy && <Loading text={`Reading the search index… page ${page + 1} of up to ${MAX_PAGES}`} />}
+      {busy && <Loading text={`Reading the search index… ${loaded.toLocaleString()} sites so far (500 per request)`} />}
 
       {!sites && !busy && !error && (
         <Card>
-          <Empty text="Load the inventory to see all sites. It takes one search request per 500 sites (at most 10), paced to stay well inside SharePoint's limits." />
+          <Empty text="Load the inventory to see every site collection you can access. It takes one search request per 500 sites (about 35 for 17,000), paced to stay well inside SharePoint's limits." />
         </Card>
       )}
 
       {sites && (
         <>
           {truncated && (
-            <MessageBar messageBarType={MessageBarType.warning}>Showing the {(MAX_PAGES * 500).toLocaleString()} most recently active sites. Use the filters to narrow down.</MessageBar>
+            <MessageBar messageBarType={MessageBarType.warning}>The search index stopped returning results before the end of the list. Showing {typed.length.toLocaleString()} sites.</MessageBar>
           )}
           <div className={styles.kpiRow}>
             <Kpi label="Sites" value={typed.length.toLocaleString()} sub="visible to you" />
@@ -213,8 +216,8 @@ export const SitesView: React.FC = () => {
             </span>
           </div>
           <div className={styles.tableWrap}>
-            <DetailsList items={filtered.slice(0, 1000)} columns={columns} selectionMode={SelectionMode.none} layoutMode={DetailsListLayoutMode.justified} />
-            {filtered.length > 1000 && <div className={styles.empty}>Showing the first 1,000 matches. Narrow the filters or export the CSV for the full list.</div>}
+            {/* DetailsList renders only the rows on screen, so all 17,000+ sites scroll smoothly. */}
+            <DetailsList items={filtered} columns={columns} selectionMode={SelectionMode.none} layoutMode={DetailsListLayoutMode.justified} />
           </div>
         </>
       )}

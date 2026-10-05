@@ -29,6 +29,7 @@ import { PeopleView } from './views/PeopleView';
 import { RecycleView } from './views/RecycleView';
 import { SettingsView } from './views/SettingsView';
 import { SitesView } from './views/SitesView';
+import { TenantDashboardView } from './views/TenantDashboardView';
 import { StorageView } from './views/StorageView';
 
 export interface IAdminCenterProps {
@@ -40,17 +41,18 @@ export interface IAdminCenterProps {
   currentUser: string;
 }
 
-const NAV: Array<{ key: ViewKey; text: string; icon: string }> = [
-  { key: 'overview', text: 'Dashboard', icon: 'ViewDashboard' },
-  { key: 'sites', text: 'Sites', icon: 'Globe' },
-  { key: 'people', text: 'People & permissions', icon: 'Permissions' },
-  { key: 'content', text: 'Lists & libraries', icon: 'Library' },
+const NAV: Array<{ key: ViewKey; text: string; icon: string; section?: string }> = [
+  { key: 'overview', text: 'Site dashboard', icon: 'ViewDashboard', section: 'Overview' },
+  { key: 'tenant', text: 'Tenant dashboard', icon: 'BIDashboard' },
+  { key: 'sites', text: 'Sites', icon: 'Globe', section: 'Sites & storage' },
   { key: 'storage', text: 'Storage insights', icon: 'Database' },
   { key: 'growth', text: 'Storage growth', icon: 'AreaChart' },
+  { key: 'people', text: 'People & permissions', icon: 'Permissions', section: 'Manage' },
+  { key: 'content', text: 'Lists & libraries', icon: 'Library' },
   { key: 'recycle', text: 'Recycle bin', icon: 'RecycleBin' },
-  { key: 'activity', text: 'Activity', icon: 'History' },
+  { key: 'activity', text: 'Activity', icon: 'History', section: 'Monitor' },
   { key: 'health', text: 'Health check', icon: 'HealthSolid' },
-  { key: 'settings', text: 'Settings & log', icon: 'Settings' }
+  { key: 'settings', text: 'Settings & log', icon: 'Settings', section: 'Administration' }
 ];
 
 interface IToast {
@@ -166,6 +168,8 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
     switch (view) {
       case 'sites':
         return <SitesView />;
+      case 'tenant':
+        return <TenantDashboardView />;
       case 'people':
         return <PeopleView />;
       case 'content':
@@ -212,12 +216,23 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
               </span>
             )}
             <span className={styles.targetChip} title={target.webUrl}>
-              <Icon iconName="Link" aria-hidden="true" />
+              <Icon iconName="Globe" aria-hidden="true" />
               <span>
+                <span className={styles.targetLabel}>Managing </span>
                 <strong>{target.title}</strong>
               </span>
             </span>
-            <DefaultButton iconProps={{ iconName: 'SwitcherStartEnd' }} onClick={() => setSwitchOpen(true)}>
+            <DefaultButton
+              iconProps={{ iconName: 'SwitcherStartEnd' }}
+              onClick={() => setSwitchOpen(true)}
+              styles={{
+                root: { background: '#ffffff', borderColor: '#ffffff', color: '#0b1a3a', borderRadius: 6 },
+                rootHovered: { background: '#e8eefc', borderColor: '#e8eefc', color: '#0b1a3a' },
+                rootPressed: { background: '#dbe5fb', color: '#0b1a3a' },
+                icon: { color: '#1d4ed8' },
+                iconHovered: { color: '#1d4ed8' }
+              }}
+            >
               Switch site
             </DefaultButton>
           </div>
@@ -226,12 +241,15 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
         <div className={styles.body}>
           <nav className={styles.nav} aria-label="Administration sections">
             {NAV.map((n) => (
-              <button key={n.key} type="button" className={`${styles.navItem} ${view === n.key ? styles.navItemActive : ''}`} onClick={() => setView(n.key)} aria-current={view === n.key ? 'page' : undefined}>
+              <React.Fragment key={n.key}>
+              {n.section && <div className={styles.navSection}>{n.section}</div>}
+              <button type="button" className={`${styles.navItem} ${view === n.key ? styles.navItemActive : ''}`} onClick={() => setView(n.key)} aria-current={view === n.key ? 'page' : undefined}>
                 <Icon iconName={n.icon} aria-hidden="true" />
                 {n.text}
                 {n.key === 'growth' && growthBadge > 0 && <span className={styles.navBadge} aria-label={`${growthBadge} sites growing fast`}>{growthBadge}</span>}
                 {n.key === 'health' && badge > 0 && <span className={styles.navBadge} aria-label={`${badge} findings`}>{badge}</span>}
               </button>
+              </React.Fragment>
             ))}
           </nav>
           <main className={styles.content}>

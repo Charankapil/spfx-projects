@@ -112,26 +112,37 @@ export class SearchApi {
   // ---- Sites inventory ------------------------------------------------------
 
   /**
-   * Site collections the signed-in user can see (search is security trimmed).
-   * Paged 500 at a time, at most `maxPages` pages, each page one request.
+   * Every site collection the signed-in user can see (search is security trimmed).
+   *
+   * Pages of 500 are read in DocId order with "IndexDocId>last" in the query, which is
+   * Microsoft's recommended way to walk large result sets: unlike startrow paging it
+   * has no 50,000-row ceiling and stays fast at the end of the set. One request per
+   * 500 sites (17,000 sites = 35 requests), paced by SPClient. If DocId is not
+   * returned (older farms), it falls back to startrow paging.
    */
-  public async listSites(homeWebUrl: string, maxPages: number, onPage?: (n: number) => void): Promise<{ sites: ISiteRow[]; truncated: boolean }> {
+  public async listSites(homeWebUrl: string, maxSites = 100000, onProgress?: (loaded: number) => void): Promise<{ sites: ISiteRow[]; truncated: boolean }> {
     const origin = (/^(https:\/\/[^/]+)/i.exec(homeWebUrl) || [''])[1].toLowerCase();
     const sites: ISiteRow[] = [];
-    let truncated = false;
-    for (let page = 0; page < maxPages; page++) {
-      const res = await this.run(homeWebUrl, {
-        query: 'contentclass:STS_Site',
-        select: ['Title', 'Path', 'WebTemplate', 'Created', 'LastModifiedTime', 'GroupId'],
-        rowLimit: 500,
-        startRow: page * 500,
-        sort: 'LastModifiedTime:descending'
-      });
+    const seen: { [url: string]: boolean } = {};
+    const select = ['Title', 'Path', 'WebTemplate', 'Created', 'LastModifiedTime', 'GroupId', 'DocId'];
+    let lastDocId = 0;
+    let useDocId = true;
+    let startRow = 0;
+    for (let guard = 0; guard < 400; guard++) {
+      const res = await this.run(homeWebUrl, useDocId
+        ? { query: `contentclass:STS_Site IndexDocId>${lastDocId}`, select, rowLimit: 500, sort: '[DocId]:ascending' }
+        : { query: 'contentclass:STS_Site', select, rowLimit: 500, startRow, sort: 'LastModifiedTime:descending' });
+      let maxDoc = lastDocId;
       res.rows.forEach((r) => {
+        const doc = Number(r.DocId);
+        if (isFinite(doc) && doc > maxDoc) {
+          maxDoc = doc;
+        }
         const url = trimSlash(r.Path || '');
-        if (!url) {
+        if (!url || seen[url.toLowerCase()]) {
           return;
         }
+        seen[url.toLowerCase()] = true;
         sites.push({
           title: r.Title || url,
           url,
@@ -142,17 +153,30 @@ export class SearchApi {
           manageable: url.toLowerCase().indexOf(origin) === 0
         });
       });
-      if (onPage) {
-        onPage(page + 1);
+      if (onProgress) {
+        onProgress(sites.length);
       }
       if (res.rows.length < 500) {
-        break;
+        return { sites, truncated: false };
       }
-      if (page === maxPages - 1) {
-        truncated = true;
+      if (sites.length >= maxSites) {
+        return { sites, truncated: true };
+      }
+      if (useDocId && maxDoc === lastDocId) {
+        // DocId not returned: switch to startrow paging (capped by search at 50,000 rows).
+        useDocId = false;
+        startRow = 0;
+        sites.length = 0;
+        Object.keys(seen).forEach((k) => delete seen[k]);
+        continue;
+      }
+      lastDocId = maxDoc;
+      startRow += 500;
+      if (!useDocId && startRow >= 50000) {
+        return { sites, truncated: true };
       }
     }
-    return { sites, truncated };
+    return { sites, truncated: true };
   }
 
   // ---- Storage insights -----------------------------------------------------

@@ -10,8 +10,9 @@ tenant-admin consent. One `.sppkg`, and whatever permissions you already have.
 
 | Section | What an admin can do there |
 | --- | --- |
-| **Dashboard** | Storage vs quota, libraries / items / people / guests / subsites, health score, what needs attention, quick actions |
-| **Sites** | Inventory of every site collection you can see (type, created, last activity, inactive 90/180/365+ days, M365-group or not), CSV export, **Manage** any site from the same screen |
+| **Tenant dashboard** | Every site collection in the tenant from the imported admin-center site list (built for 17,000+): site count, Teams-connected vs other sites, storage used / left / allocated in TB and percent used (capacity entered once, shared), consumption meter, sites by state, type, size and last activity, the top 50 sites by storage, and a searchable, filterable, exportable table of all site collections |
+| **Site dashboard** | Storage vs quota, libraries / items / people / guests / subsites, health score, what needs attention, quick actions |
+| **Sites** | Inventory of **every** site collection you can see from search (no cap: pages of 500 walked in DocId order, about 35 requests for 17,000 sites), with type, created, last activity, inactivity filters, storage per site from the latest CSV import, CSV export, and **Manage** any site from the same screen |
 | **People & permissions** | SharePoint groups and their members (add / remove), all users and guests, make or remove site collection admin, remove a user from the site, who has direct access, "what can this person do here?" checker, **bulk add** from pasted e-mail addresses, **bulk remove** a pasted list of people from the site collection (preview first; never removes you; site admins only when you allow it), and an **Everyone groups** tab that shows where *Everyone* / *Everyone except external users* have access (SharePoint groups, direct site permission) and removes them from each place or from the whole site collection |
 | **Lists & libraries** | Item counts, view-threshold warnings, version history and search visibility toggles (single or bulk), unique-permission flags, CSV export |
 | **Storage insights** | Files by type, files untouched for 1 / 2 / 3+ years, largest files (top 50 above 10 MB to 1 GB), all from the search index |

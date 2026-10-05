@@ -156,6 +156,7 @@ export interface IFinding {
 
 export type ViewKey =
   | 'overview'
+  | 'tenant'
   | 'sites'
   | 'people'
   | 'content'

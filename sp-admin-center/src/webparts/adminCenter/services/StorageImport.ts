@@ -1,3 +1,5 @@
+import { isTruthy } from './siteTypes';
+
 /**
  * Turns the CSV produced by a flow (or a Get-SPOSite export) into a compact
  * storage snapshot. Column names are detected automatically but can always be
@@ -19,6 +21,12 @@ export interface IMapping {
   deleted?: string;
   /** Column holding the Microsoft 365 Archive state (e.g. NotArchived / RecentlyArchived / FullyArchived). */
   archived?: string;
+  /** Site template column (STS#3, GROUP#0, SITEPAGEPUBLISHING#0, ...). */
+  template?: string;
+  /** Column that says whether the site is connected to Microsoft Teams (true/false). */
+  teams?: string;
+  /** Last activity / last content change date column. */
+  lastActivity?: string;
   /** Keep deleted sites (still in the site recycle bin) as their own group instead of skipping them. */
   includeDeleted?: boolean;
   excludeOneDrive: boolean;
@@ -40,6 +48,13 @@ export interface ISnapshotData {
   q: number[];
   /** Site state per entry (0 active, 1 archived, 2 deleted). Missing in older snapshots = all active. */
   s?: number[];
+  /** Template per entry as an index into `tpl` (only when a template column was mapped). */
+  tp?: number[];
+  tpl?: string[];
+  /** 1 = connected to Teams, 0 = not (only when a Teams column was mapped). */
+  tm?: number[];
+  /** Last activity as days since 1970-01-01 (0 = unknown; only when mapped). */
+  la?: number[];
 }
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -50,6 +65,9 @@ const CANDIDATES = {
   quota: ['storagequota', 'storagequotamb', 'storagequotagb', 'quota', 'quotamb', 'storagemaximumlevel', 'storagelimit', 'maxstorage', 'allocated', 'storageallocated'],
   title: ['title', 'sitename', 'name', 'displayname'],
   deleted: ['timedeleted', 'isdeleted', 'deleted', 'deleteddate', 'deletiontime'],
+  template: ['templatename', 'template', 'webtemplate', 'sitetemplate', 'templateid'],
+  teams: ['isteamsconnected', 'teamsconnected', 'isteamsconnectedsite', 'teamsenabled', 'hasteams', 'teams', 'isteamsteam'],
+  lastActivity: ['lastactivityon', 'lastactivity', 'lastactivitydate', 'lastactivitydateutc', 'lastcontentmodifieddate', 'lastitemmodifieddate', 'lastmodified', 'lastmodifieddate'],
   archived: ['archivestatus', 'archivedstatus', 'archivestate', 'm365archivestatus', 'isarchived', 'archived', 'archivedby', 'archivedtime', 'archivedate', 'timearchived']
 };
 
@@ -150,6 +168,9 @@ export function detectMapping(headers: string[], rows: string[][]): IMapping | u
     title: pick(headers, CANDIDATES.title),
     deleted: pick(headers, CANDIDATES.deleted),
     archived: pick(headers, CANDIDATES.archived),
+    template: pick(headers, CANDIDATES.template),
+    teams: pick(headers, CANDIDATES.teams),
+    lastActivity: pick(headers, CANDIDATES.lastActivity),
     includeDeleted: true,
     excludeOneDrive: true
   };
@@ -192,11 +213,49 @@ export function buildSnapshot(rows: string[][], mapping: IMapping, origin: strin
   const iTitle = idx(mapping.title);
   const iDeleted = idx(mapping.deleted);
   const iArchived = idx(mapping.archived);
+  const iTemplate = idx(mapping.template);
+  const iTeams = idx(mapping.teams);
+  const iActivity = idx(mapping.lastActivity);
+  const tplIndex: { [t: string]: number } = {};
   const includeDeleted = mapping.includeDeleted !== false;
   const stats: IBuildStats = { rows: Math.max(0, rows.length - 1), kept: 0, noUrl: 0, badNumber: 0, deleted: 0, archived: 0, oneDrive: 0, duplicates: 0 };
   const seen: { [k: string]: number } = {};
   const data: ISnapshotData = { t, u: [], b: [], q: [], s: [] };
   const states = data.s as number[];
+  if (iTemplate >= 0) {
+    data.tp = [];
+    data.tpl = [];
+  }
+  if (iTeams >= 0) {
+    data.tm = [];
+  }
+  if (iActivity >= 0) {
+    data.la = [];
+  }
+  const extras = (row: string[]): { tp: number; tm: number; la: number } => {
+    let tp = -1;
+    if (data.tpl) {
+      const name = (row[iTemplate] || '').trim().toUpperCase();
+      if (tplIndex[name] === undefined) {
+        tplIndex[name] = data.tpl.length;
+        data.tpl.push(name);
+      }
+      tp = tplIndex[name];
+    }
+    return { tp, tm: iTeams >= 0 && isTruthy(row[iTeams]) ? 1 : 0, la: iActivity >= 0 ? toDay(row[iActivity]) : 0 };
+  };
+  const setExtras = (i: number, row: string[]): void => {
+    const x = extras(row);
+    if (data.tp) {
+      data.tp[i] = x.tp;
+    }
+    if (data.tm) {
+      data.tm[i] = x.tm;
+    }
+    if (data.la) {
+      data.la[i] = x.la;
+    }
+  };
   const titles: { [k: string]: string } = {};
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
@@ -241,6 +300,7 @@ export function buildSnapshot(rows: string[][], mapping: IMapping, origin: strin
       data.b[seen[key]] = bytes;
       data.q[seen[key]] = pm;
       states[seen[key]] = state;
+      setExtras(seen[key], row);
       countState(stats, prev, -1);
       countState(stats, state, 1);
       continue;
@@ -250,6 +310,7 @@ export function buildSnapshot(rows: string[][], mapping: IMapping, origin: strin
     data.b.push(bytes);
     data.q.push(pm);
     states.push(state);
+    setExtras(data.u.length - 1, row);
     countState(stats, state, 1);
     if (iTitle >= 0 && row[iTitle]) {
       titles[key] = row[iTitle].trim();
@@ -265,4 +326,15 @@ function countState(stats: IBuildStats, state: number, delta: number): void {
   } else if (state === 2) {
     stats.deleted += delta;
   }
+}
+
+/** Days since 1970-01-01 for an ISO / US / "/Date(ms)/" date; 0 when empty or unreadable. */
+export function toDay(raw: string | undefined): number {
+  const v = (raw || '').trim();
+  if (!v) {
+    return 0;
+  }
+  const ms = /^\/Date\((\d+)\)\/$/.exec(v);
+  const t = ms ? Number(ms[1]) : Date.parse(v);
+  return isFinite(t) && t > 0 ? Math.floor(t / 86400000) : 0;
 }

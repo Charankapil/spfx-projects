@@ -243,27 +243,15 @@ test('fileTypes falls back to default refiner when the option is rejected (but n
   await assert.rejects(() => new SearchApi(denied).fileTypes(ORIGIN + '/sites/a'), /Access denied/);
 });
 
-test('listSites pages 500 at a time, stops on a short page, flags truncation, marks other domains', async () => {
-  const page = (n, prefix) => ({ PrimaryQueryResult: { RelevantResults: { TotalRows: n, Table: { Rows: Array.from({ length: n }, (_, i) => ({ Cells: [{ Key: 'Title', Value: 'S' + i }, { Key: 'Path', Value: prefix + '/sites/s' + i }, { Key: 'WebTemplate', Value: 'STS' }, { Key: 'GroupId', Value: '00000000-0000-0000-0000-000000000000' }] })) } } } });
-  let calls = 0;
-  const c1 = make(async (m, url) => {
-    calls++;
-    return json(page(calls === 1 ? 500 : 20, ORIGIN));
-  });
-  const r1 = await new SearchApi(c1).listSites(ORIGIN, 10);
-  assert.strictEqual(calls, 2);
-  assert.strictEqual(r1.sites.length, 520);
-  assert.strictEqual(r1.truncated, false);
-  assert.strictEqual(r1.sites[0].groupConnected, false);
-  let n = 0;
-  const c2 = make(async () => {
-    n++;
-    return json(page(500, 'https://contoso-my.sharepoint.com/personal'));
-  });
-  const r2 = await new SearchApi(c2).listSites(ORIGIN, 3);
-  assert.strictEqual(n, 3, 'hard page cap');
-  assert.strictEqual(r2.truncated, true);
+test('listSites honours maxSites (truncated) and marks sites on other domains as not manageable', async () => {
+  const { c } = docIdSearch(3000);
+  const r = await new SearchApi(c).listSites(ORIGIN, 1000);
+  assert.strictEqual(r.sites.length, 1000);
+  assert.strictEqual(r.truncated, true);
+  const od = make(async () => json({ PrimaryQueryResult: { RelevantResults: { TotalRows: 1, Table: { Rows: [{ Cells: [{ Key: 'Title', Value: 'Bob' }, { Key: 'Path', Value: 'https://contoso-my.sharepoint.com/personal/bob' }, { Key: 'DocId', Value: '7' }, { Key: 'GroupId', Value: '00000000-0000-0000-0000-000000000000' }] }] } } } }));
+  const r2 = await new SearchApi(od).listSites(ORIGIN);
   assert.strictEqual(r2.sites[0].manageable, false);
+  assert.strictEqual(r2.sites[0].groupConnected, false);
 });
 
 // ---------------------------------------------------------------- admin api
@@ -812,7 +800,7 @@ test('tenant store: first import writes one snapshot + index; baseline has no an
   assert.strictEqual(idx.snapshots.length, 1);
   assert.strictEqual(idx.summary.sites, 2);
   assert.strictEqual(idx.mapping.storage, 'StorageUsed', 'mapping remembered for next time');
-  assert.deepStrictEqual(Object.keys(JSON.parse(env.files[`/sites/admin/SiteAssets/admin-center-snap-${NOW}.json`])).sort(), ['b', 'q', 's', 'u', 'v']);
+  assert.deepStrictEqual(Object.keys(JSON.parse(env.files[`/sites/admin/SiteAssets/admin-center-snap-${NOW}.json`])).sort(), ['b', 'q', 's', 'titles', 'u', 'v']);
 });
 
 test('tenant store: later imports detect fast growth; the index summary is what the dashboard reads', async () => {
@@ -1004,6 +992,139 @@ test('tenant: segments total each state; deleted sites never raise growth alerts
   assert.strictEqual(s.anomalies[0].state, 0);
   const old = TG.analyzeTenant([{ t: NOW, u: ['/x'], b: [1], q: [0] }], GE.DEFAULT_SETTINGS, {}, O, NOW);
   assert.strictEqual(old.segments.active.sites, 1, 'snapshots without states count as active');
+});
+
+// ---------------------------------------------------------------- v1.4: full inventory, tenant dashboard
+const CAP = src('services/capacity');
+
+function docIdSearch(total, opts = {}) {
+  const calls = [];
+  const c = make(async (m, url) => {
+    const u = decodeURIComponent(url);
+    calls.push(u);
+    const qt = /querytext='([^']*)'/.exec(u)[1];
+    const after = /IndexDocId>(\d+)/.exec(qt);
+    const start = after ? Number(after[1]) : Number((/startrow=(\d+)/.exec(u) || [0, 0])[1]);
+    const rows = [];
+    for (let id = start + 1; id <= Math.min(total, start + 500); id++) {
+      const cells = [{ Key: 'Title', Value: 'S' + id }, { Key: 'Path', Value: ORIGIN + '/sites/s' + id }, { Key: 'WebTemplate', Value: 'GROUP' }];
+      if (!opts.noDocId) cells.push({ Key: 'DocId', Value: String(id) });
+      rows.push({ Cells: cells });
+    }
+    return json({ PrimaryQueryResult: { RelevantResults: { TotalRows: total, Table: { Rows: rows } } } });
+  });
+  return { c, calls };
+}
+
+test('inventory: 17,500 sites are all fetched with DocId paging (35 requests, no 5,000 cap)', async () => {
+  const { c, calls } = docIdSearch(17500);
+  let progress = 0;
+  const r = await new SearchApi(c).listSites(ORIGIN, undefined, (n) => (progress = n));
+  assert.strictEqual(r.sites.length, 17500);
+  assert.strictEqual(r.truncated, false);
+  assert.strictEqual(calls.length, 36, 'last short page ends it');
+  assert.ok(calls[0].includes("sortlist='[DocId]:ascending'") && calls[1].includes('IndexDocId>500'), calls[1]);
+  assert.strictEqual(progress, 17500);
+  assert.strictEqual(new Set(r.sites.map((s) => s.url)).size, 17500, 'no duplicates');
+});
+
+test('inventory: without DocId it falls back to startrow paging and still gets everything', async () => {
+  const { c, calls } = docIdSearch(1200, { noDocId: true });
+  const r = await new SearchApi(c).listSites(ORIGIN);
+  assert.strictEqual(r.sites.length, 1200);
+  assert.ok(calls.some((u) => /startrow=1000/.test(u)), 'used startrow');
+});
+
+test('import: template, Teams and last-activity columns are detected and stored compactly', () => {
+  const O = 'https://t.sharepoint.com';
+  const rows = [
+    ['SiteUrl', 'StorageUsed', 'TemplateName', 'IsTeamsConnected', 'LastActivityOn'],
+    [O + '/sites/a', '10', 'GROUP#0', 'True', '2026-09-30T10:00:00Z'],
+    [O + '/sites/b', '20', 'SITEPAGEPUBLISHING#0', 'False', ''],
+    [O + '/sites/c', '30', 'group#0', '1', '/Date(1767225600000)/']
+  ];
+  const m = SI.detectMapping(rows[0], rows.slice(1));
+  assert.deepStrictEqual([m.template, m.teams, m.lastActivity], ['TemplateName', 'IsTeamsConnected', 'LastActivityOn']);
+  const r = SI.buildSnapshot(rows, m, O, 1);
+  assert.deepStrictEqual(r.data.tpl, ['GROUP#0', 'SITEPAGEPUBLISHING#0']);
+  assert.deepStrictEqual(r.data.tp, [0, 1, 0], 'case-insensitive template dictionary');
+  assert.deepStrictEqual(r.data.tm, [1, 0, 1]);
+  assert.strictEqual(r.data.la[1], 0);
+  assert.strictEqual(r.data.la[2], Math.floor(1767225600000 / 86400000));
+  const plain = SI.buildSnapshot([['SiteUrl', 'StorageUsed'], [O + '/sites/a', '1']], { url: 'SiteUrl', storage: 'StorageUsed', storageUnit: 'mb', quotaUnit: 'mb', excludeOneDrive: true }, O, 1);
+  assert.strictEqual(plain.data.tp, undefined, 'no extra arrays when columns are not mapped');
+});
+
+test('tenant dashboard: inventory overview counts, bands, Teams, top 50 (deleted kept apart)', () => {
+  const O = 'https://t.sharepoint.com';
+  const n = 120;
+  const today = Math.floor((NOW * 1000) / 86400000);
+  const snap = { t: NOW, u: [], b: [], q: [], s: [], tp: [], tpl: ['GROUP#0', 'SITEPAGEPUBLISHING#0'], tm: [], la: [] };
+  for (let i = 0; i < n; i++) {
+    snap.u.push('/sites/s' + i);
+    snap.b.push((i + 1) * GBYTES);
+    snap.q.push(0);
+    snap.s.push(i === 119 ? 2 : i % 10 === 0 ? 1 : 0);
+    snap.tp.push(i % 3 === 0 ? 1 : 0);
+    snap.tm.push(i % 2);
+    snap.la.push(i < 5 ? 0 : today - i * 4);
+  }
+  const typeOf = (t) => (t.indexOf('GROUP') === 0 ? 'Team site (M365 group)' : 'Communication site');
+  const o = TG.summarizeInventory(snap, { '/sites/s118': 'Big one' }, O, NOW, typeOf);
+  assert.strictEqual(o.sites, 120);
+  assert.deepStrictEqual([o.activeSites, o.archivedSites, o.deletedSites], [107, 12, 1]);
+  assert.strictEqual(o.deletedBytes, 120 * GBYTES);
+  assert.strictEqual(o.top.length, 50);
+  assert.strictEqual(o.top[0].url, O + '/sites/s118', 'deleted s119 is not in the top list');
+  assert.strictEqual(o.top[0].title, 'Big one');
+  assert.strictEqual(o.sizeBands.reduce((s, b) => s + b.count, 0), 119);
+  assert.strictEqual(o.sizeBands[0].count, 0);
+  assert.strictEqual(o.sizeBands[1].count, 9, '1-10 GB: sites of 1..9 GB');
+  assert.strictEqual(o.teamsSites, 59);
+  assert.ok(o.byType.length === 2 && o.byType.reduce((s, b) => s + b.count, 0) === 119);
+  assert.strictEqual(o.activity[o.activity.length - 1].count, 5, 'unknown activity');
+  const bare = TG.summarizeInventory({ t: NOW, u: ['/x'], b: [1], q: [0] }, {}, O, NOW, typeOf);
+  assert.strictEqual(bare.teamsSites, undefined);
+  assert.strictEqual(bare.byType, undefined);
+  assert.strictEqual(bare.activity, undefined);
+});
+
+test('tenant dashboard: capacity maths (archived billed separately; deleted optional)', () => {
+  const TB = 1099511627776;
+  const o = { activeBytes: 400 * TB, archivedBytes: 50 * TB, deletedBytes: 10 * TB };
+  const c = CAP.capacityOf(o, 600, true);
+  assert.strictEqual(c.usedBytes, 410 * TB);
+  assert.strictEqual(c.leftBytes, 190 * TB);
+  assert.ok(Math.abs(c.fraction - 410 / 600) < 1e-9);
+  assert.strictEqual(CAP.capacityOf(o, 600, false).usedBytes, 400 * TB);
+  assert.strictEqual(CAP.capacityOf(o, undefined, true).leftBytes, undefined);
+  assert.strictEqual(CAP.formatTB(434.8 * TB), '435 TB');
+  assert.strictEqual(CAP.formatTB(18.88 * TB), '18.9 TB');
+  assert.strictEqual(CAP.formatTB(0.5 * TB), '0.50 TB');
+});
+
+test('tenant store: import stores the overview; capacity is saved and survives later imports', async () => {
+  const { env, store } = tenantEnv();
+  const csv = 'SiteUrl,Title,StorageUsed,TemplateName,IsTeamsConnected\r\n' + [1, 2, 3].map((i) => `${ORIGIN}/sites/x${i},"X ${i}",${i * GBYTES},GROUP#0,${i === 1 ? 'True' : 'False'}`).join('\r\n');
+  const m = SI.detectMapping(parseCsv(csv)[0], parseCsv(csv).slice(1));
+  await store.importCsv(csv, m, { t: NOW - 2 * D, fileName: 'a.csv' }, GE.DEFAULT_SETTINGS);
+  let idx = await store.loadIndex(true);
+  assert.strictEqual(idx.overview.sites, 3);
+  assert.strictEqual(idx.overview.teamsSites, 1);
+  assert.strictEqual(idx.overview.top[0].title, 'X 3');
+  await store.saveCapacity(603.03, false);
+  await store.importCsv(csv, m, { t: NOW, fileName: 'b.csv' }, GE.DEFAULT_SETTINGS);
+  idx = await store.loadIndex(true);
+  assert.strictEqual(idx.capacityTB, 603.03, 'capacity kept across imports');
+  assert.strictEqual(idx.countDeleted, false);
+  const snapFull = await store.loadLatestSnapshot();
+  assert.strictEqual(snapFull.u.length, 3);
+  assert.strictEqual(snapFull.titles['/sites/x2'], 'X 2', 'titles travel with the snapshot');
+  assert.deepStrictEqual(snapFull.tm, [1, 0, 0]);
+  const re = await store.recalculate(GE.DEFAULT_SETTINGS);
+  assert.ok(re);
+  idx = await store.loadIndex(true);
+  assert.strictEqual(idx.overview.top[0].title, 'X 3', 'recalculate rebuilds the overview with titles');
 });
 
 // ---------------------------------------------------------------- runner

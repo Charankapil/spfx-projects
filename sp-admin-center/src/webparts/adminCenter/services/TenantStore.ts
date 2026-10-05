@@ -2,7 +2,8 @@ import { entityOf, HttpError, odataString, rowsOf, SPClient, trimSlash } from '.
 import { IGrowthSettings } from './GrowthEngine';
 import { parseCsv } from './csv';
 import { buildSnapshot, IBuildStats, IMapping, ISnapshotData } from './StorageImport';
-import { analyzeTenant, ISnapshotMeta, ITenantSummary, MAX_SNAPSHOTS_KEPT, selectSnapshots } from './TenantGrowth';
+import { analyzeTenant, ISnapshotMeta, ITenantOverview, ITenantSummary, MAX_SNAPSHOTS_KEPT, selectSnapshots, summarizeInventory } from './TenantGrowth';
+import { siteType } from './siteTypes';
 import { MIN_GAP_SEC } from './GrowthEngine';
 import { toDate } from './SearchApi';
 
@@ -17,6 +18,12 @@ export interface ITenantIndex {
   /** Library folder (server-relative) the last import came from, for one-click re-import. */
   folder?: string;
   lastFile?: { name: string; modified: number };
+  /** Inventory figures for the latest snapshot (the tenant dashboard). */
+  overview?: ITenantOverview;
+  /** Tenant SharePoint storage capacity in TB, entered by an admin (shared). */
+  capacityTB?: number;
+  /** Count deleted sites (still in the recycle bin) in "storage used". Default true. */
+  countDeleted?: boolean;
 }
 
 export interface ICsvFile {
@@ -47,7 +54,10 @@ function normalizeIndex(raw: unknown): ITenantIndex {
     summary: r.summary,
     mapping: r.mapping,
     folder: r.folder,
-    lastFile: r.lastFile
+    lastFile: r.lastFile,
+    overview: r.overview,
+    capacityTB: isFinite(Number(r.capacityTB)) && Number(r.capacityTB) > 0 ? Number(r.capacityTB) : undefined,
+    countDeleted: r.countDeleted
   };
 }
 
@@ -131,7 +141,9 @@ export class TenantStore {
     if (!d || !Array.isArray(d.u) || !Array.isArray(d.b)) {
       throw new Error(`Snapshot ${meta.file} is damaged.`);
     }
-    return { t: meta.t, u: d.u, b: d.b, q: Array.isArray(d.q) ? d.q : [], s: Array.isArray(d.s) ? d.s : undefined };
+    const titles = (d as unknown as { titles?: { [k: string]: string } }).titles;
+    const out: ISnapshotData & { titles?: { [k: string]: string } } = { t: meta.t, u: d.u, b: d.b, q: Array.isArray(d.q) ? d.q : [], s: Array.isArray(d.s) ? d.s : undefined, tp: d.tp, tpl: d.tpl, tm: d.tm, la: d.la, titles };
+    return out;
   }
 
   // ---- finding the CSV -------------------------------------------------------
@@ -194,7 +206,7 @@ export class TenantStore {
     const near = index.snapshots.filter((s) => Math.abs(s.t - when.t) < MIN_GAP_SEC);
     const file = `${SNAP_PREFIX}${when.t}.json`;
     say('Saving the snapshot…');
-    await this.writeFile(file, JSON.stringify({ v: 1, u: built.data.u, b: built.data.b, q: built.data.q, s: built.data.s }));
+    await this.writeFile(file, JSON.stringify({ v: 1, u: built.data.u, b: built.data.b, q: built.data.q, s: built.data.s, tp: built.data.tp, tpl: built.data.tpl, tm: built.data.tm, la: built.data.la, titles: built.titles }));
 
     const meta: ISnapshotMeta = { t: when.t, file, sites: built.data.u.length, bytes: built.data.b.reduce((s, x) => s + x, 0), source: when.fileName };
     const kept = index.snapshots.filter((s) => near.indexOf(s) < 0);
@@ -206,7 +218,10 @@ export class TenantStore {
     for (const m of wanted) {
       loaded.push(m.file === file ? built.data : await this.loadSnapshot(m));
     }
-    const summary = analyzeTenant(loaded, settings, built.titles, this.origin, Math.floor(Date.now() / 1000));
+    const nowSec = Math.floor(Date.now() / 1000);
+    const summary = analyzeTenant(loaded, settings, built.titles, this.origin, nowSec);
+    const isNewest = all[all.length - 1].file === file;
+    const overview = isNewest ? summarizeInventory(built.data, built.titles, this.origin, nowSec, (t) => siteType(t, false)) : undefined;
 
     say('Saving the results…');
     // Re-read before writing so a concurrent import by another admin is not lost.
@@ -217,6 +232,9 @@ export class TenantStore {
       v: 1,
       snapshots: merged.slice(dropped.length),
       summary: merged[merged.length - 1].file === file ? summary : latest.summary,
+      overview: merged[merged.length - 1].file === file && overview ? overview : latest.overview,
+      capacityTB: latest.capacityTB,
+      countDeleted: latest.countDeleted,
       mapping,
       folder: when.folder || latest.folder,
       lastFile: when.modified ? { name: when.fileName, modified: when.modified } : latest.lastFile
@@ -227,6 +245,21 @@ export class TenantStore {
       await this.deleteFile(old);
     }
     return { stats: built.stats, summary, replaced: near.length > 0 };
+  }
+
+  /** Tenant capacity and whether deleted sites count as used; shared by every admin. */
+  public async saveCapacity(capacityTB: number | undefined, countDeleted: boolean): Promise<void> {
+    const latest = await this.loadIndex(true);
+    latest.capacityTB = capacityTB && capacityTB > 0 ? capacityTB : undefined;
+    latest.countDeleted = countDeleted;
+    await this.writeFile(INDEX_FILE, JSON.stringify(latest));
+  }
+
+  /** The newest snapshot in full (one request, ~0.5–1 MB for 17,000 sites) for the all-sites table. */
+  public async loadLatestSnapshot(): Promise<(ISnapshotData & { titles?: { [k: string]: string } }) | undefined> {
+    const index = await this.loadIndex();
+    const meta = index.snapshots[index.snapshots.length - 1];
+    return meta ? this.loadSnapshot(meta) : undefined;
   }
 
   /** Re-runs the analysis over the stored snapshots with the current thresholds (no CSV needed). */
@@ -247,8 +280,11 @@ export class TenantStore {
       r.title = titles[r.url] || r.title;
     };
     summary.anomalies.concat(summary.largest, summary.growers).forEach(fix);
+    const newest = loaded[loaded.length - 1];
+    const snapTitles = ((newest as unknown) as { titles?: { [k: string]: string } }).titles || {};
     const latest = await this.loadIndex(true);
     latest.summary = summary;
+    latest.overview = summarizeInventory(newest, snapTitles, this.origin, Math.floor(Date.now() / 1000), (t) => siteType(t, false));
     await this.writeFile(INDEX_FILE, JSON.stringify(latest));
     return summary;
   }
