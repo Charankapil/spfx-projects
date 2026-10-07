@@ -14,6 +14,8 @@ Site collection admins and the "primary admin" field are **excluded**, as are sy
 Install-Module PnP.PowerShell, ExchangeOnlineManagement -Scope CurrentUser
 # only for -ResolveSecurityGroups:
 Install-Module Microsoft.Graph.Groups -Scope CurrentUser
+# only for -ExportExcel (Excel itself is not required):
+Install-Module ImportExcel -Scope CurrentUser
 ```
 
 ## Usage
@@ -29,6 +31,7 @@ Install-Module Microsoft.Graph.Groups -Scope CurrentUser
 - `SiteOwnership_<ts>.csv`: one row per site, web, role and person
 - `SitesWithoutOwners_<ts>.csv`: sites where no owner could be resolved (orphaned)
 - `SiteOwnershipErrors_<ts>.csv`: sites or subsites that could not be read
+- With `-ExportExcel`, `SiteOwnership_<ts>.xlsx` with sheets `Summary` (one line per web and role), `Detail`, `No owners` and `Errors`. The CSVs are still written.
 
 ## Notes
 - **Sign-in:** the default is the Microsoft first-party SharePoint Online Management Shell app with device-code login. If your tenant blocks it, pass `-ClientId` for an app you are allowed to use.

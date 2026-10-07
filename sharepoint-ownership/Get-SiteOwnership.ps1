@@ -18,6 +18,7 @@
 .NOTES
   Requires: PnP.PowerShell (v2+), ExchangeOnlineManagement.
   Optional: Microsoft.Graph.Groups, only with -ResolveSecurityGroups, to expand Entra security groups.
+  Optional: ImportExcel, only with -ExportExcel. Excel does not need to be installed.
   Not tested against a live tenant from the authoring environment. Run with -SiteUrlFilter
   on one site first.
 #>
@@ -30,7 +31,8 @@ param(
     [switch]$IncludeVisitors,
     [switch]$SkipSubsites,
     [switch]$GrantTemporaryAccess,                     # add yourself as site admin while reading, then remove (audited)
-    [switch]$ResolveSecurityGroups                     # expand Entra security groups via Microsoft Graph
+    [switch]$ResolveSecurityGroups,                    # expand Entra security groups via Microsoft Graph
+    [switch]$ExportExcel                               # also write one .xlsx workbook (needs ImportExcel module, not Excel itself)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,6 +42,7 @@ $stamp    = Get-Date -Format 'yyyyMMdd_HHmm'
 $OutFile  = Join-Path $OutputFolder "SiteOwnership_$stamp.csv"
 $NoOwnerFile = Join-Path $OutputFolder "SitesWithoutOwners_$stamp.csv"
 $ErrFile  = Join-Path $OutputFolder "SiteOwnershipErrors_$stamp.csv"
+$XlsxFile = Join-Path $OutputFolder "SiteOwnership_$stamp.xlsx"
 
 # Templates that are not real collaboration sites
 $SkipTemplates = 'SRCHCEN#0','SPSMSITEHOST#0','APPCATALOG#0','POINTPUBLISHINGHUB#0',
@@ -47,6 +50,10 @@ $SkipTemplates = 'SRCHCEN#0','SPSMSITEHOST#0','APPCATALOG#0','POINTPUBLISHINGHUB
 # Principals that are never human owners
 $SystemLogin = '^(SHAREPOINT\\system|app@sharepoint|c:0\(\.s\|true|c:0-\.f\|rolemanager\|spo-grid-all-users|c:0t\.c\|tenant\|.*)$'
 $SystemTitle = 'Company Administrator','SharePoint Service Administrator','System Account','SharePoint App'
+
+if ($ExportExcel -and -not (Get-Module -ListAvailable ImportExcel)) {
+    throw 'ImportExcel module not found. Run: Install-Module ImportExcel -Scope CurrentUser'
+}
 
 $Rows   = New-Object System.Collections.Generic.List[object]
 $Errors = New-Object System.Collections.Generic.List[object]
@@ -225,6 +232,25 @@ $withOwners = $final | Where-Object { $_.Role -eq 'Owner' -and $_.PrincipalType 
 $noOwners = $sites | Where-Object { $_.Url -notin $withOwners } | Select-Object Url, Title, Template, GroupId
 $noOwners | Export-Csv $NoOwnerFile -NoTypeInformation -Encoding UTF8
 if ($Errors.Count) { $Errors | Export-Csv $ErrFile -NoTypeInformation -Encoding UTF8 }
+
+if ($ExportExcel) {
+    Import-Module ImportExcel
+    $excel = @{ Path = $XlsxFile; AutoSize = $true; FreezeTopRow = $true; BoldTopRow = $true; AutoFilter = $true }
+    # One line per web and role, with the people joined, for a quick read
+    $summary = $final | Group-Object WebUrl, Role | ForEach-Object {
+        $f = $_.Group[0]
+        [pscustomobject]@{
+            SiteUrl = $f.SiteUrl; SiteTitle = $f.SiteTitle; WebUrl = $f.WebUrl; IsSubsite = $f.IsSubsite
+            InheritsPermissions = $f.InheritsPermissions; Role = $f.Role; Count = $_.Count
+            People = ($_.Group | ForEach-Object { if ($_.Email) { "$($_.Name) <$($_.Email)>" } else { $_.Name } }) -join '; '
+        }
+    } | Sort-Object WebUrl, Role
+    $summary | Export-Excel @excel -WorksheetName 'Summary' -ClearSheet
+    $final   | Export-Excel @excel -WorksheetName 'Detail' -Append
+    if (@($noOwners).Count) { $noOwners | Export-Excel @excel -WorksheetName 'No owners' -Append }
+    if ($Errors.Count)      { $Errors   | Export-Excel @excel -WorksheetName 'Errors' -Append }
+    Write-Host "Excel workbook -> $XlsxFile"
+}
 
 Write-Host "Done. $($final.Count) rows -> $OutFile"
 Write-Host "Sites without a resolvable owner: $(@($noOwners).Count) -> $NoOwnerFile"
