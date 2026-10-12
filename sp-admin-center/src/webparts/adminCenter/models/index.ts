@@ -163,6 +163,7 @@ export type ViewKey =
   | 'storage'
   | 'growth'
   | 'recycle'
+  | 'locks'
   | 'activity'
   | 'health'
   | 'settings';

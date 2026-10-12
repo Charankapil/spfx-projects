@@ -9,6 +9,14 @@
           "manifest": "./src/webparts/adminCenter/AdminCenterWebPart.manifest.json"
         }
       ]
+    },
+    "read-only-banner-application-customizer": {
+      "components": [
+        {
+          "entrypoint": "./lib/extensions/readOnlyBanner/ReadOnlyBannerApplicationCustomizer.js",
+          "manifest": "./src/extensions/readOnlyBanner/ReadOnlyBannerApplicationCustomizer.manifest.json"
+        }
+      ]
     }
   },
   "externals": {},

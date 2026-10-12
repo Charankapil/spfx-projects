@@ -1127,6 +1127,217 @@ test('tenant store: import stores the overview; capacity is saved and survives l
   assert.strictEqual(idx.overview.top[0].title, 'X 3', 'recalculate rebuilds the overview with titles');
 });
 
+// ---------------------------------------------------------------- v1.5: read-only locks
+const RO = require(path.join(__dirname, '..', 'src', 'shared', 'readOnlyLocks'));
+const { LockService, BANNER_COMPONENT_ID } = src('services/LockService');
+
+const FULL = { id: 1073741829, name: 'Full Control', kind: 5, hidden: false };
+const EDIT = { id: 1073741830, name: 'Edit', kind: 6, hidden: false };
+const CONTRIB = { id: 1073741827, name: 'Contribute', kind: 3, hidden: false };
+const READ = { id: 1073741826, name: 'Read', kind: 2, hidden: false };
+const LIMITED = { id: 1073741825, name: 'Limited Access', kind: 1, hidden: true };
+const CUSTOM = { id: 1073741930, name: 'Approve only', kind: 0, hidden: false };
+const A = (principalId, title, bindings) => ({ principalId, title, login: 'x', principalType: 8, bindings });
+
+test('locks: planner sets edit-capable principals to Read, keeps owners, leaves readers and system levels alone', () => {
+  const plan = RO.planReadOnly([
+    A(3, 'Owners', [FULL]),
+    A(4, 'Members', [EDIT]),
+    A(5, 'Visitors', [READ]),
+    A(6, 'Approvers', [CUSTOM, READ]),
+    A(7, 'Limited', [LIMITED]),
+    A(8, 'Contrib', [CONTRIB, LIMITED])
+  ], READ.id, 'Read', [3]);
+  assert.deepStrictEqual(plan.map((p) => p.principalId), [4, 6, 8]);
+  const members = plan[0];
+  assert.deepStrictEqual([members.add, members.remove, members.after], [[READ.id], [EDIT.id], ['Read']]);
+  assert.deepStrictEqual([plan[1].add, plan[1].remove], [[], [CUSTOM.id]], 'already has Read: only remove the custom level');
+  assert.deepStrictEqual(plan[2].remove, [CONTRIB.id], 'Limited Access is never removed');
+});
+
+test('locks: restore puts original levels back, removes the Read the lock added, keeps later grants', () => {
+  const saved = [{ principalId: 4, title: 'Members', roleDefIds: [EDIT.id] }, { principalId: 5, title: 'Visitors', roleDefIds: [READ.id] }];
+  const current = [A(4, 'Members', [READ]), A(5, 'Visitors', [READ]), A(9, 'Added later', [EDIT])];
+  const plan = RO.planRestore(saved, current, READ.id);
+  assert.deepStrictEqual(plan.map((p) => [p.principalId, p.add, p.remove]), [[4, [EDIT.id], [READ.id]]]);
+  const removed = RO.planRestore([{ principalId: 4, title: 'M', roleDefIds: [EDIT.id] }], [], READ.id);
+  assert.deepStrictEqual(removed[0].add, [EDIT.id], 'principal removed meanwhile gets its access back');
+});
+
+test('locks: banner matching by page path, library view id= parameter, most specific lock, no false prefix match', () => {
+  const locks = [
+    { id: 'a', scope: 'web', path: '/sites/hr', title: 'HR', message: 'site', at: 1 },
+    { id: 'b', scope: 'list', path: '/sites/hr/Shared Documents', title: 'Docs', message: 'lib', at: 1 },
+    { id: 'c', scope: 'folder', path: '/sites/hr/Shared Documents/Payroll', title: 'Payroll', message: 'folder', at: 1 }
+  ];
+  assert.strictEqual(RO.matchLock(locks, '/sites/hr/SitePages/Home.aspx', '').id, 'a');
+  assert.strictEqual(RO.matchLock(locks, '/sites/hr/Shared%20Documents/Forms/AllItems.aspx', '').id, 'b');
+  assert.strictEqual(RO.matchLock(locks, '/sites/hr/Shared%20Documents/Forms/AllItems.aspx', '?id=%2Fsites%2Fhr%2FShared%20Documents%2FPayroll%2F2026&viewid=1').id, 'c');
+  assert.strictEqual(RO.matchLock(locks.slice(2), '/sites/hr/Shared%20Documents/Forms/AllItems.aspx', '?id=%2Fsites%2Fhr%2FShared%20Documents%2FPayrollArchive'), undefined, 'PayrollArchive is not inside Payroll');
+  assert.strictEqual(RO.matchLock(locks, '/sites/hrteam/SitePages/x.aspx', ''), undefined, '/sites/hrteam is not /sites/hr');
+  assert.strictEqual(RO.matchLock([], '/sites/hr', ''), undefined);
+});
+
+// Stateful fake SharePoint: role assignments per object, inheritance, custom actions, files.
+function lockEnv(opts = {}) {
+  const W = ORIGIN + '/sites/hr';
+  const defs = { [FULL.id]: FULL, [EDIT.id]: EDIT, [CONTRIB.id]: CONTRIB, [READ.id]: READ, [LIMITED.id]: LIMITED, [CUSTOM.id]: CUSTOM };
+  const env = {
+    calls: [],
+    files: {},
+    actions: [],
+    isAdmin: opts.isAdmin !== false,
+    objects: {
+      web: { unique: true, ra: { 3: [FULL.id], 4: [EDIT.id], 5: [READ.id], 11: [LIMITED.id] } },
+      'list:L1': { unique: false, ra: null },
+      'list:L2': { unique: true, ra: { 3: [FULL.id], 4: [CONTRIB.id], 12: [EDIT.id] } },
+      'item:L1:7': { unique: false, ra: null }
+    },
+    failOn: opts.failOn
+  };
+  const titles = { 3: 'HR Owners', 4: 'HR Members', 5: 'HR Visitors', 11: 'Limited user', 12: 'Project team' };
+  const parentOf = (k) => (k === 'item:L1:7' ? 'list:L1' : k === 'web' ? null : 'web');
+  const effective = (k) => (env.objects[k].unique ? env.objects[k].ra : effective(parentOf(k)));
+  const keyOf = (u) => {
+    const item = /lists\(guid'([^']+)'\)\/items\((\d+)\)/.exec(u);
+    if (item) return `item:${item[1]}:${item[2]}`;
+    const list = /lists\(guid'([^']+)'\)/.exec(u);
+    if (list) return `list:${list[1]}`;
+    return 'web';
+  };
+  const client = make(async (m, url, cfg, o) => {
+    const u = decodeURIComponent(url);
+    env.calls.push(m + ' ' + u.replace(W, ''));
+    if (env.failOn && env.failOn(u)) return json({ error: { message: { value: 'Boom' } } }, 500);
+    const hdr = o.headers || {};
+    if (/GetFileByServerRelativeUrl/.test(u)) {
+      const p = /\('([^']+)'\)/.exec(u)[1];
+      return env.files[p] === undefined ? json({ error: { message: 'File Not Found.' } }, 404) : new Response(env.files[p], { status: 200 });
+    }
+    if (/Files\/add/.test(u)) {
+      const folder = /GetFolderByServerRelativeUrl\('([^']+)'\)/.exec(u)[1];
+      if (opts.noAssets && !env.assetsCreated) return json({ error: { message: 'File Not Found.' } }, 404);
+      env.files[folder + '/' + /url='([^']+)'/.exec(u)[1]] = o.body;
+      return json({});
+    }
+    if (/EnsureSiteAssetsLibrary/.test(u)) { env.assetsCreated = true; return json({}); }
+    if (/ListItemAllFields/.test(u)) return json({ Id: 7, ParentList: { Id: 'L1' } });
+    if (/roledefinitions\/getbytype\(2\)/.test(u)) return json({ Id: READ.id, Name: 'Read' });
+    if (/AssociatedOwnerGroup/.test(u)) return json({ Id: 3 });
+    if (/currentuser/.test(u)) return json({ IsSiteAdmin: env.isAdmin });
+    if (/UserCustomActions/.test(u)) {
+      const idm = /UserCustomActions\('([^']+)'\)/.exec(u);
+      if (m === 'GET') return json({ value: env.actions.filter((a) => a.ClientSideComponentId === BANNER_COMPONENT_ID) });
+      if (idm && hdr['X-HTTP-Method'] === 'DELETE') { env.actions = env.actions.filter((a) => a.Id !== idm[1]); return new Response(null, { status: 204 }); }
+      if (idm && hdr['X-HTTP-Method'] === 'MERGE') { Object.assign(env.actions.filter((a) => a.Id === idm[1])[0], JSON.parse(o.body)); return new Response(null, { status: 204 }); }
+      const b = JSON.parse(o.body); env.actions.push(Object.assign({ Id: 'ca' + env.actions.length }, b)); return json(b);
+    }
+    const k = keyOf(u);
+    const obj = env.objects[k];
+    if (/breakroleinheritance/.test(u)) { obj.ra = JSON.parse(JSON.stringify(effective(parentOf(k)))); obj.unique = true; return new Response(null, { status: 200 }); }
+    if (/resetroleinheritance/.test(u)) { obj.unique = false; obj.ra = null; return new Response(null, { status: 200 }); }
+    const add = /addroleassignment\(principalid=(\d+),roledefid=(\d+)\)/.exec(u);
+    if (add) { assert.ok(obj.unique, 'never change inherited permissions'); const r = obj.ra; r[add[1]] = (r[add[1]] || []).filter((x) => x !== +add[2]).concat(+add[2]); return new Response(null, { status: 200 }); }
+    const rem = /removeroleassignment\(principalid=(\d+),roledefid=(\d+)\)/.exec(u);
+    if (rem) { const r = obj.ra; r[rem[1]] = (r[rem[1]] || []).filter((x) => x !== +rem[2]); if (!r[rem[1]].length) delete r[rem[1]]; return new Response(null, { status: 200 }); }
+    if (/\/roleassignments\?/.test(u)) {
+      const ra = effective(k);
+      return json({ value: Object.keys(ra).map((pid) => ({ PrincipalId: +pid, Member: { Title: titles[pid], LoginName: 'g' + pid, PrincipalType: 8 }, RoleDefinitionBindings: ra[pid].map((id) => ({ Id: id, Name: defs[id].name, RoleTypeKind: defs[id].kind, Hidden: defs[id].hidden })) })) });
+    }
+    if (/HasUniqueRoleAssignments/.test(u)) return json({ HasUniqueRoleAssignments: obj.unique });
+    return json({ error: { message: 'unexpected ' + u } }, 500);
+  });
+  return { env, svc: new LockService(client), W };
+}
+const snapshot = (env) => JSON.stringify(Object.keys(env.objects).map((k) => [k, env.objects[k].unique, env.objects[k].ra && Object.keys(env.objects[k].ra).sort().map((p) => [p, env.objects[k].ra[p].slice().sort()])]));
+
+test('locks: locking a site sets members to Read (owners kept), banner registered; unlock restores exactly', async () => {
+  const { env, svc, W } = lockEnv();
+  const before = snapshot(env);
+  const t = { scope: 'web', title: 'HR', path: '/sites/hr' };
+  const rec = await svc.lock(W, t, 'Migration in progress', { keepOwners: true, includeUniqueLists: true }, [{ id: 'L2', title: 'Projects' }], 'admin@contoso.com');
+  assert.deepStrictEqual(env.objects.web.ra[4], [READ.id], 'members -> Read');
+  assert.deepStrictEqual(env.objects.web.ra[3], [FULL.id], 'owners kept');
+  assert.deepStrictEqual(env.objects.web.ra[11], [LIMITED.id], 'limited access untouched');
+  assert.deepStrictEqual(env.objects['list:L2'].ra[12], [READ.id], 'unique list locked too');
+  assert.deepStrictEqual(env.objects['list:L2'].ra[4], [READ.id]);
+  assert.strictEqual(env.actions.length, 1);
+  const props = JSON.parse(env.actions[0].ClientSideComponentProperties);
+  assert.deepStrictEqual(props.locks.map((l) => [l.path, l.message, l.scope]), [['/sites/hr', 'Migration in progress', 'web']]);
+  assert.strictEqual(env.actions[0].Location, 'ClientSideExtension.ApplicationCustomizer');
+  const stored = JSON.parse(env.files['/sites/hr/SiteAssets/admin-center-locks.json']);
+  assert.strictEqual(stored.locks[0].status, 'locked');
+  await svc.unlock(W, rec.id);
+  assert.strictEqual(snapshot(env), before, 'permissions exactly as before');
+  assert.strictEqual(env.actions.length, 0, 'banner removed with the last lock');
+  assert.deepStrictEqual(JSON.parse(env.files['/sites/hr/SiteAssets/admin-center-locks.json']).locks, []);
+});
+
+test('locks: an inheriting library is given its own permissions to lock, and inherits again on unlock', async () => {
+  const { env, svc, W } = lockEnv();
+  const rec = await svc.lock(W, { scope: 'list', title: 'Documents', path: '/sites/hr/Shared Documents', listId: 'L1' }, 'Read only', { keepOwners: true, includeUniqueLists: false }, [], 'me');
+  assert.strictEqual(env.objects['list:L1'].unique, true);
+  assert.deepStrictEqual(env.objects['list:L1'].ra[4], [READ.id]);
+  assert.deepStrictEqual(env.objects.web.ra[4], [EDIT.id], 'the site itself is untouched');
+  await svc.unlock(W, rec.id);
+  assert.strictEqual(env.objects['list:L1'].unique, false, 'inherits again');
+});
+
+test('locks: folder lock works on the folder item; two locks share one banner; unlocking one keeps the other', async () => {
+  const { env, svc, W } = lockEnv();
+  const f = await svc.lock(W, { scope: 'folder', title: 'Payroll', path: '/sites/hr/Shared Documents/Payroll', folderPath: '/sites/hr/Shared Documents/Payroll' }, 'Payroll frozen', { keepOwners: true, includeUniqueLists: false }, [], 'me');
+  assert.deepStrictEqual(env.objects['item:L1:7'].ra[4], [READ.id]);
+  await svc.lock(W, { scope: 'list', title: 'Projects', path: '/sites/hr/Projects', listId: 'L2' }, 'Projects closed', { keepOwners: true, includeUniqueLists: false }, [], 'me');
+  assert.strictEqual(env.actions.length, 1);
+  assert.strictEqual(JSON.parse(env.actions[0].ClientSideComponentProperties).locks.length, 2);
+  await svc.unlock(W, f.id);
+  assert.strictEqual(env.objects['item:L1:7'].unique, false);
+  const left = JSON.parse(env.actions[0].ClientSideComponentProperties).locks;
+  assert.deepStrictEqual(left.map((l) => l.title), ['Projects']);
+  await svc.updateMessage(W, (await svc.loadLocks(W))[0].id, 'New text');
+  assert.strictEqual(JSON.parse(env.actions[0].ClientSideComponentProperties).locks[0].message, 'New text');
+});
+
+test('locks: owners can only be set to Read by choice; a second lock on the same path is refused', async () => {
+  const { env, svc, W } = lockEnv();
+  await svc.lock(W, { scope: 'web', title: 'HR', path: '/sites/hr' }, 'm', { keepOwners: false, includeUniqueLists: false }, [], 'me');
+  assert.deepStrictEqual(env.objects.web.ra[3], [READ.id], 'owners to Read when not kept');
+  await assert.rejects(() => svc.lock(W, { scope: 'web', title: 'HR', path: '/sites/hr/' }, 'm', { keepOwners: true, includeUniqueLists: false }, [], 'me'), /already locked/);
+});
+
+test('locks: an interrupted lock is recorded first, so unlock still restores what changed', async () => {
+  let n = 0;
+  const { env, svc, W } = lockEnv({ failOn: (u) => /removeroleassignment/.test(u) && ++n === 2 });
+  const before = snapshot(env);
+  await assert.rejects(() => svc.lock(W, { scope: 'web', title: 'HR', path: '/sites/hr' }, 'm', { keepOwners: true, includeUniqueLists: true }, [{ id: 'L2', title: 'Projects' }], 'me'), /Boom/);
+  const locks = await svc.loadLocks(W);
+  assert.strictEqual(locks.length, 1);
+  assert.strictEqual(locks[0].status, 'locking');
+  env.failOn = undefined;
+  await svc.unlock(W, locks[0].id);
+  assert.strictEqual(snapshot(env), before, 'fully restored after a half-applied lock');
+});
+
+test('locks: a later grant made while locked survives unlock; Site Assets is created when missing', async () => {
+  const { env, svc, W } = lockEnv({ noAssets: true });
+  const rec = await svc.lock(W, { scope: 'list', title: 'Projects', path: '/sites/hr/Projects', listId: 'L2' }, 'm', { keepOwners: true, includeUniqueLists: false }, [], 'me');
+  assert.ok(env.assetsCreated, 'Site Assets ensured');
+  env.objects['list:L2'].ra[20] = [CONTRIB.id];
+  await svc.unlock(W, rec.id);
+  assert.deepStrictEqual(env.objects['list:L2'].ra[20], [CONTRIB.id], 'grant made by someone else kept');
+  assert.deepStrictEqual(env.objects['list:L2'].ra[4], [CONTRIB.id]);
+  assert.deepStrictEqual(env.objects['list:L2'].ra[12], [EDIT.id]);
+});
+
+test('locks: preview changes nothing and lists who would change', async () => {
+  const { env, svc, W } = lockEnv();
+  const before = snapshot(env);
+  const p = await svc.preview(W, { scope: 'web', title: 'HR', path: '/sites/hr' }, { keepOwners: true, includeUniqueLists: true }, [{ id: 'L2', title: 'Projects' }]);
+  assert.strictEqual(snapshot(env), before);
+  assert.deepStrictEqual(p.objects.map((o) => [o.object.title, o.changes.map((c) => c.title)]), [['HR', ['HR Members']], ['Projects', ['HR Members', 'Project team']]]);
+  assert.ok(!env.calls.some((c) => /^POST/.test(c)), 'no writes in preview');
+});
+
 // ---------------------------------------------------------------- runner
 (async () => {
   let failed = 0;

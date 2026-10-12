@@ -24,6 +24,7 @@ import { ActivityView } from './views/ActivityView';
 import { ContentView } from './views/ContentView';
 import { GrowthView } from './views/GrowthView';
 import { HealthView } from './views/HealthView';
+import { LocksView } from './views/LocksView';
 import { OverviewView } from './views/OverviewView';
 import { PeopleView } from './views/PeopleView';
 import { RecycleView } from './views/RecycleView';
@@ -50,6 +51,7 @@ const NAV: Array<{ key: ViewKey; text: string; icon: string; section?: string }>
   { key: 'people', text: 'People & permissions', icon: 'Permissions', section: 'Manage' },
   { key: 'content', text: 'Lists & libraries', icon: 'Library' },
   { key: 'recycle', text: 'Recycle bin', icon: 'RecycleBin' },
+  { key: 'locks', text: 'Read-only locks', icon: 'Lock' },
   { key: 'activity', text: 'Activity', icon: 'History', section: 'Monitor' },
   { key: 'health', text: 'Health check', icon: 'HealthSolid' },
   { key: 'settings', text: 'Settings & log', icon: 'Settings', section: 'Administration' }
@@ -180,6 +182,8 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
         return <GrowthView />;
       case 'recycle':
         return <RecycleView />;
+      case 'locks':
+        return <LocksView />;
       case 'activity':
         return <ActivityView />;
       case 'health':

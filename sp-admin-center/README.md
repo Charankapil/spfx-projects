@@ -17,6 +17,7 @@ tenant-admin consent. One `.sppkg`, and whatever permissions you already have.
 | **Lists & libraries** | Item counts, view-threshold warnings, version history and search visibility toggles (single or bulk), unique-permission flags, CSV export |
 | **Storage insights** | Files by type, files untouched for 1 / 2 / 3+ years, largest files (top 50 above 10 MB to 1 GB), all from the search index |
 | **Storage growth** | Snapshots the storage of a watchlist of site collections over time, draws a trend per site, and **flags sites growing unusually fast** (also shown as a pop-up on the Dashboard and a badge in the nav). Thresholds are adjustable and shared |
+| **Read-only locks** | Make the whole site, one library or list, or one folder read-only, with a custom message in a banner at the top of the locked pages. Preview shows exactly whose permissions change; Unlock restores them exactly |
 | **Recycle bin** | Newest 300 items of the site collection, search, bulk restore, bulk delete permanently |
 | **Activity** | Permission and structure changes (members added or removed, role changes, lists / webs / groups created or deleted) for 24 h to 60 days |
 | **Health check** | Rule-based findings: storage nearly full, single or too many admins, guests, organisation-wide groups, lists near the 5,000-item threshold, libraries without version history, hidden-from-search lists, inactive site |
@@ -24,6 +25,31 @@ tenant-admin consent. One `.sppkg`, and whatever permissions you already have.
 
 **Switch site** (or **Manage** in Sites) points every section at another site or
 subsite on the same tenant, so one page administers many sites.
+
+## Read-only locks
+
+SharePoint's own site lock (*LockState*) can only be set through the tenant admin API on the
+`-admin` domain, which a web part cannot call. This tool locks with **permissions** instead,
+as you (site owner or site collection admin), with no extra approvals:
+
+- **Lock.** Every principal with an edit-capable level on the object (Contribute, Edit, Full
+  Control, custom levels) is switched to **Read**. Limited Access and hidden system levels are
+  never touched. Site collection admins always keep full control (on a group-connected site
+  that includes the Microsoft 365 group owners). Site owners keep their rights unless a site
+  collection admin chooses otherwise, so nobody can lock themselves out. An object that
+  inherited permissions gets its own copy first.
+- **Saved first.** The exact original permissions are written to
+  `Site Assets/admin-center-locks.json` on that site *before* anything changes, so an
+  interrupted lock can still be undone. Read is added before anything is removed.
+- **Unlock** restores the original levels (or makes the object inherit again), removes only
+  the Read the lock added, and leaves grants that someone else made while it was locked.
+- **Banner.** A small application customizer in the same package is registered on the site
+  (a user custom action, no tenant setting) and shows the message on every page, list or
+  library view inside the locked area, including library folder views. The lock list lives
+  in its own settings, so it makes no extra requests. The message is shown as plain text.
+- **Limits.** Folders and files inside that already have their own permissions keep them;
+  subsites with their own permissions are not changed when a site is locked. The package
+  must be available on the site (deployed to all sites, or added to it) for the banner.
 
 ## Logo
 
