@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Elements xmlns="http://schemas.microsoft.com/sharepoint/">
+  <ClientSideComponentInstance
+    Title="RequestSignature"
+    Location="ClientSideExtension.ListViewCommandSet.CommandBar"
+    ListTemplateId="101"
+    Properties="{&quot;pageUrl&quot;:&quot;SitePages/eSignature.aspx&quot;}"
+    ComponentId="eeaf1d06-b981-4e57-9b65-7e72e4bdc8c5" />
+</Elements>

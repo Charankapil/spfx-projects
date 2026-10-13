@@ -1,0 +1,47 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "esignature-client-side-solution",
+    "id": "df77fdd8-eeb9-47cb-9e05-4a173fd1a86c",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "webApiPermissionRequests": [
+      {
+        "resource": "Microsoft Graph",
+        "scope": "Mail.Send"
+      }
+    ],
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "undefined"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "eSignature - request, sign and track signatures on documents inside SharePoint"
+      },
+      "longDescription": {
+        "default": "Send PDF and Word documents from SharePoint for electronic signature. Multiple signers in sequential, parallel or mixed order, drag-and-drop signature/initials/date/name/text/checkbox fields, draw/type/upload signatures, decline and delegate, reminders and expiry, templates, a full audit trail with a certificate of completion and SHA-256 tamper evidence, and signed copies saved back to SharePoint. Runs entirely inside SharePoint: no Azure app registration and no third-party signing service."
+      },
+      "screenshotPaths": []
+    },
+    "features": [
+      {
+        "title": "eSignature Feature",
+        "description": "Adds the eSignature web part and the Request signature library command.",
+        "id": "ae538c7a-632c-47c4-a556-ee84bd3d898b",
+        "version": "1.0.0.0",
+        "assets": {
+          "elementManifests": ["elements.xml", "ClientSideInstance.xml"]
+        }
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/esignature-webpart.sppkg"
+  }
+}

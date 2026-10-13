@@ -1,0 +1,23 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "d9c7bf7d-6aed-45d1-8d54-377e3e89e1bb",
+  "alias": "ESignatureWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage", "TeamsTab", "TeamsPersonalApp"],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "Other" },
+      "title": { "default": "eSignature" },
+      "description": { "default": "Send documents for electronic signature, sign them and track every request, with a full audit trail." },
+      "officeFabricIconFontName": "InsertSignatureLine",
+      "properties": {
+        "title": "eSignature",
+        "pageUrl": ""
+      }
+    }
+  ]
+}

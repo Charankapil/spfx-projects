@@ -1,0 +1,557 @@
+@import '~@fluentui/react/dist/sass/References.scss';
+
+// SharePoint theme tokens: SPFx swaps these for the site's theme colours at runtime.
+$theme-primary: '[theme:themePrimary, default:#0078d4]';
+$theme-lighter: '[theme:themeLighter, default:#deecf9]';
+$theme-lighter-alt: '[theme:themeLighterAlt, default:#eff6fc]';
+$border: rgba(11, 11, 11, 0.1);
+$wash: #f7f6f3;
+$card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.05);
+
+.app {
+  font-family: $ms-font-family-fallbacks;
+  color: $ms-color-neutralPrimary;
+  padding: 4px 2px 24px;
+}
+
+.header {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 16px 24px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  border: 1px solid $border;
+  background: linear-gradient(120deg, $theme-lighter-alt 0%, #ffffff 70%);
+  box-shadow: $card-shadow;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    border-radius: 12px 0 0 12px;
+    background: $theme-primary;
+  }
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.titleIcon {
+  color: $theme-primary;
+  font-size: 22px;
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid $border;
+  border-radius: 10px;
+  box-shadow: $card-shadow;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.cardTitle {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.muted {
+  color: $ms-color-neutralSecondary;
+  font-size: 12px;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi {
+  background: #ffffff;
+  border: 1px solid $border;
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: $card-shadow;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+
+  &:hover {
+    border-color: $theme-primary;
+  }
+}
+
+.kpiActive {
+  border-color: $theme-primary;
+  background: $theme-lighter-alt;
+}
+
+.kpiValue {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+.kpiLabel {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badgeInProgress {
+  background: #fff4ce;
+  color: #8a5300;
+}
+.badgeCompleted {
+  background: #dff6dd;
+  color: #0b6a0b;
+}
+.badgeDeclined,
+.badgeCancelled {
+  background: #fde7e9;
+  color: #a4262c;
+}
+.badgeExpired {
+  background: #edebe9;
+  color: #605e5c;
+}
+.badgeAction {
+  background: $theme-primary;
+  color: #ffffff;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.side {
+  position: sticky;
+  top: 8px;
+}
+
+// ---------------------------------------------------------------- pdf pages
+
+.pages {
+  background: $wash;
+  border: 1px solid $border;
+  border-radius: 10px;
+  padding: 16px;
+  max-height: 80vh;
+  overflow: auto;
+}
+
+.page {
+  position: relative;
+  margin: 0 auto 16px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  user-select: none;
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.pageNumber {
+  text-align: center;
+  font-size: 11px;
+  color: $ms-color-neutralSecondary;
+  margin: -10px 0 12px;
+}
+
+.placing {
+  cursor: crosshair;
+}
+
+.field {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid;
+  border-radius: 3px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.fieldDesign {
+  cursor: move;
+}
+
+.fieldSelected {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #323130;
+}
+
+.fieldTodo {
+  cursor: pointer;
+  animation: glow 1.6s ease-in-out infinite;
+}
+
+.fieldDone {
+  border-style: dashed;
+  background: transparent !important;
+}
+
+.fieldReadonly {
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+.fieldFocus {
+  box-shadow: 0 0 0 3px $theme-primary;
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fieldTodo {
+    animation: none;
+  }
+}
+
+.fieldImage {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.fieldInput {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 4px;
+  outline: none;
+}
+
+.resize {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  background: #323130;
+  cursor: nwse-resize;
+}
+
+.remove {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  font-size: 12px;
+  border: none;
+  padding: 0;
+  background: #323130;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.palette {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.recipientDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+// ---------------------------------------------------------------- recipients
+
+.recipientRow {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 2fr) minmax(0, 2fr) 120px 32px;
+  gap: 8px;
+  align-items: end;
+  padding: 10px 0;
+  border-bottom: 1px solid $border;
+
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  color: $ms-color-neutralSecondary;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.stepActive {
+  color: $ms-color-neutralPrimary;
+  font-weight: 600;
+  border-color: $theme-primary;
+  background: $theme-lighter-alt;
+}
+
+.stepNumber {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  background: $ms-color-neutralLighter;
+}
+
+.stepActive .stepNumber {
+  background: $theme-primary;
+  color: #ffffff;
+}
+
+.footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+// ---------------------------------------------------------------- browser
+
+.browser {
+  border: 1px solid $border;
+  border-radius: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.browserRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid $border;
+  background: #ffffff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: $theme-lighter-alt;
+  }
+}
+
+.browserSelected {
+  background: $theme-lighter;
+}
+
+.dropzone {
+  border: 2px dashed $border;
+  border-radius: 10px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+
+  &:hover {
+    border-color: $theme-primary;
+  }
+}
+
+// ---------------------------------------------------------------- signature pad
+
+.padCanvas {
+  width: 100%;
+  height: 180px;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: #ffffff;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.typed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 90px;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 40px;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.typedSelected {
+  border: 2px solid $theme-primary;
+}
+
+.fonts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+// ---------------------------------------------------------------- timeline
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timelineItem {
+  position: relative;
+  padding: 0 0 14px 20px;
+  border-left: 2px solid $ms-color-neutralLighter;
+  margin-left: 6px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: $theme-primary;
+  }
+
+  &:last-child {
+    border-left-color: transparent;
+  }
+}
+
+.signerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.signerItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid $border;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.hash {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.log {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  background: $wash;
+  border-radius: 6px;
+  padding: 12px;
+  white-space: pre-wrap;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: $ms-color-neutralSecondary;
+}
+
+.progress {
+  height: 6px;
+  border-radius: 3px;
+  background: $ms-color-neutralLighter;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.progressBar {
+  height: 100%;
+  background: $theme-primary;
+}

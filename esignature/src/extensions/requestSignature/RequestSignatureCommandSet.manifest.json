@@ -1,0 +1,17 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/command-set-extension-manifest.schema.json",
+  "id": "eeaf1d06-b981-4e57-9b65-7e72e4bdc8c5",
+  "alias": "RequestSignatureCommandSet",
+  "componentType": "Extension",
+  "extensionType": "ListViewCommandSet",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "items": {
+    "REQUEST_SIGNATURE": {
+      "title": { "default": "Request signatures" },
+      "iconImageUrl": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iIzMyMzEzMCIgZD0iTTEgMTNoMTR2MUgxem0xLjYtMi40bDcuOC03LjggMiAyLTcuOCA3LjhIMi42em0xIC4ydi45aC45bDYuNC02LjQtLjktLjl6Ii8+PC9zdmc+",
+      "type": "command"
+    }
+  }
+}

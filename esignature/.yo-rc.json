@@ -1,0 +1,21 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "18.17.1",
+    "sdksVersions": {
+      "@microsoft/microsoft-graph-client": "3.0.2",
+      "@microsoft/teams-js": "2.19.0"
+    },
+    "version": "1.18.2",
+    "libraryName": "esignature",
+    "libraryId": "df77fdd8-eeb9-47cb-9e05-4a173fd1a86c",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "esignature",
+    "solutionShortDescription": "eSignature - request, sign and track signatures on documents inside SharePoint",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}

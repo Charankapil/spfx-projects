@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Elements xmlns="http://schemas.microsoft.com/sharepoint/">
+  <CustomAction
+    Title="RequestSignature"
+    RegistrationId="101"
+    RegistrationType="List"
+    Location="ClientSideExtension.ListViewCommandSet.CommandBar"
+    ClientSideComponentId="eeaf1d06-b981-4e57-9b65-7e72e4bdc8c5"
+    ClientSideComponentProperties="{&quot;pageUrl&quot;:&quot;SitePages/eSignature.aspx&quot;}">
+  </CustomAction>
+</Elements>
