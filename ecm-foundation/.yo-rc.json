@@ -1,0 +1,21 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "18.17.1",
+    "sdksVersions": {
+      "@microsoft/microsoft-graph-client": "3.0.2",
+      "@microsoft/teams-js": "2.19.0"
+    },
+    "version": "1.18.2",
+    "libraryName": "ecm-foundation",
+    "libraryId": "5def8735-cd78-432b-b166-5014f43660a4",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "ecm-foundation",
+    "solutionShortDescription": "ECM Foundation - theme, ECM Hub Navigator and Metadata Explorer",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}

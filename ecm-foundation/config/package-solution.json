@@ -1,0 +1,41 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "ecm-foundation-client-side-solution",
+    "id": "5def8735-cd78-432b-b166-5014f43660a4",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "undefined"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "ECM Foundation - theme, ECM Hub Navigator and Metadata Explorer"
+      },
+      "longDescription": {
+        "default": "Module 1 of the ECM solution. Adds the ECM Hub Navigator (a security-trimmed hub and department mega menu driven by one SharePoint list) to every page, and a Metadata Explorer web part that groups documents by their metadata categories with links to each file. Uses only SharePoint REST and Search APIs; no Azure AD app registration is required."
+      },
+      "screenshotPaths": []
+    },
+    "features": [
+      {
+        "title": "ECM Foundation",
+        "description": "Deploys the ECM Hub Navigator tenant-wide (scoped through the Tenant Wide Extensions list) and the Metadata Explorer web part.",
+        "id": "956e2995-ff02-4df4-885e-98e6b9219331",
+        "version": "1.0.0.0",
+        "assets": {
+          "elementManifests": ["ClientSideInstance.xml"]
+        }
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/ecm-foundation.sppkg"
+  }
+}

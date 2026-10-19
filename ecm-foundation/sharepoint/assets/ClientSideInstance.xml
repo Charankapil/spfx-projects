@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Elements xmlns="http://schemas.microsoft.com/sharepoint/">
+  <!--
+    Registers the navigator in the tenant app catalog's "Tenant Wide Extensions"
+    list when the package is deployed to all sites. Change configSiteUrl to the
+    Corporate ECM Hub before packaging, or edit the entry in that list afterwards.
+  -->
+  <ClientSideComponentInstance
+    Title="ECM Hub Navigator"
+    Location="ClientSideExtension.ApplicationCustomizer"
+    ComponentId="293dd12c-1019-42fd-b262-79b6f949e9b7"
+    Properties="{&quot;configSiteUrl&quot;:&quot;/sites/ecm-hub&quot;,&quot;listTitle&quot;:&quot;ECM Navigation&quot;}">
+  </ClientSideComponentInstance>
+</Elements>

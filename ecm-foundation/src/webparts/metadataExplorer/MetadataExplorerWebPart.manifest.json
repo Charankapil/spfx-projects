@@ -1,0 +1,31 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "f16e0efc-0288-4bef-99ba-4d2607d20d1e",
+  "alias": "MetadataExplorerWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage", "TeamsTab"],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "ECM" },
+      "title": { "default": "Metadata Explorer" },
+      "description": { "default": "Documents grouped by their metadata categories, with links to each file and a metadata coverage view." },
+      "officeFabricIconFontName": "Tag",
+      "properties": {
+        "title": "Documents by metadata",
+        "source": "libraries",
+        "libraryTitles": "",
+        "excludedFields": "",
+        "searchScope": "hub",
+        "fieldMappings": "Document Type|RefinableString00\nDepartment|RefinableString01\nRecord Category|RefinableString02\nConfidentiality|RefinableString03\nStatus|RefinableString04",
+        "extraQuery": "",
+        "defaultGroupBy": "Document Type",
+        "defaultThenBy": "",
+        "maxItems": 5000
+      }
+    }
+  ]
+}

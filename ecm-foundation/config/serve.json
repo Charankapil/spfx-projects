@@ -1,0 +1,22 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/spfx-serve.schema.json",
+  "port": 4321,
+  "https": true,
+  "serveConfigurations": {
+    "default": {
+      "pageUrl": "https://{tenantDomain}/sites/ecm-hub/SitePages/Home.aspx",
+      "customActions": {
+        "293dd12c-1019-42fd-b262-79b6f949e9b7": {
+          "location": "ClientSideExtension.ApplicationCustomizer",
+          "properties": {
+            "configSiteUrl": "/sites/ecm-hub",
+            "listTitle": "ECM Navigation"
+          }
+        }
+      }
+    },
+    "metadataExplorer": {
+      "pageUrl": "https://{tenantDomain}/_layouts/workbench.aspx"
+    }
+  }
+}

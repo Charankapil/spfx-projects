@@ -1,0 +1,545 @@
+{
+  "_comment": "Seed rows for the ECM Navigation list, from the hub-and-spoke model in the ECM strategy. URLs are server-relative and illustrative: change them to the real site URLs before running Deploy-EcmFoundation.ps1, or edit the list afterwards.",
+  "items": [
+    {
+      "Title": "Corporate Services",
+      "EcmNavType": "Hub",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/corporate-services",
+      "EcmDescription": "Stricter access reviews for HR and Legal; confidentiality labels on high-value records.",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "HR",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Corporate Services",
+      "EcmUrl": "/sites/hr",
+      "EcmDescription": "People policies and employee records",
+      "EcmOrder": 10,
+      "EcmRestricted": true
+    },
+    {
+      "Title": "Legal",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Corporate Services",
+      "EcmUrl": "/sites/legal",
+      "EcmDescription": "Legal matters and privileged content",
+      "EcmOrder": 20,
+      "EcmRestricted": true
+    },
+    {
+      "Title": "Public Affairs",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Corporate Services",
+      "EcmUrl": "/sites/public-affairs",
+      "EcmDescription": "Communications and government relations",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Sales & Marketing",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Corporate Services",
+      "EcmUrl": "/sites/sales-marketing",
+      "EcmDescription": "Campaigns, proposals and brand assets",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Product & Strategy",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Corporate Services",
+      "EcmUrl": "/sites/product-strategy",
+      "EcmDescription": "Product plans and strategy documents",
+      "EcmOrder": 50,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Policies and procedures",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Corporate Services",
+      "EcmUrl": "/sites/corporate-services/SitePages/Policies.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Approved templates",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Corporate Services",
+      "EcmUrl": "/sites/corporate-services/Templates",
+      "EcmDescription": "",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Records and retention guidance",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Corporate Services",
+      "EcmUrl": "/sites/corporate-services/SitePages/Records-and-retention.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Hub news",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Corporate Services",
+      "EcmUrl": "/sites/corporate-services/SitePages/News.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Finance",
+      "EcmNavType": "Hub",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/finance-hub",
+      "EcmDescription": "Regular access reviews for financial, tax and audit evidence; visitors kept restricted.",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Finance",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Finance",
+      "EcmUrl": "/sites/finance",
+      "EcmDescription": "Planning, budgets and reporting",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Accounting",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Finance",
+      "EcmUrl": "/sites/accounting",
+      "EcmDescription": "Close, ledgers and reconciliations",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Tax",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Finance",
+      "EcmUrl": "/sites/tax",
+      "EcmDescription": "Tax filings and supporting evidence",
+      "EcmOrder": 30,
+      "EcmRestricted": true
+    },
+    {
+      "Title": "Global Internal Audit",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Finance",
+      "EcmUrl": "/sites/internal-audit",
+      "EcmDescription": "Audit plans and evidence",
+      "EcmOrder": 40,
+      "EcmRestricted": true
+    },
+    {
+      "Title": "Global Business Services",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Finance",
+      "EcmUrl": "/sites/gbs",
+      "EcmDescription": "Shared-service processes",
+      "EcmOrder": 50,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Policies and procedures",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Finance",
+      "EcmUrl": "/sites/finance-hub/SitePages/Policies.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Approved templates",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Finance",
+      "EcmUrl": "/sites/finance-hub/Templates",
+      "EcmDescription": "",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Records and retention guidance",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Finance",
+      "EcmUrl": "/sites/finance-hub/SitePages/Records-and-retention.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Hub news",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Finance",
+      "EcmUrl": "/sites/finance-hub/SitePages/News.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Technology & Security",
+      "EcmNavType": "Hub",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/technology-security",
+      "EcmDescription": "Tightly restricted membership, no broad external sharing, sensitivity labels and quarterly reviews.",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "IT",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Technology & Security",
+      "EcmUrl": "/sites/it",
+      "EcmDescription": "Services, architecture and standards",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Information Security",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Technology & Security",
+      "EcmUrl": "/sites/infosec",
+      "EcmDescription": "Cyber policies and incident records",
+      "EcmOrder": 20,
+      "EcmRestricted": true
+    },
+    {
+      "Title": "Corporate Security",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Technology & Security",
+      "EcmUrl": "/sites/corporate-security",
+      "EcmDescription": "Physical security and investigations",
+      "EcmOrder": 30,
+      "EcmRestricted": true
+    },
+    {
+      "Title": "Policies and procedures",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Technology & Security",
+      "EcmUrl": "/sites/technology-security/SitePages/Policies.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Approved templates",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Technology & Security",
+      "EcmUrl": "/sites/technology-security/Templates",
+      "EcmDescription": "",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Records and retention guidance",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Technology & Security",
+      "EcmUrl": "/sites/technology-security/SitePages/Records-and-retention.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Hub news",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Technology & Security",
+      "EcmUrl": "/sites/technology-security/SitePages/News.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Operations",
+      "EcmNavType": "Hub",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/operations",
+      "EcmDescription": "Metadata for location, asset type and criticality, so operationally critical content is prioritized for recovery.",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "BE",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Operations",
+      "EcmUrl": "/sites/be",
+      "EcmDescription": "Department documents and processes",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Network Operations",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Operations",
+      "EcmUrl": "/sites/network-operations",
+      "EcmDescription": "Network procedures and operational records",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Operational Health & Safety",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Operations",
+      "EcmUrl": "/sites/ohs",
+      "EcmDescription": "Safety programs, incidents and inspections",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Policies and procedures",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Operations",
+      "EcmUrl": "/sites/operations/SitePages/Policies.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Approved templates",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Operations",
+      "EcmUrl": "/sites/operations/Templates",
+      "EcmDescription": "",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Records and retention guidance",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Operations",
+      "EcmUrl": "/sites/operations/SitePages/Records-and-retention.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Hub news",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Operations",
+      "EcmUrl": "/sites/operations/SitePages/News.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Real Estate & Infrastructure",
+      "EcmNavType": "Hub",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/real-estate",
+      "EcmDescription": "Document types for leases, property and construction records; retention set by legal and operational need.",
+      "EcmOrder": 50,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Leasing",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Real Estate & Infrastructure",
+      "EcmUrl": "/sites/leasing",
+      "EcmDescription": "Lease agreements, renewals and amendments",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Property Management",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Real Estate & Infrastructure",
+      "EcmUrl": "/sites/property-management",
+      "EcmDescription": "Site and property records",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Development & Construction",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Real Estate & Infrastructure",
+      "EcmUrl": "/sites/dev-construction",
+      "EcmDescription": "Build projects and construction records",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Engineering",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Real Estate & Infrastructure",
+      "EcmUrl": "/sites/engineering",
+      "EcmDescription": "Drawings, specifications and engineering records",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Policies and procedures",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Real Estate & Infrastructure",
+      "EcmUrl": "/sites/real-estate/SitePages/Policies.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Approved templates",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Real Estate & Infrastructure",
+      "EcmUrl": "/sites/real-estate/Templates",
+      "EcmDescription": "",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Records and retention guidance",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Real Estate & Infrastructure",
+      "EcmUrl": "/sites/real-estate/SitePages/Records-and-retention.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Hub news",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Real Estate & Infrastructure",
+      "EcmUrl": "/sites/real-estate/SitePages/News.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Supply Chain & Sustainability",
+      "EcmNavType": "Hub",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/supply-chain-sustainability",
+      "EcmDescription": "Dedicated vendor groups where external sharing is needed; supplier records governed by retention.",
+      "EcmOrder": 60,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Supply Chain",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Supply Chain & Sustainability",
+      "EcmUrl": "/sites/supply-chain",
+      "EcmDescription": "Supplier lifecycle and procurement",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Sustainability",
+      "EcmNavType": "Department site",
+      "EcmParentHub": "Supply Chain & Sustainability",
+      "EcmUrl": "/sites/sustainability",
+      "EcmDescription": "Sustainability programs and reporting",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Policies and procedures",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Supply Chain & Sustainability",
+      "EcmUrl": "/sites/supply-chain-sustainability/SitePages/Policies.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Approved templates",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Supply Chain & Sustainability",
+      "EcmUrl": "/sites/supply-chain-sustainability/Templates",
+      "EcmDescription": "",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Records and retention guidance",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Supply Chain & Sustainability",
+      "EcmUrl": "/sites/supply-chain-sustainability/SitePages/Records-and-retention.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 30,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Hub news",
+      "EcmNavType": "Hub resource",
+      "EcmParentHub": "Supply Chain & Sustainability",
+      "EcmUrl": "/sites/supply-chain-sustainability/SitePages/News.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Policy Center",
+      "EcmNavType": "Shared service",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/policy-center",
+      "EcmDescription": "Enterprise policies and standards",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Knowledge Center",
+      "EcmNavType": "Shared service",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/knowledge-center",
+      "EcmDescription": "How-to guidance and FAQs",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Vendor Portal",
+      "EcmNavType": "Shared service",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/vendor-portal",
+      "EcmDescription": "Supplier collaboration space",
+      "EcmOrder": 30,
+      "EcmRestricted": true
+    },
+    {
+      "Title": "Template Center",
+      "EcmNavType": "Shared service",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/template-center",
+      "EcmDescription": "Approved document templates",
+      "EcmOrder": 40,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Records Center",
+      "EcmNavType": "Shared service",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/records-center",
+      "EcmDescription": "File plan and records guidance",
+      "EcmOrder": 50,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Governance Center",
+      "EcmNavType": "Shared service",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/governance-center",
+      "EcmDescription": "ECM roles, rules and scorecards",
+      "EcmOrder": 60,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Request a site",
+      "EcmNavType": "Header link",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/ecm-hub/SitePages/Request-a-site.aspx",
+      "EcmDescription": "",
+      "EcmOrder": 10,
+      "EcmRestricted": false
+    },
+    {
+      "Title": "Policies and records",
+      "EcmNavType": "Header link",
+      "EcmParentHub": "",
+      "EcmUrl": "/sites/policy-center",
+      "EcmDescription": "",
+      "EcmOrder": 20,
+      "EcmRestricted": false
+    }
+  ]
+}

@@ -1,0 +1,363 @@
+// Colours come from the ECM palette (src/common/theme/ecmTheme.ts). The
+// per-hub accent arrives as the --hub custom property on each element.
+$navy: #0E2841;
+$blue: #0067B8;
+$ink: #1F2B3A;
+$body: #4A5868;
+$muted: #5B6673;
+$line: #DCE6F0;
+$soft: #F3F5F8;
+$mobile: 768px;
+
+.navigator {
+  position: relative;
+  z-index: 1000;
+  font-family: 'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  color: $ink;
+  line-height: 1.4;
+
+  a { color: $blue; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button { font-family: inherit; }
+}
+
+.bar { position: relative; background: #fff; border-bottom: 1px solid $line; }
+
+.topRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 10px 24px;
+  @media (max-width: $mobile) { padding: 8px 16px; }
+}
+
+.spacer { flex: 1 1 auto; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: $navy !important;
+  text-decoration: none !important;
+}
+
+.brandBadge {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: $navy;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.brandText { display: flex; flex-direction: column; line-height: 1.15; }
+.brandTitle { font-weight: 600; font-size: 16px; }
+.brandSub { font-size: 12px; color: $muted; }
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: $soft;
+  border: 1px solid $line;
+  border-radius: 8px;
+  padding: 0 12px;
+  height: 40px;
+  width: 320px;
+  max-width: 100%;
+  box-sizing: border-box;
+  color: $muted;
+
+  input {
+    border: none;
+    background: transparent;
+    outline: none;
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    color: $ink;
+  }
+
+  &:focus-within { border-color: $blue; box-shadow: 0 0 0 1px $blue; }
+}
+
+.primaryLink, .secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.primaryLink { background: $blue; color: #fff !important; }
+.primaryLink:hover { background: #005A9E; }
+.secondaryLink { color: $navy !important; border: 1px solid $line; }
+.secondaryLink:hover { background: $soft; }
+
+.iconButton {
+  width: 40px;
+  height: 40px;
+  border: 1px solid $line;
+  border-radius: 8px;
+  background: #fff;
+  color: $navy;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.status { padding: 0 24px 10px; color: $muted; font-size: 13px; }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 16px; }
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: $body;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+
+  svg { opacity: 0.6; }
+  &:hover { background: $soft; color: $navy; }
+  &:focus-visible { outline: 2px solid $blue; outline-offset: -2px; }
+}
+
+.tabOpen { background: #F3F7FB; color: $navy; font-weight: 700; border-bottom-color: var(--hub); }
+.tabCurrent { color: $navy; font-weight: 600; border-bottom-color: var(--hub); }
+.tabDot { width: 10px; height: 10px; border-radius: 3px; background: var(--hub); flex: none; }
+
+.mega {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  background: #fff;
+  border-top: 4px solid var(--hub);
+  box-shadow: 0 24px 48px rgba(14, 40, 65, 0.18);
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.megaBody { display: flex; flex-wrap: wrap; gap: 32px; padding: 24px 32px; }
+.sitesColumn { flex: 2 1 420px; min-width: 0; }
+.column { flex: 1 1 200px; min-width: 0; padding-top: 38px; }
+
+.megaHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  h2 { margin: 0; font-size: 20px; font-weight: 600; color: $navy; }
+  a { font-weight: 600; font-size: 13px; }
+}
+
+.columnTitle {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: $muted;
+  margin-bottom: 10px;
+}
+
+.siteGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  @media (max-width: 1000px) { grid-template-columns: minmax(0, 1fr); }
+}
+
+.siteCard {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid $line;
+  border-radius: 10px;
+  background: #FBFCFE;
+  color: $ink !important;
+  text-decoration: none !important;
+  &:hover { border-color: var(--hub); background: #fff; }
+}
+
+.siteBadge {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--hub);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.siteText { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.siteTitleRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.siteTitle { font-weight: 600; color: $navy; }
+.siteDesc { font-size: 13px; color: $body; }
+
+.hereTag {
+  font-size: 11px;
+  font-weight: 700;
+  color: $navy;
+  background: #FFE7B8;
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: 8px;
+}
+.siteTitleRow .hereTag { margin-left: 0; }
+
+.restrictedTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #5C2D91;
+  background: #F1EAFA;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.linkList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  li { border-bottom: 1px solid #EEF2F7; }
+  li:last-child { border-bottom: none; }
+  a { display: block; padding: 9px 0; color: $navy; }
+}
+
+.governance {
+  flex: 1 1 240px;
+  max-width: 320px;
+  margin-top: 38px;
+  align-self: flex-start;
+  background: #F3F7FB;
+  border: 1px solid $line;
+  border-radius: 12px;
+  padding: 16px 18px;
+
+  p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+}
+
+.megaFoot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 32px;
+  background: #F7F9FC;
+  border-top: 1px solid #E6EDF4;
+  font-size: 12.5px;
+  color: $body;
+}
+
+.trimmed { display: inline-flex; align-items: center; gap: 6px; }
+
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px;
+  background: #fff;
+  border-bottom: 1px solid $line;
+  font-size: 13px;
+  color: $body;
+  @media (max-width: $mobile) { padding: 8px 16px; }
+}
+
+.crumbCurrent { color: $navy; font-weight: 600; }
+
+.classification {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7A3006;
+  background: #FCEBDD;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.drawer {
+  background: #fff;
+  border-bottom: 1px solid $line;
+  box-shadow: 0 16px 32px rgba(14, 40, 65, 0.18);
+  padding: 8px 0 16px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  max-height: 80vh;
+  overflow: auto;
+
+  > .columnTitle { padding: 12px 16px 4px; margin: 0; }
+}
+
+.drawerSearch { padding: 6px 16px; .search { width: 100%; height: 44px; } }
+
+.drawerHub {
+  border-bottom: 1px solid #EEF2F7;
+
+  > button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 0 16px;
+    border: none;
+    background: transparent;
+    text-align: left;
+    font-size: 15px;
+    color: $navy;
+    cursor: pointer;
+  }
+
+  ul { list-style: none; margin: 0; padding: 0 16px 10px 40px; }
+  li a { display: flex; align-items: center; min-height: 44px; color: $navy; }
+}
+
+.drawerHubOpen {
+  background: #FBF8F5;
+  border-left: 4px solid var(--hub);
+  > button { font-weight: 700; padding-left: 12px; }
+}
+
+.drawerHubLink { color: $blue !important; font-weight: 600; }
+
+.drawerPrimary, .drawerSecondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  margin: 12px 16px 0;
+  border-radius: 10px;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.drawerPrimary { background: $blue; color: #fff !important; }
+.drawerSecondary { border: 1px solid $line; color: $navy !important; }
+.drawerNote { text-align: center; font-size: 12.5px; color: $body; margin-top: 12px; padding: 0 16px; }
+
+.desktopOnly { @media (max-width: $mobile) { display: none !important; } }
+.mobileOnly { @media (min-width: $mobile + 1) { display: none !important; } }

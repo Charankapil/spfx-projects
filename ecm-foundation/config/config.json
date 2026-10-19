@@ -1,0 +1,27 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/core-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "ecm-hub-navigator-application-customizer": {
+      "components": [
+        {
+          "entrypoint": "./lib/extensions/ecmHubNavigator/EcmHubNavigatorApplicationCustomizer.js",
+          "manifest": "./src/extensions/ecmHubNavigator/EcmHubNavigatorApplicationCustomizer.manifest.json"
+        }
+      ]
+    },
+    "metadata-explorer-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/metadataExplorer/MetadataExplorerWebPart.js",
+          "manifest": "./src/webparts/metadataExplorer/MetadataExplorerWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "EcmHubNavigatorStrings": "lib/extensions/ecmHubNavigator/loc/{locale}.js",
+    "MetadataExplorerWebPartStrings": "lib/webparts/metadataExplorer/loc/{locale}.js"
+  }
+}
