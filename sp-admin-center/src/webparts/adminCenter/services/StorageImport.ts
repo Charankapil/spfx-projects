@@ -61,11 +61,11 @@ const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 const CANDIDATES = {
   url: ['siteurl', 'url', 'siteaddress', 'weburl', 'sitecollectionurl', 'path', 'site'],
-  storage: ['storageusagecurrent', 'storageused', 'storageusedmb', 'storageusedgb', 'storageusedbytes', 'storageusage', 'storageinuse', 'currentstorage', 'sizemb', 'sizegb', 'sizebytes', 'storage', 'usage', 'size'],
-  quota: ['storagequota', 'storagequotamb', 'storagequotagb', 'quota', 'quotamb', 'storagemaximumlevel', 'storagelimit', 'maxstorage', 'allocated', 'storageallocated'],
+  storage: ['storageusagecurrent', 'storageused', 'storageusedmb', 'storageusedgb', 'storageusedbytes', 'storageusedbyte', 'storageusedinbytes', 'storageusage', 'storageinuse', 'currentstorage', 'sizemb', 'sizegb', 'sizebytes', 'storage', 'usage', 'size'],
+  quota: ['storagequota', 'storagequotamb', 'storagequotagb', 'quota', 'quotamb', 'storagemaximumlevel', 'storagelimit', 'maxstorage', 'allocated', 'storageallocated', 'storageallocatedbyte', 'storageallocatedinbytes'],
   title: ['title', 'sitename', 'name', 'displayname'],
   deleted: ['timedeleted', 'isdeleted', 'deleted', 'deleteddate', 'deletiontime'],
-  template: ['templatename', 'template', 'webtemplate', 'sitetemplate', 'templateid'],
+  template: ['templatename', 'template', 'rootwebtemplate', 'webtemplate', 'sitetemplate', 'templateid'],
   teams: ['isteamsconnected', 'teamsconnected', 'isteamsconnectedsite', 'teamsenabled', 'hasteams', 'teams', 'isteamsteam'],
   lastActivity: ['lastactivityon', 'lastactivity', 'lastactivitydate', 'lastactivitydateutc', 'lastcontentmodifieddate', 'lastitemmodifieddate', 'lastmodified', 'lastmodifieddate'],
   archived: ['archivestatus', 'archivedstatus', 'archivestate', 'm365archivestatus', 'isarchived', 'archived', 'archivedby', 'archivedtime', 'archivedate', 'timearchived']

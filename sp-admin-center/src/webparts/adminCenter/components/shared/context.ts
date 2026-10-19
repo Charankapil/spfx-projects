@@ -2,6 +2,7 @@ import * as React from 'react';
 import { SPClient } from '../../core/SPClient';
 import { IActionLogEntry, ITarget, ViewKey } from '../../models';
 import { AdminApi } from '../../services/AdminApi';
+import { GraphApi } from '../../services/GraphApi';
 import { GrowthStore } from '../../services/GrowthStore';
 import { SearchApi } from '../../services/SearchApi';
 import { TenantStore } from '../../services/TenantStore';
@@ -19,6 +20,8 @@ export interface IAdminContext {
   search: SearchApi;
   growth: GrowthStore;
   tenant: TenantStore;
+  /** Microsoft Graph features (only work once the API access is approved). */
+  graph: GraphApi;
   /** Web the page lives on (used for tenant-wide search). */
   homeWebUrl: string;
   /** Signed-in user's e-mail / UPN (lower-case), so bulk actions never remove you. */

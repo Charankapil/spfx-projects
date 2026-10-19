@@ -6,6 +6,8 @@ import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 
 import * as strings from 'AdminCenterWebPartStrings';
 import { AdminCenter, IAdminCenterProps } from './components/AdminCenter';
+import { AadHttpClient } from '@microsoft/sp-http';
+import { GRAPH_ORIGIN, GraphClient, GraphFetcher, scopesFromToken } from './core/GraphClient';
 import { SPClient } from './core/SPClient';
 
 export interface IAdminCenterWebPartProps {
@@ -14,17 +16,30 @@ export interface IAdminCenterWebPartProps {
 
 export default class AdminCenterWebPart extends BaseClientSideWebPart<IAdminCenterWebPartProps> {
   private client?: SPClient;
+  private graphClient?: GraphClient;
 
   protected onInit(): Promise<void> {
     // One throttle-aware client per web part instance, bound to this tenant only.
     const origin = (/^(https:\/\/[^/]+)/i.exec(this.context.pageContext.web.absoluteUrl) || [''])[1];
     this.client = new SPClient(this.context.spHttpClient, origin);
+    // Graph is optional: no token is requested until a Microsoft 365 feature is opened.
+    this.graphClient = new GraphClient(
+      async (): Promise<GraphFetcher> => {
+        const aad = await this.context.aadHttpClientFactory.getClient(GRAPH_ORIGIN);
+        return (url, method, headers, body) => aad.fetch(url, AadHttpClient.configurations.v1, { method, headers, body });
+      },
+      async (): Promise<string[]> => {
+        const provider = await this.context.aadTokenProviderFactory.getTokenProvider();
+        return scopesFromToken(await provider.getToken(GRAPH_ORIGIN));
+      }
+    );
     return Promise.resolve();
   }
 
   public render(): void {
     const element: React.ReactElement<IAdminCenterProps> = React.createElement(AdminCenter, {
       client: this.client as SPClient,
+      graphClient: this.graphClient as GraphClient,
       homeWebUrl: this.context.pageContext.web.absoluteUrl,
       homeSiteUrl: this.context.pageContext.site.absoluteUrl,
       homeTitle: this.context.pageContext.web.title,

@@ -183,9 +183,9 @@ export class TenantStore {
   // ---- import & analysis -----------------------------------------------------
 
   public async importCsv(
-    text: string,
+    text: string | string[][],
     mapping: IMapping,
-    when: { t: number; fileName: string; folder?: string; modified?: number },
+    when: { t: number; fileName: string; folder?: string; modified?: number; keepMapping?: boolean },
     settings: IGrowthSettings,
     progress?: (step: string) => void
   ): Promise<IImportResult> {
@@ -195,7 +195,7 @@ export class TenantStore {
       }
     };
     say('Reading the CSV…');
-    const rows = parseCsv(text);
+    const rows = typeof text === 'string' ? parseCsv(text) : text;
     const built = buildSnapshot(rows, mapping, this.origin, when.t);
     if (built.data.u.length === 0) {
       throw new Error('No usable site rows were found with this column mapping. Check the URL and storage columns.');
@@ -235,7 +235,8 @@ export class TenantStore {
       overview: merged[merged.length - 1].file === file && overview ? overview : latest.overview,
       capacityTB: latest.capacityTB,
       countDeleted: latest.countDeleted,
-      mapping,
+      // A live sync from Microsoft 365 must not replace the column mapping of the CSV import.
+      mapping: when.keepMapping ? latest.mapping : mapping,
       folder: when.folder || latest.folder,
       lastFile: when.modified ? { name: when.fileName, modified: when.modified } : latest.lastFile
     };

@@ -166,6 +166,9 @@ export type ViewKey =
   | 'locks'
   | 'activity'
   | 'health'
+  | 'm365groups'
+  | 'guests'
+  | 'apiaccess'
   | 'settings';
 
 export interface IActionLogEntry {

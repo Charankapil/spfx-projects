@@ -1338,6 +1338,174 @@ test('locks: preview changes nothing and lists who would change', async () => {
   assert.ok(!env.calls.some((c) => /^POST/.test(c)), 'no writes in preview');
 });
 
+// ---------------------------------------------------------------- Microsoft Graph
+const { GraphClient, GraphAccessError, scopesFromToken, isConsentError } = src('core/GraphClient');
+const G = src('services/GraphApi');
+const { buildSnapshot: buildSnap } = src('services/StorageImport');
+const { reportTime, isStaleGuest } = G;
+
+const gres = (body, status = 200, headers = {}) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  statusText: String(status),
+  headers: { get: (n) => headers[n] || headers[n.toLowerCase()] || null },
+  text: async () => (typeof body === 'string' ? body : JSON.stringify(body))
+});
+const graphWith = (handler, scopes) => {
+  const calls = [];
+  let connects = 0;
+  const c = new GraphClient(async () => {
+    connects++;
+    return async (url, method, headers, body) => {
+      calls.push(method + ' ' + url);
+      return handler(url, method, headers, body);
+    };
+  }, scopes ? async () => scopes : undefined);
+  return { c, calls, connects: () => connects };
+};
+
+test('graph: no token is requested until the first Graph call', async () => {
+  const g = graphWith(async () => gres({ value: [] }));
+  assert.strictEqual(g.connects(), 0);
+  await g.c.get('/v1.0/groups');
+  assert.strictEqual(g.connects(), 1);
+});
+
+test('graph: refuses URLs outside graph.microsoft.com (including a forged nextLink)', async () => {
+  const g = graphWith(async () => gres({ value: [1], '@odata.nextLink': 'https://evil.example.com/steal' }));
+  await assert.rejects(() => g.c.getAll('/v1.0/users', 100), /outside Microsoft Graph/);
+  assert.throws(() => g.c.resolve('https://graph.microsoft.com.evil.com/v1.0/me'), /outside/);
+});
+
+test('graph: getAll follows nextLink and stops at maxItems', async () => {
+  let n = 0;
+  const g = graphWith(async () => {
+    n++;
+    return gres({ value: [n, n], '@odata.nextLink': 'https://graph.microsoft.com/v1.0/users?$skiptoken=' + n });
+  });
+  const res = await g.c.getAll('/v1.0/users', 5);
+  assert.deepStrictEqual(res.items, [1, 1, 2, 2, 3, 3]);
+  assert.strictEqual(res.truncated, true);
+});
+
+test('graph: 429 honours Retry-After then succeeds', async () => {
+  let n = 0;
+  const g = graphWith(async () => (++n === 1 ? gres('', 429, { 'Retry-After': '1' }) : gres({ ok: 1 })));
+  const t0 = Date.now();
+  assert.deepStrictEqual(await g.c.get('/v1.0/x', { cacheTtlMs: 0 }), { ok: 1 });
+  assert.ok(Date.now() - t0 >= 950, 'waited for Retry-After');
+  assert.strictEqual(g.c.stats.throttled, 1);
+});
+
+test('graph: missing consent becomes a "not approved" GraphAccessError', async () => {
+  const c = new GraphClient(async () => async () => {
+    throw new Error('AADSTS65001: The user or administrator has not consented to use the application');
+  });
+  const e = await c.get('/v1.0/me').catch((x) => x);
+  assert.ok(e instanceof GraphAccessError && e.notApproved, 'notApproved');
+  assert.match(e.message, /Global Administrator/);
+  const g = graphWith(async () => gres({ error: { code: 'Authorization_RequestDenied', message: 'Insufficient privileges' } }, 403));
+  const e2 = await g.c.get('/v1.0/groups').catch((x) => x);
+  assert.ok(e2 instanceof GraphAccessError && !e2.notApproved && e2.status === 403);
+  assert.ok(isConsentError('AADSTS65001') && !isConsentError('timeout'));
+});
+
+test('graph: scopes are read from the token and broader scopes count', async () => {
+  const payload = Buffer.from(JSON.stringify({ scp: 'Reports.Read.All User.ReadWrite.All' })).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  const scopes = scopesFromToken('h.' + payload + '.s');
+  assert.deepStrictEqual(scopes, ['Reports.Read.All', 'User.ReadWrite.All']);
+  assert.ok(G.hasScope(scopes, 'reports.read.all'));
+  assert.ok(G.hasScope(scopes, 'User.Read.All'), 'User.ReadWrite.All implies User.Read.All');
+  assert.ok(!G.hasScope(scopes, 'Group.ReadWrite.All'));
+  assert.deepStrictEqual(scopesFromToken('garbage'), []);
+  const g = graphWith(async () => gres({}), ['A']);
+  assert.deepStrictEqual(await g.c.grantedScopes(), ['A']);
+});
+
+test('graph: writes clear the cache and send $ref bodies; ids must be GUIDs', async () => {
+  const gid = '11111111-2222-3333-4444-555555555555';
+  const uid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const bodies = [];
+  const g = graphWith(async (url, method, h, body) => {
+    bodies.push([method, url, body]);
+    return method === 'GET' ? gres({ value: [] }) : gres('', 204);
+  });
+  const api = new G.GraphApi(g.c);
+  await api.getGroupPeople(gid, 'owners');
+  await api.addToGroup(gid, 'owners', uid);
+  await api.getGroupPeople(gid, 'owners');
+  assert.strictEqual(bodies.filter((b) => b[0] === 'GET').length, 2, 'cache dropped after write');
+  const post = bodies.find((b) => b[0] === 'POST');
+  assert.strictEqual(post[1], `https://graph.microsoft.com/v1.0/groups/${gid}/owners/$ref`);
+  assert.deepStrictEqual(JSON.parse(post[2]), { '@odata.id': `https://graph.microsoft.com/v1.0/directoryObjects/${uid}` });
+  await api.removeFromGroup(gid, 'members', uid);
+  assert.strictEqual(bodies[bodies.length - 1][1], `https://graph.microsoft.com/v1.0/groups/${gid}/members/${uid}/$ref`);
+  await assert.rejects(() => api.removeFromGroup(gid, 'members', '../../users'), /Not a valid id/);
+});
+
+test('graph: usage report JSON and CSV give the same snapshot; concealed rows are counted', async () => {
+  const jsonBody = JSON.stringify({ value: [
+    { reportRefreshDate: '2026-10-17', siteUrl: ORIGIN + '/sites/hr', storageUsedInBytes: 2147483648, storageAllocatedInBytes: 27487790694400, isDeleted: false, lastActivityDate: '2026-10-15', rootWebTemplate: 'Group', ownerDisplayName: 'HR', fileCount: 10 },
+    { reportRefreshDate: '2026-10-17', siteUrl: ORIGIN + '/sites/old', storageUsedInBytes: 1024, storageAllocatedInBytes: 1048576, isDeleted: true, lastActivityDate: '', rootWebTemplate: 'Team Site' },
+    { reportRefreshDate: '2026-10-17', siteUrl: '', storageUsedInBytes: 5 }
+  ] });
+  const csvBody = '﻿Report Refresh Date,Site Id,Site URL,Owner Display Name,Is Deleted,Last Activity Date,File Count,Active File Count,Page View Count,Visited Page Count,Storage Used (Byte),Storage Allocated (Byte),Root Web Template,Owner Principal Name,Report Period\n' +
+    `2026-10-17,x,${ORIGIN}/sites/hr,HR,False,2026-10-15,10,1,1,1,2147483648,27487790694400,Group,hr@x,7\n` +
+    `2026-10-17,y,${ORIGIN}/sites/old,,True,,0,0,0,0,1024,1048576,Team Site,,7\n` +
+    '2026-10-17,z,,,False,,0,0,0,0,5,5,Group,,7\n';
+  const a = G.usageTable(G.reportRecords(jsonBody));
+  const b = G.usageTable(G.reportRecords(csvBody));
+  assert.deepStrictEqual(a.rows.map((r) => r.slice(0, 6)), b.rows.map((r) => r.slice(0, 6)));
+  assert.strictEqual(a.sites, 2);
+  assert.strictEqual(a.concealed, 1);
+  assert.strictEqual(a.refreshDate, '2026-10-17');
+  const snap = buildSnap(a.rows, G.USAGE_MAPPING, ORIGIN, 1000);
+  assert.deepStrictEqual(snap.data.u, ['/sites/hr', '/sites/old']);
+  assert.deepStrictEqual(snap.data.b, [2147483648, 1024]);
+  assert.deepStrictEqual(snap.data.s, [0, 2], 'deleted kept as deleted');
+  assert.strictEqual(snap.data.q[0], 0 + Math.round((2147483648 / 27487790694400) * 1000));
+});
+
+test('graph: report falls back to the v1.0 CSV when the JSON format is rejected', async () => {
+  const g = graphWith(async (url) => (/\/beta\//.test(url) ? gres({ error: { code: 'BadRequest', message: 'format' } }, 400) : gres(`Report Refresh Date,Site URL,Storage Used (Byte)\n2026-10-17,${ORIGIN}/sites/a,7\n`)));
+  const t = await new G.GraphApi(g.c).siteUsage('D7');
+  assert.strictEqual(t.sites, 1);
+  assert.ok(g.calls.some((c) => /v1\.0\/reports\/getSharePointSiteUsageDetail\(period='D7'\)$/.test(c)));
+  const denied = graphWith(async () => gres({ error: { code: 'Forbidden', message: 'no' } }, 403));
+  await assert.rejects(() => new G.GraphApi(denied.c).siteUsage('D7'), (e) => e.status === 403 && denied.calls.length === 1);
+});
+
+test('graph: trends keep only the "All" series and sort by date', () => {
+  const recs = G.reportRecords(JSON.stringify({ value: [
+    { reportDate: '2026-10-02', siteType: 'All', storageUsedInBytes: 20 },
+    { reportDate: '2026-10-01', siteType: 'All', storageUsedInBytes: 10 },
+    { reportDate: '2026-10-01', siteType: 'Team', storageUsedInBytes: 3 }
+  ] }));
+  assert.deepStrictEqual(G.trendPoints(recs, ['storageusedinbytes']), [{ date: '2026-10-01', value: 10 }, { date: '2026-10-02', value: 20 }]);
+  const counts = G.reportRecords('Report Refresh Date,Total,Active,Report Date,Report Period\n2026-10-17,100,40,2026-10-16,180\n');
+  assert.deepStrictEqual(G.trendPoints(counts, ['total'], ['active']), [{ date: '2026-10-16', value: 100, value2: 40 }]);
+});
+
+test('graph: ownerless counting ignores non-user owners; guests fall back without sign-in data', async () => {
+  const grp = G.toGroup({ id: 'g', displayName: 'G', resourceProvisioningOptions: ['Team'], owners: [{ '@odata.type': '#microsoft.graph.servicePrincipal', id: 's' }] });
+  assert.strictEqual(grp.ownerCount, 0);
+  assert.ok(grp.isTeam);
+  const g = graphWith(async (url) => (/signInActivity/.test(url) ? gres({ error: { code: 'Authorization_RequestDenied', message: 'AuditLog' } }, 403) : gres({ value: [{ id: '1', displayName: 'Ann', createdDateTime: '2020-01-01T00:00:00Z', externalUserState: 'PendingAcceptance' }] })));
+  const res = await new G.GraphApi(g.c).listGuests();
+  assert.strictEqual(res.signInKnown, false);
+  assert.strictEqual(res.guests.length, 1);
+  assert.ok(isStaleGuest(res.guests[0], false));
+  const recent = G.toGuest({ id: '2', createdDateTime: new Date().toISOString(), signInActivity: { lastSignInDateTime: '2019-01-01T00:00:00Z', lastNonInteractiveSignInDateTime: new Date().toISOString() } });
+  assert.ok(!isStaleGuest(recent, true), 'latest of the sign-in dates counts');
+});
+
+test('graph: report snapshot time is noon UTC on the refresh date, never in the future', () => {
+  const now = Date.parse('2026-10-19T08:00:00Z') / 1000;
+  assert.strictEqual(reportTime('2026-10-17', now), Date.parse('2026-10-17T12:00:00Z') / 1000);
+  assert.strictEqual(reportTime('2026-10-19', now), now);
+  assert.strictEqual(reportTime(undefined, now), now);
+});
+
 // ---------------------------------------------------------------- runner
 (async () => {
   let failed = 0;

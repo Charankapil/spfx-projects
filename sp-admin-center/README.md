@@ -3,14 +3,16 @@
 # SharePoint Admin Center
 
 **One dashboard for everyday SharePoint administration, running as you.**
-No Azure app registration, no client ID or secret, no Graph permissions, no
-tenant-admin consent. One `.sppkg`, and whatever permissions you already have.
+No Azure app registration, no client ID or secret. One `.sppkg`, and whatever
+permissions you already have. Optional Microsoft 365 features use Microsoft
+Graph once a Global Administrator approves the API access (see below);
+everything else works without that approval.
 
 ## What it does
 
 | Section | What an admin can do there |
 | --- | --- |
-| **Tenant dashboard** | Every site collection in the tenant from the imported admin-center site list (built for 17,000+): site count, Teams-connected vs other sites, storage used / left / allocated in TB and percent used (capacity entered once, shared), consumption meter, sites by state, type, size and last activity, the top 50 sites by storage, and a searchable, filterable, exportable table of all site collections |
+| **Tenant dashboard** | Every site collection in the tenant from the imported admin-center site list (built for 17,000+): site count, Teams-connected vs other sites, storage used / left / allocated in TB and percent used (capacity entered once, shared), consumption meter, sites by state, type, size and last activity, the top 50 sites by storage, and a searchable, filterable, exportable table of all site collections. **Sync from Microsoft 365** *(Graph)* fills it live from the usage report, and a 180-day storage / active-sites trend |
 | **Site dashboard** | Storage vs quota, libraries / items / people / guests / subsites, health score, what needs attention, quick actions |
 | **Sites** | Inventory of **every** site collection you can see from search (no cap: pages of 500 walked in DocId order, about 35 requests for 17,000 sites), with type, created, last activity, inactivity filters, storage per site from the latest CSV import, CSV export, and **Manage** any site from the same screen |
 | **People & permissions** | SharePoint groups and their members (add / remove), all users and guests, make or remove site collection admin, remove a user from the site, who has direct access, "what can this person do here?" checker, **bulk add** from pasted e-mail addresses, **bulk remove** a pasted list of people from the site collection (preview first; never removes you; site admins only when you allow it), and an **Everyone groups** tab that shows where *Everyone* / *Everyone except external users* have access (SharePoint groups, direct site permission) and removes them from each place or from the whole site collection |
@@ -21,7 +23,10 @@ tenant-admin consent. One `.sppkg`, and whatever permissions you already have.
 | **Recycle bin** | Newest 300 items of the site collection, search, bulk restore, bulk delete permanently |
 | **Activity** | Permission and structure changes (members added or removed, role changes, lists / webs / groups created or deleted) for 24 h to 60 days |
 | **Health check** | Rule-based findings: storage nearly full, single or too many admins, guests, organisation-wide groups, lists near the 5,000-item threshold, libraries without version history, hidden-from-search lists, inactive site |
+| **Groups & owners** *(Graph)* | Owners and members of the site's Microsoft 365 group (add from pasted addresses, remove, last owner protected); tenant-wide scan for **ownerless and single-owner groups**, add an owner to many at once, jump to the group's site |
+| **Guest users** *(Graph)* | Every guest in the tenant with invitation state, last sign-in (when available), stale / never signed in / not accepted / disabled filters, CSV export |
 | **Settings & log** | Edit site title and description, session audit log of every change made with the tool (CSV export) |
+| **API access** | Which optional Microsoft Graph permissions are approved and how to approve them |
 
 **Switch site** (or **Manage** in Sites) points every section at another site or
 subsite on the same tenant, so one page administers many sites.
@@ -136,12 +141,42 @@ fine. A site needs two snapshots at least 20 hours apart before it can be judged
 Nothing here runs on a schedule by itself (a web part cannot): the flow produces the CSV,
 and an admin imports it.
 
+## Microsoft 365 features (optional, need API access approval)
+
+Since v1.6.0 the package requests four **delegated** Microsoft Graph permissions.
+They are granted to Microsoft's built-in "SharePoint Online Client
+Extensibility" app, so there is still no app registration or client ID, and
+every call runs as the signed-in admin, limited by that person's own role.
+
+| Permission | Unlocks | Your role must also allow it |
+| --- | --- | --- |
+| `Reports.Read.All` | **Sync from Microsoft 365** on the Tenant dashboard: every site collection with storage used/allocated, last activity, template and deleted state, without a CSV or flow. 180-day tenant storage and active-site trends. | SharePoint Administrator (or Reports Reader / Global Reader) |
+| `Group.ReadWrite.All` | **Groups & owners**: owners and members of the site's Microsoft 365 group (add / remove, last owner protected); tenant-wide scan for ownerless and single-owner groups, add an owner in bulk | SharePoint Administrator, Groups Administrator, or group owner |
+| `User.Read.All` | **Guest users**: every guest with invitation state, stale-guest filters, export; people lookup for group changes | any member |
+| `AuditLog.Read.All` | Last sign-in dates for guests (optional) | Reports Reader / Security Reader / Global Reader, plus Entra ID P1 |
+
+**Approval needs a Global Administrator** (a SharePoint Administrator cannot
+approve Microsoft Graph permissions): SharePoint admin center > Advanced >
+**API access** > approve the pending requests. Approving only some is fine;
+each feature says which permission it is missing, and **Administration > API
+access** shows exactly what is approved (read from the token, no Graph call).
+
+For the live sync, site addresses must not be concealed in reports: Microsoft
+365 admin center > Settings > Org settings > Reports > clear "Display concealed
+user, group, and site names in all reports". The usage report has no archive
+status, so keep using the CSV import if you need archived-site figures.
+
+Graph calls use the same throttle rules as SharePoint (2 in flight, paced,
+Retry-After honoured, cached), and no token is requested until you open a
+Microsoft 365 feature.
+
 ## How it runs without app registration
 
 All calls use SPFx's `SPHttpClient` against `_api/*` of the SharePoint tenant
 the page is on, with the signed-in user's own session. Search uses OData 3.0
 (`SPHttpClient` defaults to 4.0, which the search endpoint rejects with HTTP 500
-once it has rows). The package declares no `webApiPermissionRequests`.
+once it has rows). The only `webApiPermissionRequests` are the optional
+Microsoft Graph ones above; nothing in this section depends on them.
 
 Consequences, by design:
 
@@ -158,7 +193,8 @@ Consequences, by design:
 
 1. Download [`releases/sharepoint-admin-center.sppkg`](releases/sharepoint-admin-center.sppkg).
 2. Upload it to the tenant (or site collection) **App Catalog** and click **Deploy**.
-   No API permission approval is needed.
+   The core features need no API approval; approve the Graph requests in
+   **API access** only if you want the Microsoft 365 features.
 3. Add **SharePoint Admin Center** to a page (a full-width / single-part app page
    works best) on the site you want as the home base.
 4. Sign-in is automatic. Use **Switch site** to administer other sites.

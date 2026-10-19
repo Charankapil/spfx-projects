@@ -1,19 +1,19 @@
 /** Friendly name for a site template code (STS#3, GROUP#0, SITEPAGEPUBLISHING#0, ...). */
 export function siteType(template: string, groupConnected: boolean): string {
   const t = (template || '').toUpperCase();
-  if (t.indexOf('SITEPAGEPUBLISHING') === 0) {
+  if (t.indexOf('SITEPAGEPUBLISHING') === 0 || t.indexOf('COMMUNICATION') >= 0) {
     return 'Communication site';
   }
   if (t.indexOf('GROUP') === 0 || (t.indexOf('STS#3') === 0 && groupConnected)) {
     return 'Team site (M365 group)';
   }
-  if (t.indexOf('STS#3') === 0) {
+  if (t.indexOf('STS#3') === 0 || t === 'TEAM SITE') {
     return 'Team site (no group)';
   }
   if (t.indexOf('STS') === 0) {
     return 'Classic team site';
   }
-  if (t.indexOf('TEAMCHANNEL') === 0) {
+  if (t.indexOf('TEAMCHANNEL') === 0 || t.indexOf('TEAM CHANNEL') === 0) {
     return 'Teams channel site';
   }
   if (t.indexOf('SPSPERS') === 0) {

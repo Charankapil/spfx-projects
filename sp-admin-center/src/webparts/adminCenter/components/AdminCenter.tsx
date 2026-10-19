@@ -11,9 +11,11 @@ import {
   PrimaryButton,
   TextField
 } from '@fluentui/react';
+import { GraphClient } from '../core/GraphClient';
 import { SPClient, trimSlash } from '../core/SPClient';
 import { IActionLogEntry, ITarget, ViewKey } from '../models';
 import { AdminApi } from '../services/AdminApi';
+import { GraphApi } from '../services/GraphApi';
 import { GrowthStore } from '../services/GrowthStore';
 import { SearchApi } from '../services/SearchApi';
 import { TenantStore } from '../services/TenantStore';
@@ -21,6 +23,9 @@ import styles from './AdminCenter.module.scss';
 import { Logo } from './shared/ui';
 import { AdminContext, IAdminContext, IConfirmOptions } from './shared/context';
 import { ActivityView } from './views/ActivityView';
+import { ApiAccessView } from './views/ApiAccessView';
+import { GroupsView } from './views/GroupsView';
+import { GuestsView } from './views/GuestsView';
 import { ContentView } from './views/ContentView';
 import { GrowthView } from './views/GrowthView';
 import { HealthView } from './views/HealthView';
@@ -35,6 +40,7 @@ import { StorageView } from './views/StorageView';
 
 export interface IAdminCenterProps {
   client: SPClient;
+  graphClient: GraphClient;
   homeWebUrl: string;
   homeSiteUrl: string;
   homeTitle: string;
@@ -54,7 +60,10 @@ const NAV: Array<{ key: ViewKey; text: string; icon: string; section?: string }>
   { key: 'locks', text: 'Read-only locks', icon: 'Lock' },
   { key: 'activity', text: 'Activity', icon: 'History', section: 'Monitor' },
   { key: 'health', text: 'Health check', icon: 'HealthSolid' },
-  { key: 'settings', text: 'Settings & log', icon: 'Settings', section: 'Administration' }
+  { key: 'm365groups', text: 'Groups & owners', icon: 'Group', section: 'Microsoft 365' },
+  { key: 'guests', text: 'Guest users', icon: 'UserWarning' },
+  { key: 'settings', text: 'Settings & log', icon: 'Settings', section: 'Administration' },
+  { key: 'apiaccess', text: 'API access', icon: 'PlugConnected' }
 ];
 
 interface IToast {
@@ -83,9 +92,10 @@ function writeRecent(t: ITarget): void {
   }
 }
 
-export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, homeSiteUrl, homeTitle, heading, currentUser }) => {
+export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, homeWebUrl, homeSiteUrl, homeTitle, heading, currentUser }) => {
   const api = React.useMemo(() => new AdminApi(client), [client]);
   const search = React.useMemo(() => new SearchApi(client), [client]);
+  const graph = React.useMemo(() => new GraphApi(graphClient), [graphClient]);
   const growth = React.useMemo(() => new GrowthStore(client, api, trimSlash(homeWebUrl)), [client, api, homeWebUrl]);
   const tenant = React.useMemo(() => new TenantStore(client, trimSlash(homeWebUrl)), [client, homeWebUrl]);
   const home: ITarget = React.useMemo(() => ({ webUrl: trimSlash(homeWebUrl), siteUrl: trimSlash(homeSiteUrl), title: homeTitle }), [homeWebUrl, homeSiteUrl, homeTitle]);
@@ -141,6 +151,7 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
     search,
     growth,
     tenant,
+    graph,
     homeWebUrl: home.webUrl,
     currentUser: (currentUser || '').toLowerCase(),
     target,
@@ -152,6 +163,7 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
     reloadToken,
     reloadAll: () => {
       client.clearCache();
+      graphClient.clearCache();
       setReloadToken((n) => n + 1);
     },
     notify,
@@ -188,6 +200,12 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
         return <ActivityView />;
       case 'health':
         return <HealthView />;
+      case 'm365groups':
+        return <GroupsView />;
+      case 'guests':
+        return <GuestsView />;
+      case 'apiaccess':
+        return <ApiAccessView />;
       case 'settings':
         return <SettingsView stats={stats} />;
       default:
@@ -205,7 +223,7 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, homeWebUrl, h
             <Logo size={44} />
             <div>
             <h1 className={styles.headerTitle}>{heading}</h1>
-            <p className={styles.headerSub}>Administer SharePoint sites as yourself: no app registration, nothing runs in the background.</p>
+            <p className={styles.headerSub}>Administer SharePoint and Microsoft 365 as yourself: no app registration, nothing runs in the background.</p>
             </div>
           </div>
           <div className={styles.headerRight}>

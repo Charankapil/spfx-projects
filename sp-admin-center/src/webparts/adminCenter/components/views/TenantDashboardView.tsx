@@ -12,6 +12,7 @@ import { useAdmin } from '../shared/context';
 import { useLoader } from '../shared/hooks';
 import { Card, Empty, ErrorBar, Loading, Pill, SERIES, StatTile, ViewHeader } from '../shared/ui';
 import { ImportPanel } from './ImportPanel';
+import { M365Trends, SyncFromM365Button } from './M365Sync';
 
 /**
  * Tenant dashboard: every site collection from the latest imported CSV (the admin center
@@ -46,6 +47,7 @@ export const TenantDashboardView: React.FC = () => {
       <DefaultButton iconProps={{ iconName: 'Refresh' }} onClick={loader.reload}>
         Refresh
       </DefaultButton>
+      <SyncFromM365Button settings={loader.data.settings} onSynced={loader.reload} />
       <PrimaryButton iconProps={{ iconName: 'ExcelDocument' }} onClick={() => setImportOpen(true)}>
         Import CSV…
       </PrimaryButton>
@@ -62,9 +64,10 @@ export const TenantDashboardView: React.FC = () => {
         <Card>
           <Empty text={index.snapshots.length ? 'Recalculate or import again to build the tenant overview.' : 'No site list imported yet.'} />
           <p className={styles.muted} style={{ textAlign: 'center', maxWidth: 640, margin: '0 auto' }}>
-            Import the CSV your flow saves from the SharePoint admin center site list (URL and storage used are required; template, Teams, archive status, deleted and last activity columns add more detail). The dashboard then covers every site collection, not just the ones search returns.
+            Import the CSV your flow saves from the SharePoint admin center site list (URL and storage used are required; template, Teams, archive status, deleted and last activity columns add more detail), or, once the Microsoft Graph API access is approved, click Sync from Microsoft 365. The dashboard then covers every site collection, not just the ones search returns.
           </p>
         </Card>
+        <M365Trends />
         {panel}
       </div>
     );
@@ -141,6 +144,8 @@ export const TenantDashboardView: React.FC = () => {
           </Card>
         )}
       </div>
+
+      <M365Trends />
 
       <TopSites top={o.top} total={o.activeBytes + o.archivedBytes} />
 
