@@ -105,20 +105,23 @@ export class SpRestClient {
       console.error(`[${this.logPrefix}] ${response.status} from ${url}: ${detail}`);
       throw new HttpError(response.status, `${response.status}: ${detail}`);
     }
-    return (await response.json()) as T;
+    // MERGE / DELETE and some actions answer 204 with no body.
+    const text = await response.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   public getJson<T>(url: string, configuration: SPHttpClientConfiguration = SPHttpClient.configurations.v1): Promise<T> {
     return this.handle<T>(url, () => this.httpClient.get(url, configuration), 0);
   }
 
-  public postJson<T>(url: string, body: unknown): Promise<T> {
+  /** POSTs JSON without __metadata: SharePoint Online accepts OData 4 payloads untyped. */
+  public postJson<T>(url: string, body?: unknown, headers: { [name: string]: string } = {}): Promise<T> {
     return this.handle<T>(
       url,
       () =>
         this.httpClient.post(url, SPHttpClient.configurations.v1, {
-          headers: { 'Content-Type': 'application/json;charset=utf-8' },
-          body: JSON.stringify(body)
+          headers: { 'Content-Type': 'application/json;charset=utf-8', ...headers },
+          body: body === undefined ? undefined : JSON.stringify(body)
         }),
       0
     );

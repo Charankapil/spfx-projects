@@ -16,5 +16,5 @@ A collection of SharePoint Framework (SPFx) web part solutions.
   department mega menu on every page, driven by one SharePoint list) and the
   **Metadata Explorer** web part (documents grouped by their metadata
   categories, with links to each file and a metadata coverage view). Includes
-  a PnP PowerShell script that provisions the theme, the navigation list and
-  the package. See its own [README](./ecm-foundation/README.md).
+  an **ECM Setup** web part that provisions the theme and the navigation list
+  from the browser, with no app registration or client id needed. See its own [README](./ecm-foundation/README.md).

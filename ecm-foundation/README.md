@@ -8,11 +8,13 @@ document metadata visible:
 | --- | --- | --- |
 | **ECM theme** | Tenant theme + CSS variables | One palette for SharePoint's own chrome (tenant theme) and for the ECM components (`--ecm-*` variables). |
 | **ECM Hub Navigator** | Application customizer | Brand bar, search, hub tabs with a mega menu, breadcrumb and site classification on every page. Security-trimmed. Driven by one SharePoint list, so governance changes the menu without a redeploy. |
+| **ECM Setup** | Web part | One-time setup from a page on the Corporate ECM Hub: creates and seeds the navigation list, registers and applies the theme, points the navigator at the hub, and checks every link. |
 | **Metadata Explorer** | Web part | Every document in the site's libraries (or a hub / the tenant through search), grouped by any metadata category with a second-level "then by", facet filters, links to each file, a metadata coverage view and CSV export. |
 
 Everything runs on the current user's SharePoint session through
-SharePoint REST and Search: **no Azure AD app registration or API permission
-is needed** for the package itself.
+SharePoint REST and Search: **no Entra ID app registration, client id or API
+permission is needed**, including for setup. The **ECM Setup** web part does
+the one-time configuration from the browser.
 
 ![ECM Hub Navigator with the Real Estate & Infrastructure hub open (sample data)](docs/images/hub-navigator.png)
 
@@ -28,9 +30,17 @@ is needed** for the package itself.
 | 4 | Document Compliance Panel: label, owner, review date and lifecycle state on each document | Planned |
 | 5 | Content Health: duplicate, stale and ownerless content before migration (extends [`filetype-analyser`](../filetype-analyser)) | Planned |
 
-## Deploy
+## Deploy (no app registration or client id needed)
 
-1. **Build** (Node 18, as SPFx 1.18.2 requires):
+Everything in this package calls SharePoint REST as the signed-in person, so
+it declares **no API permission requests** and needs no Entra ID app
+registration. (Module 3, which creates Entra ID groups, will be the first to
+request Microsoft Graph access. That request will appear in SharePoint admin
+center → Advanced → API access, for a Global or Privileged Role Administrator
+to approve.)
+
+1. **Get the package.** Use the pre-built [`releases/ecm-foundation.sppkg`](releases/ecm-foundation.sppkg),
+   or build it yourself with Node 18 (as SPFx 1.18.2 requires):
 
    ```bash
    npm install
@@ -38,38 +48,33 @@ is needed** for the package itself.
    npm run package-solution   # -> sharepoint/solution/ecm-foundation.sppkg
    ```
 
-   A pre-built package is in [`releases/ecm-foundation.sppkg`](releases/ecm-foundation.sppkg).
+2. **Upload it to the tenant app catalog** (SharePoint admin center → More features → Apps).
+   When asked, tick **"Enable this app and add it to all sites"**. This adds the ECM Hub Navigator
+   to every site and makes the web parts available everywhere.
 
-2. **Provision** with [PnP.PowerShell](https://pnp.github.io/powershell/) 2.x
-   (needs SharePoint admin, and your own PnP app registration's client id):
+3. **Run ECM Setup on the Corporate ECM Hub.** Create a page on the hub site (for example
+   *ECM Setup*), add the **ECM Setup** web part (group "ECM") and select **Run all steps**.
+   Each step reports what it did and is safe to run again:
 
-   ```powershell
-   ./provisioning/Deploy-EcmFoundation.ps1 `
-     -TenantAdminUrl https://contoso-admin.sharepoint.com `
-     -EcmHubUrl      https://contoso.sharepoint.com/sites/ecm-hub `
-     -ClientId       <your PnP app client id> `
-     -ApplyThemeTo   https://contoso.sharepoint.com/sites/real-estate, https://contoso.sharepoint.com/sites/finance-hub `
-     -PackagePath    ./releases/ecm-foundation.sppkg `
-     -GrantEveryoneRead
-   ```
+   | Step | What it does | Who can run it |
+   | --- | --- | --- |
+   | 1. Create the navigation list | Creates **ECM Navigation** with its columns and fills it with the 6 functional hubs, 21 department sites, hub resources and 6 shared services from the strategy. Existing entries are never changed. | Owner of the hub site |
+   | 2. Let everyone read the menu | Gives *Everyone except external users* read access to that list only. | Owner of the hub site |
+   | 3. Register the ECM theme | Adds **ECM Theme** to "Change the look" for all sites. Optional. | SharePoint administrator |
+   | 4. Apply the ECM theme | Applies the palette to the hub and every site in the menu. Sites you don't own are skipped and reported. | Owner of each site |
+   | 5. Point the navigator at this hub | Writes this site's address, the hub title and the brand badge into the navigator's settings in the Tenant Wide Extensions list. Adds the entry if it is missing. | App catalog owner (SharePoint administrator) |
+   | 6. Check the links | Opens every site the menu links to and lists the ones that don't exist. | Anyone |
 
-   The script is safe to re-run. It:
-   - registers **ECM Theme** ([`provisioning/theme/ecm-theme.json`](provisioning/theme/ecm-theme.json)) as a tenant theme and applies it to the sites you list;
-   - creates the **ECM Navigation** list on the Corporate ECM Hub and seeds it from
-     [`provisioning/navigation-seed.json`](provisioning/navigation-seed.json):
-     the 6 functional hubs, 21 department sites, hub resources and 6 shared enterprise
-     services from the strategy. The seed URLs are placeholders (`/sites/leasing`, …):
-     **edit them to your real site URLs** before running, or in the list afterwards;
-   - uploads and deploys the package tenant-wide, and points the navigator's
-     **Tenant Wide Extensions** entry at your hub.
+   The seeded site URLs follow `/sites/<name>` (`/sites/leasing`, `/sites/hr`, …). Step 6 shows
+   which ones don't match your tenant. Correct those in the list (the step 1 card links to it)
+   and the menu updates for everyone within the cache time.
 
-3. **Everyone must be able to read the navigation list.** If they can't, the navigator shows
-   "Navigation could not be loaded". Either use `-GrantEveryoneRead` or make sure the
-   hub's Visitors group covers all employees.
+   If you aren't a SharePoint administrator, run steps 1, 2, 4 and 6 yourself. Then ask an
+   administrator either to open the same page and run steps 3 and 5, or to set
+   `configSiteUrl` by hand in the app catalog's Tenant Wide Extensions list.
 
-To limit the navigator to some sites, use the Tenant Wide Extensions list's
-template filter. You can also delete that entry and add the customizer to specific sites
-with `Add-PnPApplicationCustomizer -ClientSideComponentId 293dd12c-1019-42fd-b262-79b6f949e9b7`.
+To limit the navigator to some sites, use the Tenant Wide Extensions entry's site
+template filter, or disable that entry.
 
 ## ECM Hub Navigator
 
@@ -90,6 +95,9 @@ with `Add-PnPApplicationCustomizer -ClientSideComponentId 293dd12c-1019-42fd-b26
 The first **Header link** is shown as the primary button (the seed makes this
 "Request a site").
 
+**Everyone must be able to read this list.** If they can't, the navigator shows
+"Navigation could not be loaded". ECM Setup step 2 takes care of this.
+
 ### How it behaves
 
 - **Fast.** The menu is cached in `localStorage` for `cacheMinutes` (30 by default). Pages paint from
@@ -105,7 +113,7 @@ The first **Header link** is shown as the primary button (the seed makes this
 
 ### Properties
 
-Set these in the Tenant Wide Extensions entry, or with `Add-PnPApplicationCustomizer -ClientSideComponentProperties`:
+ECM Setup step 5 writes these. You can also edit them by hand in the app catalog's Tenant Wide Extensions list:
 
 ```json
 {
@@ -173,17 +181,19 @@ A warning appears when there are more.
 ```
 src/
   common/                 shared by every ECM component
-    theme/ecmTheme.ts     palette, hub colours, --ecm-* CSS variables
+    theme/ecmTheme.ts     palette, hub colours, --ecm-* CSS variables, the SharePoint theme
     services/SpRestClient.ts  REST + search with throttling retry
   extensions/ecmHubNavigator/
     EcmHubNavigatorApplicationCustomizer.ts
     services/NavigationService.ts   list load, cache, security trimming, location
     components/HubNavigator.tsx     bar, mega menu, drawer, breadcrumb
+  webparts/ecmSetup/
+    data/navigationSeed.ts          the strategy's hubs, departments and services
+    services/SetupService.ts        list, permissions, theme, navigator settings, link check
   webparts/metadataExplorer/
     services/LibrariesSource.ts     RenderListDataAsStream per library
     services/SearchSource.ts        search query, managed property mapping
     services/grouping.ts            filters, facets, groups, coverage, CSV
     components/                     explorer, facets, groups, tables
-provisioning/             theme, navigation seed, Deploy-EcmFoundation.ps1
 sharepoint/assets/        ClientSideInstance.xml (tenant-wide registration)
 ```

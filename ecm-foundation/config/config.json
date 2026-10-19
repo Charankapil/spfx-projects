@@ -17,11 +17,20 @@
           "manifest": "./src/webparts/metadataExplorer/MetadataExplorerWebPart.manifest.json"
         }
       ]
+    },
+    "ecm-setup-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/ecmSetup/EcmSetupWebPart.js",
+          "manifest": "./src/webparts/ecmSetup/EcmSetupWebPart.manifest.json"
+        }
+      ]
     }
   },
   "externals": {},
   "localizedResources": {
     "EcmHubNavigatorStrings": "lib/extensions/ecmHubNavigator/loc/{locale}.js",
-    "MetadataExplorerWebPartStrings": "lib/webparts/metadataExplorer/loc/{locale}.js"
+    "MetadataExplorerWebPartStrings": "lib/webparts/metadataExplorer/loc/{locale}.js",
+    "EcmSetupWebPartStrings": "lib/webparts/ecmSetup/loc/{locale}.js"
   }
 }

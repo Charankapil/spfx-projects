@@ -1,0 +1,22 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "7a3f0888-ef9f-4956-a9a4-f99f091b0cde",
+  "alias": "EcmSetupWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "ECM" },
+      "title": { "default": "ECM Setup" },
+      "description": { "default": "One-time setup for the Corporate ECM Hub: navigation list, theme and navigator settings. Runs as you; no app registration needed." },
+      "officeFabricIconFontName": "Settings",
+      "properties": {
+        "listTitle": "ECM Navigation"
+      }
+    }
+  ]
+}
