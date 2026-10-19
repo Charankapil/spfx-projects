@@ -164,6 +164,8 @@ export type ViewKey =
   | 'growth'
   | 'recycle'
   | 'locks'
+  | 'grant'
+  | 'create'
   | 'activity'
   | 'health'
   | 'm365groups'

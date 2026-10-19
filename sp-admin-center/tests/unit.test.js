@@ -1506,6 +1506,253 @@ test('graph: report snapshot time is noon UTC on the refresh date, never in the 
   assert.strictEqual(reportTime(undefined, now), now);
 });
 
+// ---------------------------------------------------------------- grant access by URL
+const AR = src('services/AccessResolver');
+
+test('access url: plain paths, views, forms, Office links, access denied pages', () => {
+  const P = (u) => AR.parseAccessUrl(u, ORIGIN);
+  let r = P(ORIGIN + '/sites/fin/proj/Shared%20Documents/Budgets/2026.xlsx?web=1');
+  assert.strictEqual(r.path, '/sites/fin/proj/Shared Documents/Budgets/2026.xlsx');
+  r = P(ORIGIN + '/sites/fin/proj/Shared%20Documents/Forms/AllItems.aspx?id=%2Fsites%2Ffin%2Fproj%2FShared%20Documents%2FBudgets&viewid=abc');
+  assert.strictEqual(r.path, '/sites/fin/proj/Shared Documents/Budgets');
+  assert.ok(!r.listPage);
+  r = P(ORIGIN + '/sites/fin/proj/Shared%20Documents/Forms/AllItems.aspx');
+  assert.strictEqual(r.path, '/sites/fin/proj/Shared Documents');
+  assert.ok(r.listPage);
+  r = P(ORIGIN + '/sites/fin/Lists/Tasks/DispForm.aspx?ID=5&Source=x');
+  assert.deepStrictEqual([r.path, r.itemId, r.listPage], ['/sites/fin/Lists/Tasks', 5, true]);
+  r = P(ORIGIN + '/sites/fin/Lists/Tasks/AllItems.aspx');
+  assert.deepStrictEqual([r.path, r.listPage], ['/sites/fin/Lists/Tasks', true]);
+  r = P(ORIGIN + '/sites/fin/SitePages/Home.aspx');
+  assert.strictEqual(r.path, '/sites/fin/SitePages/Home.aspx');
+  assert.ok(!r.listPage);
+  r = P(ORIGIN + '/:x:/r/sites/fin/proj/Shared%20Documents/Budgets/2026.xlsx?d=w2c1d3e4f5a6b7c8d9e0f1a2b3c4d5e6f&csf=1');
+  assert.strictEqual(r.fileId, '2c1d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f');
+  r = P(ORIGIN + '/sites/fin/proj/_layouts/15/Doc.aspx?sourcedoc=%7B2C1D3E4F-5A6B-7C8D-9E0F-1A2B3C4D5E6F%7D&file=2026.xlsx&action=default');
+  assert.deepStrictEqual([r.path, r.fileId], ['/sites/fin/proj', '2c1d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f']);
+  r = P(ORIGIN + '/sites/fin/_layouts/15/AccessDenied.aspx?Source=' + encodeURIComponent(ORIGIN + '/sites/fin/proj/Shared Documents/Budgets/2026.xlsx') + '&correlation=1&Type=item&name=%7Baaaa1111-0000-0000-0000-000000000001%7D&listItemId=11');
+  assert.strictEqual(r.path, '/sites/fin/proj/Shared Documents/Budgets/2026.xlsx');
+  assert.strictEqual(r.itemId, 11);
+  assert.ok(/Access denied/.test(r.notes.join(' ')));
+  // Access denied page that wraps an Office link.
+  r = P(ORIGIN + '/sites/fin/_layouts/15/AccessDenied.aspx?Source=' + encodeURIComponent(ORIGIN + '/sites/fin/proj/_layouts/15/Doc.aspx?sourcedoc={2C1D3E4F-5A6B-7C8D-9E0F-1A2B3C4D5E6F}&file=a.docx'));
+  assert.strictEqual(r.fileId, '2c1d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f');
+  r = P(ORIGIN + '/:w:/s/fin/EabcDEFtoken?e=x');
+  assert.ok(r.sharingLink);
+  assert.strictEqual(P('/sites/fin').url, ORIGIN + '/sites/fin');
+  assert.throws(() => P('not a url'), /full https/);
+});
+
+test('access: ManagePermissions bit is read from EffectiveBasePermissions', () => {
+  assert.ok(AR.canManagePermissions({ Low: '4294967295', High: '2147483647' }));
+  assert.ok(AR.canManagePermissions({ Low: String(Math.pow(2, 24) + 1), High: '0' }));
+  assert.ok(!AR.canManagePermissions({ Low: '1011030767', High: '432' }), 'Contribute cannot manage permissions');
+});
+
+function accessEnv(opts = {}) {
+  const env = { calls: [], posts: [] };
+  const FIN = ORIGIN + '/sites/fin';
+  const PROJ = FIN + '/proj';
+  const L1 = 'aaaa1111-0000-0000-0000-000000000001';
+  const L2 = 'aaaa2222-0000-0000-0000-000000000002';
+  const MANAGE = { Low: '4294967295', High: '2147483647' };
+  const READ = { Low: '138612833', High: '176' };
+  const webs = {
+    [FIN]: { Title: 'Finance', ServerRelativeUrl: '/sites/fin', HasUniqueRoleAssignments: true, parent: null },
+    [PROJ]: { Title: 'Projects', ServerRelativeUrl: '/sites/fin/proj', HasUniqueRoleAssignments: false, parent: '/sites/fin' }
+  };
+  const lists = {
+    [L1]: { web: PROJ, Id: L1, Title: 'Documents', BaseType: 1, HasUniqueRoleAssignments: false, root: '/sites/fin/proj/Shared Documents' },
+    [L2]: { web: FIN, Id: L2, Title: 'Tasks', BaseType: 0, HasUniqueRoleAssignments: true, root: '/sites/fin/Lists/Tasks' }
+  };
+  const items = {
+    '/sites/fin/proj/Shared Documents/Budgets': { Id: 10, list: L1, FileSystemObjectType: 1, FileLeafRef: 'Budgets', HasUniqueRoleAssignments: true },
+    '/sites/fin/proj/Shared Documents/Budgets/2026': { Id: 12, list: L1, FileSystemObjectType: 1, FileLeafRef: '2026', HasUniqueRoleAssignments: false },
+    '/sites/fin/proj/Shared Documents/Budgets/2026/q1.xlsx': { Id: 11, list: L1, FileSystemObjectType: 0, FileLeafRef: 'q1.xlsx', HasUniqueRoleAssignments: false, UniqueId: '2c1d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f' },
+    '/sites/fin/Lists/Tasks/5_.000': { Id: 5, list: L2, FileSystemObjectType: 0, FileLeafRef: '5_.000', Title: 'Close books', HasUniqueRoleAssignments: false }
+  };
+  const ra = { 'item:10': [{ PrincipalId: 7, Member: { Title: 'Budget owners', LoginName: 'Budget owners', PrincipalType: 8 }, RoleDefinitionBindings: [{ Name: 'Edit', RoleTypeKind: 6 }] }, { PrincipalId: 8, Member: { Title: 'Readers', LoginName: 'Readers', PrincipalType: 8 }, RoleDefinitionBindings: [{ Name: 'Read', RoleTypeKind: 2 }] }] };
+  const itemJson = (path, it) => ({ Id: it.Id, FileLeafRef: it.FileLeafRef, Title: it.Title, FileRef: path, FileSystemObjectType: it.FileSystemObjectType, HasUniqueRoleAssignments: it.HasUniqueRoleAssignments, EffectiveBasePermissions: opts.readOnlyItems ? READ : MANAGE, ParentList: { Id: it.list, Title: lists[it.list].Title, BaseType: lists[it.list].BaseType } });
+  const listJson = (l) => ({ Id: l.Id, Title: l.Title, BaseType: l.BaseType, HasUniqueRoleAssignments: l.HasUniqueRoleAssignments, EffectiveBasePermissions: MANAGE, RootFolder: { ServerRelativeUrl: l.root } });
+  const pOf = (u) => { const m = /@p='([^']*)'/.exec(u); return m ? m[1].replace(/''/g, "'") : ''; };
+  const client = make(async (m, url, cfg, o) => {
+    const u = decodeURIComponent(url);
+    env.calls.push(m + ' ' + u.replace(ORIGIN, ''));
+    const webOf = Object.keys(webs).sort((a, b) => b.length - a.length).find((w) => u.indexOf(w + '/_api/') === 0);
+    if (/GetWebUrlFromPageUrl/.test(u)) {
+      if (opts.noWebUrlApi) return json({ error: { message: { value: 'nope' } } }, 500);
+      const page = JSON.parse(o.body).pageFullUrl;
+      const w = Object.keys(webs).sort((a, b) => b.length - a.length).find((x) => decodeURIComponent(page).toLowerCase().indexOf(x.toLowerCase()) === 0);
+      return json({ value: w || ORIGIN });
+    }
+    if (m === 'POST' && /breakroleinheritance|addroleassignment/.test(u)) { env.posts.push(u.replace(ORIGIN, '')); return json(undefined, 200); }
+    if (opts.denyWeb && webOf === opts.denyWeb) return json({ error: { message: { value: 'Access denied.' } } }, 403);
+    if (/\/_api\/web\?\$select=Url$/.test(u)) {
+      const base = u.replace(/\/_api\/web.*$/, '');
+      if (opts.denyWeb && base.toLowerCase().indexOf(opts.denyWeb.toLowerCase()) === 0) return json({ error: { message: { value: 'Access denied.' } } }, 403);
+      const w = Object.keys(webs).sort((a, b) => b.length - a.length).find((x) => base.toLowerCase().indexOf(x.toLowerCase()) === 0);
+      return w ? json({ Url: w }) : json({ Url: ORIGIN });
+    }
+    if (webOf && /\/_api\/web\?\$select=Title/.test(u)) {
+      const w = webs[webOf];
+      return json({ Title: w.Title, Url: webOf, ServerRelativeUrl: w.ServerRelativeUrl, HasUniqueRoleAssignments: w.HasUniqueRoleAssignments, EffectiveBasePermissions: MANAGE, ParentWeb: w.parent ? { ServerRelativeUrl: w.parent } : null });
+    }
+    const byPath = /Get(File|Folder)ByServerRelativePath\(decodedurl=@p\)\/ListItemAllFields/.exec(u);
+    if (byPath) {
+      const path = pOf(u);
+      const it = items[path];
+      if (!it) return json({ error: { message: { value: 'File Not Found.' } } }, 404);
+      const isFolder = it.FileSystemObjectType === 1;
+      if ((byPath[1] === 'Folder') !== isFolder) return json({ error: { message: { value: 'Not found' } } }, 404);
+      return json(itemJson(path, it));
+    }
+    const byId = /GetFileById\('([^']+)'\)/.exec(u);
+    if (byId) {
+      const path = Object.keys(items).find((k) => items[k].UniqueId === byId[1]);
+      return path ? json(itemJson(path, items[path])) : json({ error: { message: { value: 'nf' } } }, 404);
+    }
+    if (/GetList\(@p\)/.test(u)) {
+      const l = Object.values(lists).find((x) => x.root.toLowerCase() === pOf(u).toLowerCase());
+      return l ? json(listJson(l)) : json({ error: { message: { value: 'List does not exist' } } }, 404);
+    }
+    const it = /lists\(guid'([^']+)'\)\/items\((\d+)\)\?/.exec(u);
+    if (it) {
+      const path = Object.keys(items).find((k) => items[k].list === it[1] && items[k].Id === Number(it[2]));
+      return json(itemJson(path, items[path]));
+    }
+    const ras = /lists\(guid'([^']+)'\)\/items\((\d+)\)\/roleassignments/.exec(u);
+    if (ras) return json({ value: ra['item:' + ras[2]] || [] });
+    const li = /lists\(guid'([^']+)'\)\?/.exec(u);
+    if (li) return json(listJson(lists[li[1]]));
+    if (/roledefinitions\?/.test(u)) return json({ value: [{ Id: 1, Name: 'Full Control', Order: 1 }, { Id: 2, Name: 'Limited Access', RoleTypeKind: 1, Hidden: true, Order: 160 }, { Id: 3, Name: 'Edit', Order: 48 }, { Id: 4, Name: 'Read', Order: 128, Description: 'Can view' }] });
+    return json({ error: { message: { value: 'no route ' + u } } }, 404);
+  });
+  return { env, client, resolver: new AR.AccessResolver(client, FIN), L1, FIN, PROJ };
+}
+
+test('access: a file in a subsite resolves with its full chain and permission source', async () => {
+  const { resolver } = accessEnv();
+  const r = await resolver.resolve(ORIGIN + '/sites/fin/proj/Shared%20Documents/Budgets/2026/q1.xlsx');
+  assert.deepStrictEqual(r.chain.map((o) => [o.kind, o.title, o.hasUnique]), [['site', 'Finance', true], ['web', 'Projects', false], ['library', 'Documents', false], ['folder', 'Budgets', true], ['folder', '2026', false], ['file', 'q1.xlsx', false]]);
+  assert.strictEqual(r.target.kind, 'file');
+  assert.strictEqual(r.source.title, 'Budgets', 'inherits from the Budgets folder');
+  assert.ok(r.target.api.endsWith("/sites/fin/proj/_api/web/lists(guid'aaaa1111-0000-0000-0000-000000000001')/items(11)"));
+});
+
+test('access: Access denied page and Office links resolve to the exact file', async () => {
+  const { resolver } = accessEnv();
+  const denied = ORIGIN + '/sites/fin/_layouts/15/AccessDenied.aspx?Source=' + encodeURIComponent(ORIGIN + '/sites/fin/proj/Shared Documents/Budgets/2026/q1.xlsx') + '&correlation=x&Type=item&name=%7Baaaa1111-0000-0000-0000-000000000001%7D&listItemId=11';
+  const a = await resolver.resolve(denied);
+  assert.strictEqual(a.target.title, 'q1.xlsx');
+  const b = await resolver.resolve(ORIGIN + '/:x:/r/sites/fin/proj/Shared%20Documents/Budgets/2026/q1.xlsx?d=w2c1d3e4f5a6b7c8d9e0f1a2b3c4d5e6f');
+  assert.strictEqual(b.target.itemId, 11);
+  const c = await resolver.resolve(ORIGIN + '/sites/fin/proj/Shared%20Documents/Forms/AllItems.aspx?id=%2Fsites%2Ffin%2Fproj%2FShared%20Documents%2FBudgets');
+  assert.deepStrictEqual([c.target.kind, c.target.title, c.source.title], ['folder', 'Budgets', 'Budgets']);
+  const d = await resolver.resolve(ORIGIN + '/sites/fin/Lists/Tasks/DispForm.aspx?ID=5');
+  assert.deepStrictEqual([d.target.kind, d.target.title, d.source.kind], ['item', 'Close books', 'list']);
+  const e = await resolver.resolve(ORIGIN + '/sites/fin/proj/Shared%20Documents');
+  assert.deepStrictEqual([e.target.kind, e.source.kind], ['library', 'site']);
+  const f = await resolver.resolve(ORIGIN + '/sites/fin/proj');
+  assert.deepStrictEqual([f.target.kind, f.target.title, f.source.title], ['web', 'Projects', 'Finance']);
+});
+
+test('access: a moved or deleted file resolves to the nearest folder that exists', async () => {
+  const { resolver } = accessEnv();
+  const r = await resolver.resolve(ORIGIN + '/sites/fin/proj/Shared%20Documents/Budgets/2026/old-name.xlsx');
+  assert.strictEqual(r.target.title, '2026');
+  assert.ok(/nearest parent/.test(r.notes.join(' ')));
+});
+
+test('access: works without GetWebUrlFromPageUrl by probing, and reports a site you cannot open', async () => {
+  const a = accessEnv({ noWebUrlApi: true });
+  const r = await a.resolver.resolve(ORIGIN + '/sites/fin/proj/Shared%20Documents/Budgets/2026/q1.xlsx');
+  assert.strictEqual(r.target.title, 'q1.xlsx');
+  const b = accessEnv({ noWebUrlApi: true, denyWeb: ORIGIN + '/sites/fin/proj' });
+  const d = await b.resolver.resolve(ORIGIN + '/sites/fin/proj/Shared%20Documents/Budgets/2026/q1.xlsx');
+  assert.strictEqual(d.target.accessible, false);
+  assert.strictEqual(d.target.path, '/sites/fin/proj');
+  assert.ok(/site collection administrator/.test(d.notes.join(' ')));
+});
+
+test('access: grant breaks inheritance only when asked, then adds the role', async () => {
+  const { resolver, env } = accessEnv();
+  const r = await resolver.resolve(ORIGIN + '/sites/fin/proj/Shared%20Documents/Budgets/2026/q1.xlsx');
+  await assert.rejects(() => resolver.grant(r.target, 42, 3, false), /inherits its permissions/);
+  assert.strictEqual(env.posts.length, 0, 'nothing changed when refused');
+  await resolver.grant(r.target, 42, 3, true);
+  assert.deepStrictEqual(env.posts.map((p) => p.replace(/^.*items\(11\)\//, '')), ['breakroleinheritance(copyRoleAssignments=true,clearSubscopes=false)', 'roleassignments/addroleassignment(principalid=42,roledefid=3)']);
+  env.posts.length = 0;
+  await resolver.grant(r.source, 42, 4, false);
+  assert.deepStrictEqual(env.posts.map((p) => p.replace(/^.*items\(10\)\//, '')), ['roleassignments/addroleassignment(principalid=42,roledefid=4)'], 'source folder: no inheritance break');
+  const roles = await resolver.roleDefinitions(ORIGIN + '/sites/fin/proj');
+  assert.deepStrictEqual(roles.map((x) => x.name), ['Full Control', 'Edit', 'Read'], 'limited access hidden, ordered');
+  const as = await resolver.assignments(r.source);
+  assert.deepStrictEqual(as.map((x) => [x.title, x.principalType, x.roles.join()]), [['Budget owners', 8, 'Edit'], ['Readers', 8, 'Read']]);
+});
+
+test('access: without Manage Permissions the object is marked so', async () => {
+  const { resolver } = accessEnv({ readOnlyItems: true });
+  const r = await resolver.resolve(ORIGIN + '/sites/fin/proj/Shared%20Documents/Budgets/2026/q1.xlsx');
+  assert.strictEqual(r.target.canManage, false);
+  assert.strictEqual(r.chain[0].canManage, true);
+});
+
+// ---------------------------------------------------------------- create site
+const SC = src('services/SiteCreator');
+
+test('create site: URL names, validation and PowerShell commands', () => {
+  assert.strictEqual(SC.urlNameFromTitle('Finance – Région Ouest 2026!'), 'FinanceRgionOuest2026'.replace('Rgion', 'Region'));
+  assert.ok(SC.validAlias('fin-2026_x') && !SC.validAlias('-bad') && !SC.validAlias('has space') && !SC.validAlias(''));
+  const t = SC.BUILT_IN_TEMPLATES.find((x) => x.key === 'cls-sts0');
+  const ps = SC.powerShellFor({ template: t, title: "Bob's site", managedPath: 'sites', alias: 'bob', description: '', lcid: 1033, owner: '', isPublic: false }, ORIGIN, 'me@contoso.com');
+  assert.ok(ps.includes("New-SPOSite -Url 'https://contoso.sharepoint.com/sites/bob' -Title 'Bob''s site' -Owner 'me@contoso.com' -Template 'STS#0' -LocaleId 1033"), ps);
+  assert.ok(ps.includes('contoso-admin.sharepoint.com'));
+  const g = SC.powerShellFor({ template: SC.BUILT_IN_TEMPLATES.find((x) => x.route === 'group'), title: 'T', managedPath: 'teams', alias: 't1', description: '', lcid: 1033, owner: 'o@x.com', isPublic: true, hubId: 'h' }, ORIGIN, '');
+  assert.ok(/New-PnPSite -Type TeamSite -Title 'T' -Alias 't1' -IsPublic:\$true -Lcid 1033 -Owners 'o@x.com'/.test(g), g);
+});
+
+test('create site: communication / group requests, templates and availability', async () => {
+  const posts = [];
+  let status = 0;
+  const client = make(async (m, url, cfg, o) => {
+    const u = decodeURIComponent(url);
+    if (/GetSiteDesigns/.test(u)) return json({ value: [{ Id: 'dddd0000-0000-0000-0000-000000000001', Title: 'Project hub', WebTemplate: '68' }, { Id: 'dddd0000-0000-0000-0000-000000000002', Title: 'Dept team', WebTemplate: '64' }, { Id: 'x', Title: 'Odd', WebTemplate: '99' }] });
+    if (/SPSiteManager\/status/.test(u)) return json({ SiteStatus: status });
+    if (/GetValidSiteUrlFromAlias/.test(u)) return json({ value: ORIGIN + '/teams/fin2' });
+    if (/SPSiteManager\/create/.test(u)) { posts.push(['spsite', JSON.parse(o.body)]); return json({ SiteId: 'x', SiteStatus: 2, SiteUrl: ORIGIN + '/sites/fin' }); }
+    if (/CreateGroupEx/.test(u)) { posts.push(['group', JSON.parse(o.body)]); return json({ GroupId: 'gggg0000-0000-0000-0000-000000000001', SiteStatus: 1, SiteUrl: '' }); }
+    if (/GetSiteStatus/.test(u)) return json({ SiteStatus: 2, SiteUrl: ORIGIN + '/teams/fin' });
+    if (/JoinHubSite|AddSiteDesignTaskToCurrentWeb/.test(u)) { posts.push(['after', u.replace(ORIGIN, '')]); return json(undefined, 200); }
+    return json({ error: { message: { value: 'no route ' + u } } }, 404);
+  });
+  const c = new SC.SiteCreator(client, ORIGIN + '/sites/it');
+  const all = await c.templates();
+  assert.deepStrictEqual(all.filter((t) => t.group === 'Your organisation').map((t) => [t.title, t.route, t.webTemplate]), [['Project hub', 'spsite', 'SITEPAGEPUBLISHING#0'], ['Dept team', 'group', 'GROUP#0']]);
+  const showcase = all.find((t) => t.key === 'comm-showcase');
+  const req = { template: showcase, title: 'Finance', managedPath: 'sites', alias: 'fin', description: 'd', lcid: 1036, owner: 'boss@contoso.com', isPublic: false, hubId: 'hhhh' };
+  assert.deepStrictEqual(await c.checkAvailable(req), { ok: true, message: ORIGIN + '/sites/fin is available.' });
+  status = 2;
+  assert.strictEqual((await c.checkAvailable(req)).ok, false);
+  const res = await c.create(req);
+  assert.deepStrictEqual(posts[0], ['spsite', { request: { Title: 'Finance', Url: ORIGIN + '/sites/fin', Lcid: 1036, Description: 'd', WebTemplate: 'SITEPAGEPUBLISHING#0', ShareByEmailEnabled: false, SiteDesignId: '6142d2a0-63a5-4ba0-aede-d9fefca2c767', Owner: 'boss@contoso.com' } }]);
+  assert.strictEqual(res.status, 2);
+  assert.deepStrictEqual(await c.finish(req, res), ['Joined the hub.']);
+  assert.ok(posts.some((p) => p[0] === 'after' && /\/sites\/fin\/_api\/site\/JoinHubSite\('hhhh'\)/.test(p[1])));
+  // Group site with an organisation template: alias taken suggestion, then create + status + template.
+  const dept = all.find((t) => t.title === 'Dept team');
+  const g = { template: dept, title: 'Fin', managedPath: 'teams', alias: 'fin', description: '', lcid: 1033, owner: '', isPublic: true };
+  const avail = await c.checkAvailable(g);
+  assert.deepStrictEqual([avail.ok, avail.suggestion], [false, 'fin2']);
+  const gr = await c.create(g);
+  assert.deepStrictEqual(posts.find((p) => p[0] === 'group')[1], { displayName: 'Fin', alias: 'fin', isPublic: true, optionalParams: { Description: '', CreationOptions: ['SPSiteLanguage:1033'] } });
+  assert.strictEqual(gr.status, 1);
+  assert.strictEqual(await c.refreshStatus(gr), 2);
+  assert.strictEqual(gr.url, ORIGIN + '/teams/fin');
+  const done = await c.finish(g, gr);
+  assert.ok(/Applying "Dept team"/.test(done[0]));
+  await assert.rejects(() => c.create({ ...g, template: SC.BUILT_IN_TEMPLATES.find((x) => x.route === 'powershell') }), /PowerShell/);
+});
+
 // ---------------------------------------------------------------- runner
 (async () => {
   let failed = 0;

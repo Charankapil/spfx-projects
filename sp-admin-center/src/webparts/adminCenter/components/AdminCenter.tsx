@@ -24,6 +24,8 @@ import { Logo } from './shared/ui';
 import { AdminContext, IAdminContext, IConfirmOptions } from './shared/context';
 import { ActivityView } from './views/ActivityView';
 import { ApiAccessView } from './views/ApiAccessView';
+import { CreateSiteView } from './views/CreateSiteView';
+import { GrantAccessView } from './views/GrantAccessView';
 import { GroupsView } from './views/GroupsView';
 import { GuestsView } from './views/GuestsView';
 import { ContentView } from './views/ContentView';
@@ -54,7 +56,9 @@ const NAV: Array<{ key: ViewKey; text: string; icon: string; section?: string }>
   { key: 'sites', text: 'Sites', icon: 'Globe', section: 'Sites & storage' },
   { key: 'storage', text: 'Storage insights', icon: 'Database' },
   { key: 'growth', text: 'Storage growth', icon: 'AreaChart' },
+  { key: 'create', text: 'Create site', icon: 'CirclePlus' },
   { key: 'people', text: 'People & permissions', icon: 'Permissions', section: 'Manage' },
+  { key: 'grant', text: 'Grant access by URL', icon: 'Link' },
   { key: 'content', text: 'Lists & libraries', icon: 'Library' },
   { key: 'recycle', text: 'Recycle bin', icon: 'RecycleBin' },
   { key: 'locks', text: 'Read-only locks', icon: 'Lock' },
@@ -200,6 +204,10 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, 
         return <ActivityView />;
       case 'health':
         return <HealthView />;
+      case 'grant':
+        return <GrantAccessView />;
+      case 'create':
+        return <CreateSiteView />;
       case 'm365groups':
         return <GroupsView />;
       case 'guests':
