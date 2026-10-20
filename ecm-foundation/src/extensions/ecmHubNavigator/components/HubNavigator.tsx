@@ -1,16 +1,18 @@
 import * as React from 'react';
 import * as strings from 'EcmHubNavigatorStrings';
 
+import { IEcmBrand, mix } from '../../../common/theme/ecmTheme';
 import { IHub, INavigationLocation, INavigationModel, INavLink } from '../models/INavigation';
 import styles from './HubNavigator.module.scss';
-import { ChevronDown, ChevronUp, CloseIcon, LockIcon, MenuIcon, SearchIcon, ShieldIcon } from './Icons';
+import { ArrowRight, ChevronDown, ChevronUp, CloseIcon, HubIcon, LockIcon, MenuIcon, PlusIcon, SearchIcon, ShieldIcon } from './Icons';
 
 export interface IHubNavigatorProps {
   model?: INavigationModel;
   error?: string;
+  brand: IEcmBrand;
   homeTitle: string;
   homeUrl: string;
-  /** Short text in the brand badge; defaults to the home title's initials. */
+  /** Short text in the badge shown when there is no logo; defaults to the home title's initials. */
   brandBadge?: string;
   /** Search results page the box submits to; "{q}" is replaced by the query. */
   searchUrlTemplate: string;
@@ -30,12 +32,26 @@ function initials(title: string): string {
     .toUpperCase();
 }
 
+/** Each hub's colour plus the tints the band and the menu need, as CSS variables. */
 function hubStyle(hub: IHub): React.CSSProperties {
-  return { ['--hub' as string]: hub.color } as React.CSSProperties;
+  return {
+    ['--hub' as string]: hub.color,
+    ['--hub-light' as string]: mix(hub.color, '#FFFFFF', 0.45),
+    ['--hub-soft' as string]: mix(hub.color, '#FFFFFF', 0.93)
+  } as React.CSSProperties;
 }
 
-const SiteCard = (props: { site: INavLink; hub: IHub; here: boolean }): JSX.Element => (
-  <a className={styles.siteCard} href={props.site.url} aria-current={props.here ? 'page' : undefined}>
+function brandStyle(brand: IEcmBrand): React.CSSProperties {
+  return {
+    ['--brand' as string]: brand.primary,
+    ['--brand-hover' as string]: mix(brand.primary, '#000000', 0.14),
+    ['--brand-dark' as string]: brand.dark,
+    ['--brand-dark-raised' as string]: mix(brand.dark, '#FFFFFF', 0.08)
+  } as React.CSSProperties;
+}
+
+const SiteCard = (props: { site: INavLink; here: boolean }): JSX.Element => (
+  <a className={`${styles.siteCard} ${props.here ? styles.siteCardHere : ''}`} href={props.site.url} aria-current={props.here ? 'page' : undefined}>
     <span className={styles.siteBadge} aria-hidden="true">
       {initials(props.site.title)}
     </span>
@@ -44,7 +60,7 @@ const SiteCard = (props: { site: INavLink; hub: IHub; here: boolean }): JSX.Elem
         <span className={styles.siteTitle}>{props.site.title}</span>
         {props.here && <span className={styles.hereTag}>{strings.YouAreHere}</span>}
         {props.site.restricted && (
-          <span className={styles.restrictedTag}>
+          <span className={styles.restrictedTag} title={strings.Restricted}>
             <LockIcon />
             {strings.Restricted}
           </span>
@@ -57,12 +73,15 @@ const SiteCard = (props: { site: INavLink; hub: IHub; here: boolean }): JSX.Elem
 
 const LinkList = (props: { title: string; links: INavLink[] }): JSX.Element | null =>
   props.links.length ? (
-    <div className={styles.column}>
+    <div className={styles.linkColumn}>
       <div className={styles.columnTitle}>{props.title}</div>
       <ul className={styles.linkList}>
         {props.links.map((link) => (
           <li key={link.id}>
-            <a href={link.url}>{link.title}</a>
+            <a href={link.url}>
+              <span>{link.title}</span>
+              <ArrowRight />
+            </a>
           </li>
         ))}
       </ul>
@@ -70,11 +89,12 @@ const LinkList = (props: { title: string; links: INavLink[] }): JSX.Element | nu
   ) : null;
 
 export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
-  const { model, location } = props;
+  const { model, location, brand } = props;
   const [openHubId, setOpenHubId] = React.useState<number | undefined>(undefined);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [drawerHubId, setDrawerHubId] = React.useState<number | undefined>(location.hubId);
   const [query, setQuery] = React.useState('');
+  const [logoFailed, setLogoFailed] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -97,11 +117,14 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
     };
   }, []);
 
+  React.useEffect(() => setLogoFailed(false), [brand.logoUrl]);
+
   const hubs = model?.hubs || [];
   const openHub = hubs.filter((h) => h.id === openHubId)[0];
   const currentHub = hubs.filter((h) => h.id === location.hubId)[0];
   const sharedServices = model?.sharedServices || [];
   const headerLinks = model?.headerLinks || [];
+  const showLogo = !!brand.logoUrl && !logoFailed;
 
   const onSearch = (e: React.FormEvent): void => {
     e.preventDefault();
@@ -124,36 +147,43 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
   );
 
   return (
-    <div className={styles.navigator} ref={rootRef}>
-      <div className={styles.bar}>
-        <div className={styles.topRow}>
-          <a className={styles.brand} href={props.homeUrl}>
+    <div className={styles.navigator} ref={rootRef} style={brandStyle(brand)}>
+      <div className={styles.accentLine} aria-hidden="true" />
+      <div className={styles.topRow}>
+        <a className={styles.brand} href={props.homeUrl} aria-label={props.homeTitle}>
+          {showLogo ? (
+            <img className={styles.logo} src={brand.logoUrl} alt="" onError={() => setLogoFailed(true)} />
+          ) : (
             <span className={styles.brandBadge} aria-hidden="true">
               {props.brandBadge || initials(props.homeTitle)}
             </span>
-            <span className={styles.brandText}>
-              <span className={styles.brandTitle}>{props.homeTitle}</span>
-              <span className={styles.brandSub}>{strings.HomeSubtitle}</span>
-            </span>
+          )}
+          <span className={styles.brandDivider} aria-hidden="true" />
+          <span className={styles.brandText}>
+            <span className={styles.brandTitle}>{props.homeTitle}</span>
+            <span className={styles.brandSub}>{strings.HomeSubtitle}</span>
+          </span>
+        </a>
+        <span className={styles.spacer} />
+        <div className={`${styles.searchWrap} ${styles.desktopOnly}`}>{searchBox}</div>
+        {headerLinks.map((link, i) => (
+          <a key={link.id} href={link.url} className={`${i === 0 ? styles.primaryLink : styles.secondaryLink} ${styles.desktopOnly}`}>
+            {i === 0 && <PlusIcon />}
+            {link.title}
           </a>
-          <span className={styles.spacer} />
-          <div className={styles.desktopOnly}>{searchBox}</div>
-          {headerLinks.map((link, i) => (
-            <a key={link.id} href={link.url} className={`${i === 0 ? styles.primaryLink : styles.secondaryLink} ${styles.desktopOnly}`}>
-              {link.title}
-            </a>
-          ))}
-          <button
-            type="button"
-            className={`${styles.iconButton} ${styles.mobileOnly}`}
-            aria-label={drawerOpen ? strings.CloseMenu : strings.OpenMenu}
-            aria-expanded={drawerOpen}
-            onClick={() => setDrawerOpen(!drawerOpen)}
-          >
-            {drawerOpen ? <CloseIcon /> : <MenuIcon />}
-          </button>
-        </div>
+        ))}
+        <button
+          type="button"
+          className={`${styles.iconButton} ${styles.mobileOnly}`}
+          aria-label={drawerOpen ? strings.CloseMenu : strings.OpenMenu}
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen(!drawerOpen)}
+        >
+          {drawerOpen ? <CloseIcon /> : <MenuIcon />}
+        </button>
+      </div>
 
+      <div className={styles.band}>
         {props.error && <div className={styles.status}>{strings.LoadFailed}</div>}
         {!props.error && !model && <div className={styles.status}>{strings.Loading}</div>}
         {!props.error && model && !hubs.length && <div className={styles.status}>{strings.NotConfigured}</div>}
@@ -168,14 +198,18 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
                   key={hub.id}
                   type="button"
                   style={hubStyle(hub)}
-                  className={`${styles.tab} ${open ? styles.tabOpen : ''} ${current && !open ? styles.tabCurrent : ''}`}
+                  className={`${styles.tab} ${open ? styles.tabOpen : ''} ${current ? styles.tabCurrent : ''}`}
                   aria-expanded={open}
                   aria-controls="ecm-hub-mega-menu"
                   onClick={() => setOpenHubId(open ? undefined : hub.id)}
                 >
-                  <span className={styles.tabDot} aria-hidden="true" />
+                  <span className={styles.tabIcon} aria-hidden="true">
+                    <HubIcon title={hub.title} size={14} />
+                  </span>
                   {hub.title}
-                  <ChevronDown />
+                  <span className={styles.tabChevron}>
+                    <ChevronDown />
+                  </span>
                 </button>
               );
             })}
@@ -183,28 +217,41 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
         )}
 
         {openHub && (
-          <div id="ecm-hub-mega-menu" className={styles.mega} style={hubStyle(openHub)}>
-            <div className={styles.megaBody}>
-              <div className={styles.sitesColumn}>
-                <div className={styles.megaHead}>
-                  <h2>{openHub.title}</h2>
-                  {openHub.url && <a href={openHub.url}>{strings.GoToHub} →</a>}
+          <div id="ecm-hub-mega-menu" className={styles.mega} style={hubStyle(openHub)} role="region" aria-label={openHub.title}>
+            <div className={styles.megaGrid}>
+              <aside className={styles.hubPanel}>
+                <span className={styles.hubPanelIcon} aria-hidden="true">
+                  <HubIcon title={openHub.title} size={22} />
+                </span>
+                <h2>{openHub.title}</h2>
+                {openHub.description && (
+                  <>
+                    <div className={styles.columnTitle}>{strings.Governance}</div>
+                    <p>{openHub.description}</p>
+                  </>
+                )}
+                <div className={styles.hubPanelMeta}>
+                  {openHub.sites.length} {openHub.isSharedServices ? strings.EnterpriseServices.toLowerCase() : strings.DepartmentSites.toLowerCase()}
                 </div>
+                {openHub.url && (
+                  <a className={styles.hubButton} href={openHub.url}>
+                    {strings.GoToHub}
+                    <ArrowRight />
+                  </a>
+                )}
+              </aside>
+              <div className={styles.megaContent}>
                 <div className={styles.columnTitle}>{openHub.isSharedServices ? strings.EnterpriseServices : strings.DepartmentSites}</div>
                 <div className={styles.siteGrid}>
                   {openHub.sites.map((site) => (
-                    <SiteCard key={site.id} site={site} hub={openHub} here={site.id === location.siteId} />
+                    <SiteCard key={site.id} site={site} here={site.id === location.siteId} />
                   ))}
                 </div>
-              </div>
-              <LinkList title={strings.HubResources} links={openHub.resources} />
-              {!openHub.isSharedServices && <LinkList title={strings.SharedServicesColumn} links={sharedServices} />}
-              {openHub.description && (
-                <div className={styles.governance}>
-                  <div className={styles.columnTitle}>{strings.Governance}</div>
-                  <p>{openHub.description}</p>
+                <div className={styles.linkColumns}>
+                  <LinkList title={strings.HubResources} links={openHub.resources} />
+                  {!openHub.isSharedServices && <LinkList title={strings.SharedServicesColumn} links={sharedServices} />}
                 </div>
-              )}
+              </div>
             </div>
             <div className={styles.megaFoot}>
               <span className={styles.trimmed}>
@@ -212,8 +259,9 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
                 {strings.TrimmedNotice}
               </span>
               <span className={styles.spacer} />
-              <button type="button" className={styles.iconButton} aria-label={strings.CloseMenu} onClick={() => setOpenHubId(undefined)}>
+              <button type="button" className={styles.closeButton} onClick={() => setOpenHubId(undefined)}>
                 <CloseIcon />
+                {strings.CloseMenu}
               </button>
             </div>
           </div>
@@ -223,13 +271,15 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
       {drawerOpen && (
         <div className={`${styles.drawer} ${styles.mobileOnly}`}>
           <div className={styles.drawerSearch}>{searchBox}</div>
-          <div className={styles.columnTitle}>{strings.HubsNavLabel}</div>
+          <div className={styles.drawerTitle}>{strings.HubsNavLabel}</div>
           {hubs.map((hub) => {
             const expanded = hub.id === drawerHubId;
             return (
               <div key={hub.id} className={`${styles.drawerHub} ${expanded ? styles.drawerHubOpen : ''}`} style={hubStyle(hub)}>
                 <button type="button" aria-expanded={expanded} onClick={() => setDrawerHubId(expanded ? undefined : hub.id)}>
-                  <span className={styles.tabDot} aria-hidden="true" />
+                  <span className={styles.drawerIcon} aria-hidden="true">
+                    <HubIcon title={hub.title} size={14} />
+                  </span>
                   <span className={styles.spacer}>{hub.title}</span>
                   {expanded ? <ChevronUp /> : <ChevronDown />}
                 </button>
@@ -267,11 +317,18 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
       {currentHub && (
         <div className={styles.breadcrumb}>
           <a href={props.homeUrl}>{props.homeTitle}</a>
-          <span aria-hidden="true">›</span>
-          {currentHub.url ? <a href={currentHub.url}>{currentHub.title}</a> : <span>{currentHub.title}</span>}
+          <span className={styles.crumbSep} aria-hidden="true">
+            /
+          </span>
+          <span className={styles.crumbHub} style={hubStyle(currentHub)}>
+            <span className={styles.crumbDot} aria-hidden="true" />
+            {currentHub.url ? <a href={currentHub.url}>{currentHub.title}</a> : currentHub.title}
+          </span>
           {location.siteId !== undefined && (
             <>
-              <span aria-hidden="true">›</span>
+              <span className={styles.crumbSep} aria-hidden="true">
+                /
+              </span>
               <span className={styles.crumbCurrent}>{props.currentSiteTitle}</span>
             </>
           )}

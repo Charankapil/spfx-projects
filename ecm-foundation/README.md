@@ -6,7 +6,7 @@ document metadata visible:
 
 | Component | Type | What it does |
 | --- | --- | --- |
-| **ECM theme** | Tenant theme + CSS variables | One palette for SharePoint's own chrome (tenant theme) and for the ECM components (`--ecm-*` variables). |
+| **Brand and theme** | SharePoint theme + brand settings | Your logo, brand colour and dark colour drive both the navigator and an **American Tower ECM** SharePoint theme generated from them, so SharePoint's own chrome and the ECM components always match. |
 | **ECM Hub Navigator** | Application customizer | Brand bar, search, hub tabs with a mega menu, breadcrumb and site classification on every page. Security-trimmed. Driven by one SharePoint list, so governance changes the menu without a redeploy. |
 | **ECM Setup** | Web part | One-time setup from a page on the Corporate ECM Hub: creates and seeds the navigation list, registers and applies the theme, points the navigator at the hub, and checks every link. |
 | **Metadata Explorer** | Web part | Every document in the site's libraries (or a hub / the tenant through search), grouped by any metadata category with a second-level "then by", facet filters, links to each file, a metadata coverage view and CSV export. |
@@ -16,7 +16,7 @@ SharePoint REST and Search: **no Entra ID app registration, client id or API
 permission is needed**, including for setup. The **ECM Setup** web part does
 the one-time configuration from the browser.
 
-![ECM Hub Navigator with the Real Estate & Infrastructure hub open (sample data)](docs/images/hub-navigator.png)
+![ECM Hub Navigator with the Real Estate & Infrastructure hub open (sample data; the dashed box is where your uploaded logo appears)](docs/images/hub-navigator.png)
 
 ![Metadata Explorer grouping a Leasing site's documents by Document Type, then Geography (sample data)](docs/images/metadata-explorer.png)
 
@@ -53,16 +53,17 @@ to approve.)
    to every site and makes the web parts available everywhere.
 
 3. **Run ECM Setup on the Corporate ECM Hub.** Create a page on the hub site (for example
-   *ECM Setup*), add the **ECM Setup** web part (group "ECM") and select **Run all steps**.
-   Each step reports what it did and is safe to run again:
+   *ECM Setup*) and add the **ECM Setup** web part (group "ECM"). Fill in the **Brand**
+   section first: upload the logo and check the colours (see [Brand](#brand)). Then select
+   **Run all steps**. Each step reports what it did and is safe to run again:
 
    | Step | What it does | Who can run it |
    | --- | --- | --- |
    | 1. Create the navigation list | Creates **ECM Navigation** with its columns and fills it with the 6 functional hubs, 21 department sites, hub resources and 6 shared services from the strategy. Existing entries are never changed. | Owner of the hub site |
    | 2. Let everyone read the menu | Gives *Everyone except external users* read access to that list only. | Owner of the hub site |
-   | 3. Register the ECM theme | Adds **ECM Theme** to "Change the look" for all sites. Optional. | SharePoint administrator |
-   | 4. Apply the ECM theme | Applies the palette to the hub and every site in the menu. Sites you don't own are skipped and reported. | Owner of each site |
-   | 5. Point the navigator at this hub | Writes this site's address, the hub title and the brand badge into the navigator's settings in the Tenant Wide Extensions list. Adds the entry if it is missing. | App catalog owner (SharePoint administrator) |
+   | 3. Register the ECM theme | Adds **American Tower ECM**, generated from your brand colour, to "Change the look" for all sites. Optional. | SharePoint administrator |
+   | 4. Apply the ECM theme | Applies that theme to the hub and every site in the menu. Sites you don't own are skipped and reported. | Owner of each site |
+   | 5. Point the navigator at this hub | Writes this site's address, the hub title, the logo and the brand colours into the navigator's settings in the Tenant Wide Extensions list. Adds the entry if it is missing. | App catalog owner (SharePoint administrator) |
    | 6. Check the links | Opens every site the menu links to and lists the ones that don't exist. | Anyone |
 
    The seeded site URLs follow `/sites/<name>` (`/sites/leasing`, `/sites/hr`, …). Step 6 shows
@@ -111,6 +112,31 @@ The first **Header link** is shown as the primary button (the seed makes this
 - **Works on phones.** Below 768 px the tabs become a drawer with an accordion per hub.
   Escape and clicking outside close the menu.
 
+### Brand
+
+The **Brand** section at the top of ECM Setup sets the look everywhere:
+
+- **Logo**: upload the official logo (SVG or transparent PNG, made for a white
+  background) from your brand team or the corporate media kit. ECM Setup stores it
+  as `SiteAssets/ecm-logo.*` on the hub and, when step 2 is included, lets
+  *Everyone except external users* read that one file. Without a logo, the navigator
+  shows a text badge ("AT") in the brand colour.
+- **Brand colour**: buttons, links, the accent line, the "you are here" tag and
+  the SharePoint theme. The default is **#C91F3C** (cardinal red).
+- **Dark colour**: the hub band behind the tabs. The default is **#1E2227** (charcoal).
+
+The defaults follow American Tower's public identity: a red mark with charcoal type on
+white. They come from public brand listings, not the official brand guide, so
+**check them against the guide** and enter the exact values. A live preview shows the
+result before you run any step. Steps 3 and 4 then build the SharePoint theme from
+the brand colour (all 27 theme slots), and step 5 stores the brand in the navigator's
+settings, where ECM Setup also reads it back next time.
+
+![ECM Setup: brand settings with live preview, then the setup steps](docs/images/ecm-setup.png)
+
+Hubs keep their own accent colours (blue, ochre, teal, violet, burnt orange, olive,
+slate). Red is reserved for the brand, so no hub uses it.
+
 ### Properties
 
 ECM Setup step 5 writes these. You can also edit them by hand in the app catalog's Tenant Wide Extensions list:
@@ -122,6 +148,9 @@ ECM Setup step 5 writes these. You can also edit them by hand in the app catalog
   "cacheMinutes": 30,
   "homeTitle": "Corporate ECM Hub",
   "brandBadge": "AT",
+  "logoUrl": "/sites/ecm-hub/SiteAssets/ecm-logo.svg",
+  "brandPrimary": "#C91F3C",
+  "brandDark": "#1E2227",
   "searchUrl": "https://contoso.sharepoint.com/_layouts/15/search.aspx/?q={q}"
 }
 ```

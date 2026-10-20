@@ -2,7 +2,7 @@ define([], function () {
   return {
     HomeTitle: 'Corporate ECM Hub',
     HomeSubtitle: 'Enterprise content and records',
-    SharedServicesTitle: 'Shared Enterprise Services',
+    SharedServicesTitle: 'Shared Services',
     SearchPlaceholder: 'Search sites and documents',
     HubsNavLabel: 'Functional hubs',
     DepartmentSites: 'Department sites',

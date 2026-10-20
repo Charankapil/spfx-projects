@@ -5,6 +5,7 @@ import { MessageBar, MessageBarType } from '@fluentui/react/lib/MessageBar';
 import { Spinner, SpinnerSize } from '@fluentui/react/lib/Spinner';
 import { TextField } from '@fluentui/react/lib/TextField';
 
+import { DEFAULT_BRAND, HUB_COLORS, IEcmBrand, isHexColor, resolveBrand } from '../../../common/theme/ecmTheme';
 import { ILinkCheck, SetupService } from '../services/SetupService';
 import styles from './EcmSetup.module.scss';
 
@@ -81,6 +82,51 @@ export const EcmSetup = (props: IEcmSetupProps): JSX.Element => {
   const [links, setLinks] = React.useState<ILinkCheck[]>([]);
   const [listUrl, setListUrl] = React.useState<string | undefined>(undefined);
   const [runningAll, setRunningAll] = React.useState(false);
+  const [primary, setPrimary] = React.useState(DEFAULT_BRAND.primary);
+  const [dark, setDark] = React.useState(DEFAULT_BRAND.dark);
+  const [logoUrl, setLogoUrl] = React.useState('');
+  const [logoState, setLogoState] = React.useState<IStepState>({ status: 'idle', log: [] });
+  const brand: IEcmBrand = resolveBrand({ primary, dark, logoUrl });
+
+  // Pick up the brand saved by an earlier run, when this person can read it.
+  React.useEffect(() => {
+    service
+      .loadSavedSettings()
+      .then((saved) => {
+        if (saved.brandPrimary && isHexColor(saved.brandPrimary)) {
+          setPrimary(saved.brandPrimary);
+        }
+        if (saved.brandDark && isHexColor(saved.brandDark)) {
+          setDark(saved.brandDark);
+        }
+        if (saved.logoUrl) {
+          setLogoUrl(saved.logoUrl);
+        }
+        if (saved.brandBadge) {
+          setBrandBadge(saved.brandBadge);
+        }
+        if (saved.homeTitle) {
+          setHomeTitle(saved.homeTitle);
+        }
+      })
+      .catch(() => undefined);
+  }, [service]);
+
+  const onLogoChosen = async (file: File | undefined): Promise<void> => {
+    if (!file) {
+      return;
+    }
+    setLogoState({ status: 'running', log: [] });
+    const lines: string[] = [];
+    try {
+      const url = await service.uploadLogo(file, includeRead, props.tenantId, (l) => lines.push(l));
+      setLogoUrl(url);
+      lines.push('Run step 5 to show it in the navigator on every site.');
+      setLogoState({ status: 'done', log: lines });
+    } catch (err) {
+      setLogoState({ status: 'failed', log: lines.concat([(err as Error).message]) });
+    }
+  };
 
   const loadThemeSites = React.useCallback(async () => {
     setThemeSites((await service.getThemeTargets()).join('\n'));
@@ -115,16 +161,16 @@ export const EcmSetup = (props: IEcmSetupProps): JSX.Element => {
       await loadThemeSites();
     });
   const runRead = (): Promise<boolean> => run('read', (log) => service.grantEveryoneRead(props.tenantId, log));
-  const runTenantTheme = (): Promise<boolean> => run('tenantTheme', (log) => service.registerTenantTheme(log));
+  const runTenantTheme = (): Promise<boolean> => run('tenantTheme', (log) => service.registerTenantTheme(brand, log));
   const runApplyTheme = (sites?: string): Promise<boolean> =>
     run('applyTheme', async (log) => {
-      const result = await service.applyTheme((sites ?? themeSites).split(/\r?\n/), log);
+      const result = await service.applyTheme(brand, (sites ?? themeSites).split(/\r?\n/), log);
       log(`${result.applied} site(s) themed${result.failed ? `, ${result.failed} skipped` : ''}.`);
       if (!result.applied) {
         throw new Error('No site could be themed.');
       }
     });
-  const runNavigator = (): Promise<boolean> => run('navigator', (log) => service.configureNavigator(brandBadge, homeTitle, log));
+  const runNavigator = (): Promise<boolean> => run('navigator', (log) => service.configureNavigator(brand, brandBadge, homeTitle, log));
   const runLinks = (): Promise<boolean> =>
     run('links', async (log) => {
       const found: ILinkCheck[] = [];
@@ -178,6 +224,97 @@ export const EcmSetup = (props: IEcmSetupProps): JSX.Element => {
           You are not an owner of this site, so the first steps will fail. Ask a site owner to open this page.
         </MessageBar>
       )}
+
+      <section className={styles.brandCard}>
+        <div className={styles.brandHead}>
+          <div>
+            <h3>Brand</h3>
+            <p>
+              Used by steps 3 to 5. Enter the exact colours from the American Tower brand guide and upload the official logo from your
+              brand team or media kit. The navigator and the SharePoint theme are built from these.
+            </p>
+          </div>
+        </div>
+        <div className={styles.brandGrid}>
+          <div className={styles.brandFields}>
+            <div>
+              <span className={styles.fieldLabel}>Logo</span>
+              <div className={styles.logoRow}>
+                <span className={styles.logoPreview}>
+                  {brand.logoUrl ? <img src={brand.logoUrl} alt="Current logo" /> : <span>No logo yet</span>}
+                </span>
+                <label className={styles.fileButton}>
+                  Upload logo…
+                  <input
+                    type="file"
+                    accept="image/png,image/svg+xml,image/jpeg,image/gif,image/webp"
+                    onChange={(e) => onLogoChosen(e.target.files ? e.target.files[0] : undefined)}
+                  />
+                </label>
+              </div>
+              <span className={styles.hint}>SVG or transparent PNG, designed for a white background. Shown 32 px high.</span>
+              {logoState.log.length > 0 && (
+                <ul className={`${styles.miniLog} ${logoState.status === 'failed' ? styles.miniLogError : ''}`}>
+                  {logoState.log.map((l, i) => (
+                    <li key={i}>{l}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className={styles.colorRow}>
+              <div className={styles.colorField}>
+                <label htmlFor="ecm-primary" className={styles.fieldLabel}>
+                  Brand colour
+                </label>
+                <div className={styles.colorInputs}>
+                  <input id="ecm-primary-swatch" type="color" aria-label="Pick brand colour" value={brand.primary} onChange={(e) => setPrimary(e.target.value.toUpperCase())} />
+                  <input id="ecm-primary" className={styles.hexInput} value={primary} onChange={(e) => setPrimary(e.target.value)} maxLength={7} />
+                </div>
+                <span className={styles.hint}>Buttons, links and the accent line.</span>
+              </div>
+              <div className={styles.colorField}>
+                <label htmlFor="ecm-dark" className={styles.fieldLabel}>
+                  Dark colour
+                </label>
+                <div className={styles.colorInputs}>
+                  <input id="ecm-dark-swatch" type="color" aria-label="Pick dark colour" value={brand.dark} onChange={(e) => setDark(e.target.value.toUpperCase())} />
+                  <input id="ecm-dark" className={styles.hexInput} value={dark} onChange={(e) => setDark(e.target.value)} maxLength={7} />
+                </div>
+                <span className={styles.hint}>The hub band behind the tabs.</span>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.preview} aria-label="Navigator preview" role="img">
+            <div className={styles.previewAccent} style={{ background: brand.primary }} />
+            <div className={styles.previewTop}>
+              {brand.logoUrl ? (
+                <img src={brand.logoUrl} alt="" />
+              ) : (
+                <span className={styles.previewBadge} style={{ background: brand.primary }}>
+                  {brandBadge || 'AT'}
+                </span>
+              )}
+              <span className={styles.previewDivider} />
+              <span className={styles.previewTitle}>{homeTitle}</span>
+              <span className={styles.previewSpacer} />
+              <span className={styles.previewButton} style={{ background: brand.primary }}>
+                Request a site
+              </span>
+            </div>
+            <div className={styles.previewBand} style={{ background: brand.dark }}>
+              {Object.keys(HUB_COLORS)
+                .slice(0, 4)
+                .map((hub, i) => (
+                  <span key={hub} className={`${styles.previewTab} ${i === 0 ? styles.previewTabOn : ''}`}>
+                    <i style={{ background: HUB_COLORS[hub] }} />
+                    {hub}
+                  </span>
+                ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <Step
         number={1}

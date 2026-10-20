@@ -127,6 +127,19 @@ export class SpRestClient {
     );
   }
 
+  /** Uploads raw bytes (file content) to an endpoint such as Files/AddUsingPath. */
+  public postBinary<T>(url: string, content: ArrayBuffer): Promise<T> {
+    return this.handle<T>(
+      url,
+      () =>
+        this.httpClient.post(url, SPHttpClient.configurations.v1, {
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: content
+        }),
+      0
+    );
+  }
+
   /**
    * One page of search results, flattened to { managedProperty: value } rows.
    * Uses GET /_api/search/query, which the File Type Analyser has proven

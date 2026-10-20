@@ -1,10 +1,14 @@
-$navy: #0E2841;
-$blue: #0067B8;
-$ink: #1F2B3A;
-$body: #4A5868;
-$muted: #5B6673;
-$line: #DCE6F0;
-$soft: #F3F5F8;
+// Accents come from the site's SharePoint theme (the ECM theme once applied).
+$primary: "[theme:themePrimary, default:#C91F3C]";
+$primarySoft: "[theme:themeLighterAlt, default:#FDF4F5]";
+$primaryLight: "[theme:themeLighter, default:#F6D2D8]";
+$ink: #1E2227;
+$navy: $ink;
+$blue: $primary;
+$body: #4B5260;
+$muted: #5F6673;
+$line: #E2E5EA;
+$soft: #F4F5F7;
 
 .explorer {
   color: $ink;
@@ -64,14 +68,14 @@ $soft: #F3F5F8;
     cursor: pointer;
   }
   button + button { border-left: 1px solid $line; }
-  button[aria-pressed='true'] { background: $navy; color: #fff; }
+  button[aria-pressed='true'] { background: $primary; color: #fff; }
 }
 
 .activeFilters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 .activeFilter {
-  border: 1px solid #B9D3EA;
-  background: #EEF6FC;
+  border: 1px solid $primaryLight;
+  background: $primarySoft;
   color: $navy;
   border-radius: 999px;
   padding: 4px 12px;
@@ -136,19 +140,20 @@ $soft: #F3F5F8;
 
 .groups { display: flex; flex-direction: column; gap: 10px; }
 
-.group { border: 1px solid $line; border-radius: 10px; background: #fff; overflow: hidden; }
+.group { border: 1px solid $line; border-radius: 12px; background: #fff; overflow: hidden; }
 .subgroup { border-radius: 8px; margin: 0 12px; }
 .subgroup:last-child { margin-bottom: 12px; }
 .group .groups { padding-top: 10px; }
 
 .groupHeader {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
   border: none;
-  background: #FBFCFE;
+  background: #FAFAFB;
   padding: 12px 14px;
   font: inherit;
   cursor: pointer;
@@ -159,7 +164,8 @@ $soft: #F3F5F8;
 .chevron { display: inline-block; width: 12px; font-size: 18px; line-height: 1; color: $muted; transition: transform 0.15s; }
 .chevronOpen { transform: rotate(90deg); }
 .groupField { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: $muted; }
-.groupValue { font-weight: 600; font-size: 15px; color: $navy; }
+.groupValue { font-weight: 600; font-size: 15px; color: $ink; }
+.groupHeader[aria-expanded='true'] { box-shadow: inset 3px 0 0 $primary; }
 .groupMissing { color: #A4262C; }
 .groupCount { margin-left: auto; font-size: 13px; color: $body; }
 
@@ -174,7 +180,7 @@ $soft: #F3F5F8;
     text-align: left;
     font-weight: 600;
     color: $body;
-    background: #F7F9FC;
+    background: #FAFAFB;
     padding: 8px 14px;
     border-top: 1px solid $line;
     border-bottom: 1px solid $line;
@@ -194,8 +200,9 @@ $soft: #F3F5F8;
   min-width: 36px;
   padding: 2px 4px;
   border-radius: 4px;
-  background: #E5F1FB;
-  color: #004578;
+  background: $soft;
+  color: $body;
+  border: 1px solid $line;
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
@@ -225,7 +232,7 @@ $soft: #F3F5F8;
   width: 100%;
   border: none;
   border-top: 1px solid $line;
-  background: #FBFCFE;
+  background: #FAFAFB;
   color: $blue;
   font: inherit;
   font-weight: 600;
@@ -241,7 +248,7 @@ $soft: #F3F5F8;
   width: 160px;
   height: 8px;
   border-radius: 4px;
-  background: #E6EDF4;
+  background: #ECEEF1;
   overflow: hidden;
   margin-right: 10px;
 }

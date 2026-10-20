@@ -4,7 +4,7 @@ import { override } from '@microsoft/decorators';
 import { BaseApplicationCustomizer, PlaceholderContent, PlaceholderName } from '@microsoft/sp-application-base';
 import * as strings from 'EcmHubNavigatorStrings';
 
-import { applyEcmCssVariables } from '../../common/theme/ecmTheme';
+import { applyEcmCssVariables, IEcmBrand, resolveBrand } from '../../common/theme/ecmTheme';
 import { HubNavigator, IHubNavigatorProps } from './components/HubNavigator';
 import { INavigationLocation, INavigationModel } from './models/INavigation';
 import { NavigationService } from './services/NavigationService';
@@ -22,6 +22,12 @@ export interface IEcmHubNavigatorProperties {
   brandBadge?: string;
   /** Search page the box submits to; "{q}" is the query. Defaults to the tenant search page. */
   searchUrl?: string;
+  /** Logo image (absolute or server-relative URL). ECM Setup uploads it to the hub's Site Assets. */
+  logoUrl?: string;
+  /** Brand colour for buttons, links and the accent line, e.g. "#C91F3C". */
+  brandPrimary?: string;
+  /** Dark brand colour for the hub band, e.g. "#1E2227". */
+  brandDark?: string;
 }
 
 interface ILegacyPageContext {
@@ -49,9 +55,13 @@ export default class EcmHubNavigatorApplicationCustomizer extends BaseApplicatio
     return configured.indexOf('/') === 0 ? this.origin + configured : configured;
   }
 
+  private get brand(): IEcmBrand {
+    return resolveBrand({ primary: this.properties.brandPrimary, dark: this.properties.brandDark, logoUrl: this.properties.logoUrl });
+  }
+
   @override
   public async onInit(): Promise<void> {
-    applyEcmCssVariables();
+    applyEcmCssVariables(this.brand);
 
     this.service = new NavigationService(this.context.spHttpClient, {
       configSiteUrl: this.configSiteUrl,
@@ -130,6 +140,7 @@ export default class EcmHubNavigatorApplicationCustomizer extends BaseApplicatio
     const props: IHubNavigatorProps = {
       model: this.model,
       error: this.error,
+      brand: this.brand,
       homeTitle: this.properties.homeTitle || strings.HomeTitle,
       homeUrl: this.configSiteUrl,
       brandBadge: this.properties.brandBadge,

@@ -1,13 +1,22 @@
 import { SPHttpClient } from '@microsoft/sp-http';
 
 import { normalizeUrl, SpRestClient } from '../../../common/services/SpRestClient';
-import { ECM_THEME } from '../../../common/theme/ecmTheme';
+import { buildSharePointTheme, ECM_THEME_NAME, IEcmBrand } from '../../../common/theme/ecmTheme';
 import { NAVIGATION_SEED } from '../data/navigationSeed';
 
 /** The navigator's component id, from its manifest. */
 export const NAVIGATOR_COMPONENT_ID = '293dd12c-1019-42fd-b262-79b6f949e9b7';
 
 export type Log = (line: string) => void;
+
+/** What ECM Setup keeps in the navigator's settings, so it is there next time. */
+export interface ISavedSettings {
+  brandPrimary?: string;
+  brandDark?: string;
+  logoUrl?: string;
+  brandBadge?: string;
+  homeTitle?: string;
+}
 
 export interface ILinkCheck {
   title: string;
@@ -224,14 +233,15 @@ export class SetupService {
 
   // --- Step: tenant theme -----------------------------------------------------
 
-  private get themeJson(): string {
-    return JSON.stringify({ palette: ECM_THEME.palette, isInverted: ECM_THEME.isInverted });
+  private themeJson(brand: IEcmBrand): string {
+    const theme = buildSharePointTheme(brand);
+    return JSON.stringify({ palette: theme.palette, isInverted: theme.isInverted });
   }
 
   /** Adds the theme to the "Change the look" picker for every site. Needs a SharePoint administrator. */
-  public async registerTenantTheme(log: Log): Promise<void> {
+  public async registerTenantTheme(brand: IEcmBrand, log: Log): Promise<void> {
     const api = `${this.webUrl}/_api/thememanager`;
-    const body = { name: ECM_THEME.name, themeJson: this.themeJson };
+    const body = { name: ECM_THEME_NAME, themeJson: this.themeJson(brand) };
     let added = false;
     try {
       const result = await this.rest.postJson<{ value?: boolean }>(`${api}/AddTenantTheme`, body);
@@ -243,11 +253,11 @@ export class SetupService {
       // Most often "already exists": fall through to update.
     }
     if (added) {
-      log(`Registered "${ECM_THEME.name}" as a tenant theme.`);
+      log(`Registered "${ECM_THEME_NAME}" as a tenant theme.`);
       return;
     }
     await this.rest.postJson(`${api}/UpdateTenantTheme`, body);
-    log(`Updated the existing tenant theme "${ECM_THEME.name}".`);
+    log(`Updated the existing tenant theme "${ECM_THEME_NAME}".`);
   }
 
   // --- Step: apply theme ------------------------------------------------------
@@ -272,7 +282,8 @@ export class SetupService {
   }
 
   /** ApplyTheme sets the palette directly, so it works even if the tenant theme was not registered. */
-  public async applyTheme(siteUrls: string[], log: Log): Promise<{ applied: number; failed: number }> {
+  public async applyTheme(brand: IEcmBrand, siteUrls: string[], log: Log): Promise<{ applied: number; failed: number }> {
+    const themeJson = this.themeJson(brand);
     let applied = 0;
     let failed = 0;
     for (const raw of siteUrls) {
@@ -281,7 +292,7 @@ export class SetupService {
         continue;
       }
       try {
-        await this.rest.postJson(`${site}/_api/ThemeManager/ApplyTheme`, { name: ECM_THEME.name, themeJson: this.themeJson });
+        await this.rest.postJson(`${site}/_api/ThemeManager/ApplyTheme`, { name: ECM_THEME_NAME, themeJson });
         log(`Applied to ${site}`);
         applied++;
       } catch (err) {
@@ -305,7 +316,7 @@ export class SetupService {
    * Extensions entry; if it is missing this adds it. Needs owner rights on the
    * tenant app catalog (normally a SharePoint administrator).
    */
-  public async configureNavigator(brandBadge: string, homeTitle: string, log: Log): Promise<void> {
+  public async configureNavigator(brand: IEcmBrand, brandBadge: string, homeTitle: string, log: Log): Promise<void> {
     const settings = await this.rest.getJson<{ CorporateCatalogUrl?: string }>(`${this.webUrl}/_api/SP_TenantSettings_Current`);
     const catalog = settings.CorporateCatalogUrl;
     if (!catalog) {
@@ -332,7 +343,13 @@ export class SetupService {
       throw err;
     }
 
-    const wanted: { [key: string]: string } = { configSiteUrl: this.serverRelativeWebUrl, listTitle: this.listTitle };
+    const wanted: { [key: string]: string } = {
+      configSiteUrl: this.serverRelativeWebUrl,
+      listTitle: this.listTitle,
+      brandPrimary: brand.primary,
+      brandDark: brand.dark,
+      logoUrl: brand.logoUrl
+    };
     if (homeTitle.trim()) {
       wanted.homeTitle = homeTitle.trim();
     }
@@ -373,6 +390,76 @@ export class SetupService {
       });
     }
     log(`The navigator now reads its menu from this site (${this.serverRelativeWebUrl}). Sites pick this up on their next page load.`);
+  }
+
+  // --- Brand: saved settings and logo ----------------------------------------
+
+  private async findNavigatorEntries(): Promise<{ catalog: string; entries: { Id: number; TenantWideExtensionComponentProperties: string | null }[] }> {
+    const settings = await this.rest.getJson<{ CorporateCatalogUrl?: string }>(`${this.webUrl}/_api/SP_TenantSettings_Current`);
+    const catalog = settings.CorporateCatalogUrl || '';
+    if (!catalog) {
+      return { catalog, entries: [] };
+    }
+    const items = await this.rest.getJson<{ value: { Id: number; TenantWideExtensionComponentId: string; TenantWideExtensionComponentProperties: string | null }[] }>(
+      `${catalog}/_api/web/lists/getbytitle('Tenant Wide Extensions')/items?$select=Id,TenantWideExtensionComponentId,TenantWideExtensionComponentProperties&$top=500`
+    );
+    return {
+      catalog,
+      entries: (items.value || []).filter((i) => (i.TenantWideExtensionComponentId || '').toLowerCase().indexOf(NAVIGATOR_COMPONENT_ID) >= 0)
+    };
+  }
+
+  /** The brand saved by an earlier run (step 5), if this person can read the app catalog. */
+  public async loadSavedSettings(): Promise<ISavedSettings> {
+    try {
+      const { entries } = await this.findNavigatorEntries();
+      return entries.length ? (JSON.parse(entries[0].TenantWideExtensionComponentProperties || '{}') as ISavedSettings) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Uploads the logo to this site's Site Assets library and returns its URL.
+   * Site Assets follows the site's permissions, so when `everyoneRead` is set
+   * the file alone is opened to Everyone except external users; otherwise
+   * people who cannot open the hub see the text badge instead of the logo.
+   */
+  public async uploadLogo(file: File, everyoneRead: boolean, tenantId: string, log: Log): Promise<string> {
+    if (!/^image\/(png|svg\+xml|jpeg|gif|webp)$/.test(file.type)) {
+      throw new Error('Choose a PNG, SVG, JPG, GIF or WebP image.');
+    }
+    if (file.size > 1024 * 1024) {
+      throw new Error('The logo should be under 1 MB; it loads on every page.');
+    }
+    const library = await this.rest.postJson<{ RootFolder?: { ServerRelativeUrl: string }; Id: string }>(
+      `${this.webUrl}/_api/web/lists/EnsureSiteAssetsLibrary`
+    );
+    const folder = library.RootFolder?.ServerRelativeUrl ||
+      (await this.rest.getJson<{ ServerRelativeUrl: string }>(`${this.webUrl}/_api/web/lists(guid'${library.Id}')/RootFolder?$select=ServerRelativeUrl`)).ServerRelativeUrl;
+    const extension = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const fileName = `ecm-logo.${extension}`;
+    const content = await file.arrayBuffer();
+    const uploaded = await this.rest.postBinary<{ ServerRelativeUrl: string }>(
+      `${this.webUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${encodeURIComponent(odataString(folder))}')/Files/AddUsingPath(decodedurl='${fileName}',overwrite=true)`,
+      content
+    );
+    log(`Uploaded ${file.name} to ${folder}.`);
+    if (everyoneRead) {
+      const itemApi = `${this.webUrl}/_api/web/GetFileByServerRelativePath(decodedurl='${encodeURIComponent(odataString(uploaded.ServerRelativeUrl))}')/ListItemAllFields`;
+      const item = await this.rest.getJson<{ HasUniqueRoleAssignments: boolean }>(`${itemApi}?$select=HasUniqueRoleAssignments`);
+      if (!item.HasUniqueRoleAssignments) {
+        await this.rest.postJson(`${itemApi}/breakroleinheritance(copyRoleAssignments=true,clearSubscopes=true)`);
+      }
+      const user = await this.rest.postJson<{ Id: number }>(`${this.webUrl}/_api/web/ensureuser`, {
+        logonName: `c:0-.f|rolemanager|spo-grid-all-users/${tenantId}`
+      });
+      const role = await this.rest.getJson<{ Id: number }>(`${this.webUrl}/_api/web/roledefinitions/getbytype(${READ_ROLE_TYPE})?$select=Id`);
+      await this.rest.postJson(`${itemApi}/roleassignments/addroleassignment(principalid=${user.Id},roledefid=${role.Id})`);
+      log('Everyone except external users can see the logo.');
+    }
+    // A query string busts browser caches when the logo is replaced under the same name.
+    return `${uploaded.ServerRelativeUrl}?v=${Date.now()}`;
   }
 
   // --- Step: link check -------------------------------------------------------
