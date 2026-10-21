@@ -22,16 +22,16 @@ import {
   TextField
 } from '@fluentui/react';
 
-import { FormView } from '../../../common/components/renderer/FormView';
-import { IRuntimeContext } from '../../../common/form/FormEngine';
-import { IFormValues } from '../../../common/form/formValues';
-import { cloneForm, createControl, createDefaultForm } from '../../../common/model/formFactory';
-import { IFieldInfo } from '../../../common/model/IFieldInfo';
-import { ALL_MODES, ControlType, FormMode, FORMS_SCHEMA_VERSION, IFormDefinition, IListForms } from '../../../common/model/IFormDefinition';
-import { FormDeployment, IContentTypeBinding, listFormUrl } from '../../../common/services/FormDeployment';
-import { FormStore, touch } from '../../../common/services/FormStore';
-import { errorMessage, ISpContext } from '../../../common/services/http';
-import { ICurrentUser, IContentTypeInfo, IListInfo, IListSummary, ListService } from '../../../common/services/ListService';
+import { FormView } from '../common/components/renderer/FormView';
+import { IRuntimeContext } from '../common/form/FormEngine';
+import { IFormValues } from '../common/form/formValues';
+import { cloneForm, createControl, createDefaultForm } from '../common/model/formFactory';
+import { IFieldInfo } from '../common/model/IFieldInfo';
+import { ALL_MODES, ControlType, FormMode, FORMS_SCHEMA_VERSION, IFormDefinition, IListForms } from '../common/model/IFormDefinition';
+import { FormDeployment, IContentTypeBinding, listFormUrl } from '../common/services/FormDeployment';
+import { FormStore, touch } from '../common/services/FormStore';
+import { errorMessage, ISpContext } from '../common/services/http';
+import { ICurrentUser, IContentTypeInfo, IListInfo, IListSummary, ListService } from '../common/services/ListService';
 import { Canvas } from './Canvas';
 import styles from './Designer.module.scss';
 import { addControl, findControl, findSection, IHistory, placedFields, pushHistory, redo, Selection, undo } from './designerOps';
@@ -41,7 +41,10 @@ import { PropertiesPanel } from './PropertiesPanel';
 export interface IListWorkspaceProps {
   ctx: ISpContext;
   listId: string;
-  onChangeList: () => void;
+  /** Fill the container's height (the full-screen designer opened from the list). */
+  fill?: boolean;
+  /** Told whenever there are, or stop being, unsaved changes. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 interface IWorkspaceData {
@@ -154,6 +157,12 @@ export const ListWorkspace: React.FC<IListWorkspaceProps> = (props) => {
   const doc = history ? history.present : undefined;
   const form = doc ? doc.forms.filter((f) => f.id === formId)[0] || doc.forms[0] : undefined;
   const dirty = !!doc && JSON.stringify(doc.forms) !== savedJson;
+
+  React.useEffect(() => {
+    if (props.onDirtyChange) {
+      props.onDirtyChange(dirty);
+    }
+  }, [dirty]);
 
   // Warn before leaving the page with unsaved changes.
   React.useEffect(() => {
@@ -274,7 +283,7 @@ export const ListWorkspace: React.FC<IListWorkspaceProps> = (props) => {
 
   if (loadError) {
     return (
-      <MessageBar messageBarType={MessageBarType.error} actions={<DefaultButton text="Choose another list" onClick={props.onChangeList} />}>
+      <MessageBar messageBarType={MessageBarType.error}>
         {loadError}
       </MessageBar>
     );
@@ -361,19 +370,18 @@ export const ListWorkspace: React.FC<IListWorkspaceProps> = (props) => {
             } },
           {
             key: 'open',
-            text: 'Open the list',
+            text: 'Open the list in a new tab',
             iconProps: { iconName: 'OpenInNewWindow' },
             href: data.list.rootFolderUrl,
             target: '_blank'
-          },
-          { key: 'list', text: 'Design another list', iconProps: { iconName: 'BulletedList' }, onClick: props.onChangeList }
+          }
         ]
       }
     }
   ];
 
   return (
-    <div className={styles.workspace}>
+    <div className={`${styles.workspace} ${props.fill ? styles.fill : ''}`}>
       <div className={styles.topBar}>
         <div className={styles.breadcrumb}>
           <Icon iconName="FormLibrary" className={styles.brandIcon} />

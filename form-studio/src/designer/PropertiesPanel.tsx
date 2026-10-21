@@ -15,7 +15,7 @@ import {
   Toggle
 } from '@fluentui/react';
 
-import { IFieldInfo } from '../../../common/model/IFieldInfo';
+import { IFieldInfo } from '../common/model/IFieldInfo';
 import {
   ALL_MODES,
   FieldVariant,
@@ -27,8 +27,8 @@ import {
   IFormPage,
   ISection,
   IValidationRule
-} from '../../../common/model/IFormDefinition';
-import { IContentTypeInfo, IListSummary, ListService } from '../../../common/services/ListService';
+} from '../common/model/IFormDefinition';
+import { IContentTypeInfo, IListSummary, ListService } from '../common/services/ListService';
 import styles from './Designer.module.scss';
 import { findControl, findSection, removePage, nudgePage, Selection, updateControl, updatePage, updateSection } from './designerOps';
 import { ExpressionField } from './ExpressionField';

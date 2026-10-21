@@ -1,13 +1,13 @@
 # Form Studio
 
 **Custom SharePoint list forms, designed in the browser and stored as JSON.**
-A drag-and-drop designer, a form that replaces the list's own New / Edit /
-Display forms, and a web part that puts a form on any page. No Azure app
-registration and no separate app per list to manage. Everything is one
-`.sppkg`.
+Deploy one `.sppkg` and every list gets a **Customize forms** button. It
+opens a drag-and-drop designer, and the forms you design replace the list's
+own New / Edit / Display forms. There's also a web part that puts a form on
+any page. No Azure app registration and no separate app per list to manage.
 
 ![The Form Studio designer](docs/images/designer.png)
-<sub>The designer on a sample "Purchase Requests" list. Fictional data.</sub>
+<sub>The designer, opened from "Customize forms" on a sample "Purchase Requests" list. Fictional data.</sub>
 
 Form Studio covers what teams usually reach for Plumsail Forms or a
 customised Power Apps list form to get: layouts with sections, tabs and
@@ -25,7 +25,7 @@ language. No custom JavaScript runs, so a form definition can't execute code.
 
 | Component | What it does |
 | --- | --- |
-| **Form Studio - Designer** (web part) | Pick a list, then design its forms: drag fields and elements onto sections, set rules, preview with real items, save, and switch the list over to Form Studio. |
+| **Customize forms** (list command) | A button in the command bar of every list and library, shown to people who can manage the list. It opens the designer full-screen over the list: drag fields and elements onto sections, set rules, preview with real items, save, and switch the list over to Form Studio. |
 | **Form Studio form customizer** (extension) | Replaces the list's New, Edit and Display forms. It picks the right form for the item and the person and renders it. |
 | **Form Studio - Form** (web part) | Puts a form on any page, for intake forms, request portals or a "submit an idea" page. `?itemId=12` on the page URL opens item 12 instead. |
 
@@ -126,17 +126,27 @@ after an item is saved.
 ## Get started
 
 1. Download [`releases/form-studio.sppkg`](releases/form-studio.sppkg).
-2. Upload it to your tenant (or site collection) App Catalog. Choose
-   **Enable this app and add it to all sites**, or add the app to the sites
-   that need it.
-3. On the site with your list, add the **Form Studio - Designer** web part to
-   a page. A full-width section works best. You need **Manage Lists** on the
-   list to save its forms.
-4. Pick the list. You start with a form containing every field. Rearrange
-   it, add rules, preview it, and click **Save**.
+2. Upload it to your **tenant** App Catalog and choose **Enable this app and
+   add it to all sites**. Every custom list and document library then shows
+   **Customize forms** in its command bar. (Or upload it without that option
+   and add the app only to the sites that need it. The button then appears on
+   those sites' lists. Don't do both for the same site, or the button appears
+   twice.)
+3. Open a list and click **Customize forms**. The button appears only for
+   people with **Manage Lists** on that list, such as site owners. If you
+   don't see it, check the command bar's overflow (**...**) menu.
+4. You start with a form containing every field. Rearrange it, add rules,
+   preview it, and click **Save**.
 5. Click **Use on list** and then **Use Form Studio**. From now on, opening,
    editing or creating an item in that list uses your form. **Restore
-   SharePoint forms** in the same panel switches back.
+   SharePoint forms** in the same panel switches back. Close the designer
+   with the X in the top-right corner or with Escape.
+
+The button is registered for custom lists (template 100) and document
+libraries (101). For other list templates, add a row to the **Tenant Wide
+Extensions** list in the App Catalog site with the same component id
+(`84373817-3732-480c-9292-a7a06c2b3d4e`), location
+`ClientSideExtension.ListViewCommandSet.CommandBar` and that list template id.
 
 To put a form on a page instead, add **Form Studio - Form**, choose the list
 and (optionally) the form, and publish.
@@ -284,10 +294,13 @@ src/
     services/      ListService (fields, items, lookups, people, terms),
                    FormStore (definitions in Site Assets), FormSaver,
                    FormDeployment (content type binding)
-    components/    the form renderer, shared by all three components
-  extensions/formStudio/          form customizer
-  webparts/formStudioDesigner/    designer
-  webparts/formStudioForm/        form on a page
+    components/    the form renderer, shared by the form customizer, the
+                   page web part and the designer's preview
+  designer/        the designer (canvas, palette, properties, undo history)
+  extensions/formStudioCommandSet/  "Customize forms" command + full-screen designer
+  extensions/formStudio/            form customizer
+  webparts/formStudioForm/          form on a page
+sharepoint/assets/ registers the command on lists and libraries (site and tenant-wide)
 tests/             unit tests for the expression language, engine and mapping
 preview/           local preview against an in-memory SharePoint site
 samples/           a ready-made purchase-request form

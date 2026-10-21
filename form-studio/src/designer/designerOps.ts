@@ -1,5 +1,5 @@
-import { createPage, createSection } from '../../../common/model/formFactory';
-import { IControl, IFormDefinition, IFormPage, ISection } from '../../../common/model/IFormDefinition';
+import { createPage, createSection } from '../common/model/formFactory';
+import { IControl, IFormDefinition, IFormPage, ISection } from '../common/model/IFormDefinition';
 
 /**
  * Immutable edits on a form definition. Every designer action goes through

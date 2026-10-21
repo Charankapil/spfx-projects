@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { Callout, DirectionalHint, IconButton, SearchBox, TextField } from '@fluentui/react';
 
-import { checkExpression, functionCatalog } from '../../../common/expressions';
-import { IFieldInfo } from '../../../common/model/IFieldInfo';
+import { checkExpression, functionCatalog } from '../common/expressions';
+import { IFieldInfo } from '../common/model/IFieldInfo';
 import styles from './Designer.module.scss';
 
 export interface IExpressionFieldProps {

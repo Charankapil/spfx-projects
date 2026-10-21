@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { Icon, SearchBox } from '@fluentui/react';
 
-import { IFieldInfo } from '../../../common/model/IFieldInfo';
-import { ControlType } from '../../../common/model/IFormDefinition';
+import { IFieldInfo } from '../common/model/IFieldInfo';
+import { ControlType } from '../common/model/IFormDefinition';
 import styles from './Designer.module.scss';
 
 export const DRAG_MIME = 'text/plain';

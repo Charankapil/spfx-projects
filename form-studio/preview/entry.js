@@ -3,7 +3,7 @@
 import * as React from 'react';
 import * as ReactDom from 'react-dom';
 import { initializeIcons } from '@fluentui/react';
-import { FormStudioDesigner } from '@fs/webparts/formStudioDesigner/components/FormStudioDesigner';
+import { DesignerOverlay } from '@fs/extensions/formStudioCommandSet/DesignerOverlay';
 import { FormHost } from '@fs/common/components/renderer/FormHost';
 import { fakeContext, fakeData, log } from './fakeSharePoint';
 import sample from '../samples/purchase-request.forms.json';
@@ -21,7 +21,8 @@ if (params.get('sample')) {
 }
 
 if (view === 'designer') {
-  ReactDom.render(React.createElement(FormStudioDesigner, { ctx: fakeContext, listId: params.get('list') === 'none' ? '' : listId, onListChange: () => undefined }), root);
+  // What "Customize forms" in the list's command bar opens.
+  ReactDom.render(React.createElement(DesignerOverlay, { ctx: fakeContext, listId, listTitle: 'Purchase Requests', onClose: () => (document.title = 'closed') }), root);
 } else {
   ReactDom.render(
     React.createElement(FormHost, {

@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { DefaultButton, Icon, IconButton } from '@fluentui/react';
 
-import { createControl, newId } from '../../../common/model/formFactory';
-import { IFieldInfo } from '../../../common/model/IFieldInfo';
-import { IControl, IFormDefinition, ISection } from '../../../common/model/IFormDefinition';
+import { createControl, newId } from '../common/model/formFactory';
+import { IFieldInfo } from '../common/model/IFieldInfo';
+import { IControl, IFormDefinition, ISection } from '../common/model/IFormDefinition';
 import styles from './Designer.module.scss';
 import {
   addControl,

@@ -14,12 +14,11 @@ Open `preview/out/index.html` in a browser:
 
 | URL                                          | Shows                                                |
 | -------------------------------------------- | ---------------------------------------------------- |
-| `index.html`                                 | The designer on a "Purchase Requests" list           |
+| `index.html`                                 | The designer, as "Customize forms" opens it on a "Purchase Requests" list |
 | `index.html?sample=1`                        | The designer with the sample purchase-request form   |
 | `index.html?view=form&mode=New&sample=1`     | The New form                                         |
 | `index.html?view=form&mode=Display&item=1&sample=1` | Item 1 as an approver (Approve button)        |
 | `index.html?view=form&mode=Edit&item=1&sample=1`    | Item 1 in edit mode                           |
-| `index.html?list=none`                       | The list picker                                      |
 
 The fake site lives in memory, so a reload starts from scratch. Every write
 is recorded in `window.__fake.log`, which is the easiest way to check the

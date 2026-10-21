@@ -715,88 +715,35 @@ $surface: #faf9f8;
   font-size: 12px;
 }
 
-// List picker
-
-.picker {
-  border: 1px solid $border;
-  border-radius: 6px;
-  padding: 24px;
-  background: #fff;
-}
-
-.pickerHeader {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.pickerIcon {
-  font-size: 32px;
-  color: $theme-primary;
-}
-
-.pickerTitle {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-}
-
-.pickerSearch {
-  max-width: 360px;
-  margin-bottom: 16px;
-}
-
-.listGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.listCard {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  column-gap: 12px;
-  align-items: center;
-  text-align: left;
-  background: #fff;
-  border: 1px solid $border;
-  border-radius: 6px;
-  padding: 14px;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-
-  &:hover,
-  &:focus-visible {
-    border-color: $theme-primary;
-    background: $theme-lighter-alt;
-  }
-}
-
-.listCardIcon {
-  grid-row: 1 / span 2;
-  font-size: 22px;
-  color: $theme-primary;
-}
-
-.listCardTitle {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.listCardMeta {
-  font-size: 12px;
-  color: $muted;
-}
-
 .centered {
   padding: 48px;
   display: flex;
   justify-content: center;
+}
+
+// Full-screen designer opened from the list: panes scroll inside the window.
+.fill {
+  height: 100%;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+
+  .designer {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .leftPane,
+  .rightPane,
+  .centerPane {
+    max-height: none;
+    min-height: 0;
+  }
+
+  .preview {
+    min-height: 0;
+    overflow-y: auto;
+  }
 }
 
 @media (max-width: 1100px) {

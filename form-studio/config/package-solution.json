@@ -3,7 +3,7 @@
   "solution": {
     "name": "form-studio-client-side-solution",
     "id": "fc8424ea-79ed-4c00-bf70-cb082c497130",
-    "version": "1.0.0.0",
+    "version": "1.1.0.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -19,16 +19,22 @@
         "default": "Form Studio - design custom SharePoint list forms without Power Apps"
       },
       "longDescription": {
-        "default": "A drag-and-drop form designer for SharePoint lists, plus a form customizer that replaces the list's New, Edit and Display forms and a web part that puts a form on any page. Layouts with sections, tabs and wizards; conditional visibility, required and read-only rules; calculated and default values; validation; cascading lookups; audience-specific forms; approval buttons; and inline related items. Uses only SharePoint REST APIs - no Azure AD app registration, no Power Apps licence."
+        "default": "Adds a \"Customize forms\" button to every list that opens a drag-and-drop form designer, plus a form customizer that replaces the list's New, Edit and Display forms and a web part that puts a form on any page. Layouts with sections, tabs and wizards; conditional visibility, required and read-only rules; calculated and default values; validation; cascading lookups; audience-specific forms; approval buttons; and inline related items. Uses only SharePoint REST APIs - no Azure AD app registration and no Power Apps."
       },
       "screenshotPaths": []
     },
     "features": [
       {
         "title": "Form Studio Feature",
-        "description": "Deploys the Form Studio web parts and form customizer.",
+        "description": "Adds the \"Customize forms\" command to lists and libraries, the Form Studio form customizer and the Form Studio - Form web part.",
         "id": "9719e3b5-3a44-457b-a735-d67770a71f4b",
-        "version": "1.0.0.0"
+        "version": "1.1.0.0",
+        "assets": {
+          "elementManifests": [
+            "elements.xml",
+            "ClientSideInstance.xml"
+          ]
+        }
       }
     ]
   },

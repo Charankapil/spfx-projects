@@ -18,11 +18,11 @@
         }
       ]
     },
-    "form-studio-designer-web-part": {
+    "form-studio-command-set": {
       "components": [
         {
-          "entrypoint": "./lib/webparts/formStudioDesigner/FormStudioDesignerWebPart.js",
-          "manifest": "./src/webparts/formStudioDesigner/FormStudioDesignerWebPart.manifest.json"
+          "entrypoint": "./lib/extensions/formStudioCommandSet/FormStudioCommandSet.js",
+          "manifest": "./src/extensions/formStudioCommandSet/FormStudioCommandSet.manifest.json"
         }
       ]
     }

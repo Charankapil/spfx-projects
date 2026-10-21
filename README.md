@@ -12,8 +12,9 @@ A collection of SharePoint Framework (SPFx) web part solutions.
   required. See its own [README](./filetype-analyser/README.md) for setup,
   architecture and deployment details.
 - [`form-studio`](./form-studio) - Custom SharePoint list forms designed in
-  the browser: a drag-and-drop designer, a form customizer that replaces a
-  list's New / Edit / Display forms, and a web part for forms on pages.
+  the browser: a **Customize forms** button on every list opens a
+  drag-and-drop designer, a form customizer replaces the list's New / Edit /
+  Display forms, and a web part puts forms on pages.
   Covers tabs and wizards, conditional and calculated fields, validation,
   cascading lookups, per-group forms, approval buttons and inline related
   items, without Power Apps or custom JavaScript. See its own

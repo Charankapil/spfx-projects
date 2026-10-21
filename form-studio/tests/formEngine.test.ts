@@ -172,7 +172,7 @@ test('createControl gives sensible spans', () => {
 });
 
 test('designer operations: move, nudge, pages and undo history', async () => {
-  const ops = await import('../src/webparts/formStudioDesigner/components/designerOps');
+  const ops = await import('../src/designer/designerOps');
   const form = createDefaultForm('Ops', fields);
   const section = form.pages[0].sections[0];
   const [first, second, third] = section.controls.map((c) => c.id);
