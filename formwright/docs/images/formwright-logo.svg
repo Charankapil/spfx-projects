@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="Formwright">
+  <defs>
+    <linearGradient id="fw-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#0D9488"/>
+    </linearGradient>
+    <linearGradient id="fw-pen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="22" fill="url(#fw-bg)"/>
+  <!-- the form -->
+  <rect x="18" y="16" width="46" height="62" rx="7" fill="#FFFFFF"/>
+  <rect x="26" y="26" width="20" height="5" rx="2.5" fill="#4F46E5"/>
+  <rect x="26" y="35" width="30" height="8" rx="2.5" fill="#E0E7FF"/>
+  <rect x="26" y="49" width="14" height="5" rx="2.5" fill="#0D9488"/>
+  <rect x="26" y="58" width="30" height="8" rx="2.5" fill="#CCFBF1"/>
+  <!-- the wright's pen -->
+  <g transform="rotate(38 70 58)">
+    <rect x="64" y="30" width="12" height="34" rx="3" fill="url(#fw-pen)" stroke="#FFFFFF" stroke-width="2.5"/>
+    <rect x="64" y="30" width="12" height="7" rx="3" fill="#FFFFFF"/>
+    <path d="M64 64 h12 l-6 12 z" fill="#FFFFFF"/>
+    <path d="M67.5 66 h5 l-2.5 5 z" fill="#1E1B4B"/>
+  </g>
+</svg>
