@@ -1,0 +1,32 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/core-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "form-studio-form-customizer": {
+      "components": [
+        {
+          "entrypoint": "./lib/extensions/formStudio/FormStudioFormCustomizer.js",
+          "manifest": "./src/extensions/formStudio/FormStudioFormCustomizer.manifest.json"
+        }
+      ]
+    },
+    "form-studio-form-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/formStudioForm/FormStudioFormWebPart.js",
+          "manifest": "./src/webparts/formStudioForm/FormStudioFormWebPart.manifest.json"
+        }
+      ]
+    },
+    "form-studio-designer-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/formStudioDesigner/FormStudioDesignerWebPart.js",
+          "manifest": "./src/webparts/formStudioDesigner/FormStudioDesignerWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {}
+}

@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "listId": "11111111-1111-1111-1111-111111111111",
+  "listTitle": "Purchase Requests",
+  "forms": [
+    {
+      "id": "f_purchase",
+      "name": "Purchase request",
+      "modes": ["New", "Edit", "Display"],
+      "audience": [],
+      "contentTypes": [],
+      "layout": "tabs",
+      "settings": {
+        "title": "Purchase request{{If(ItemId(), \" #\" & ItemId(), \"\")}}",
+        "subtitle": "{{If(FormMode() = \"New\", \"Tell us what you need - Finance reviews requests within two working days.\", \"Status: \" & Coalesce([Status], \"Draft\"))}}",
+        "labelPosition": "top",
+        "maxWidth": 960,
+        "showDefaultButtons": true,
+        "submitLabel": "Submit",
+        "cancelLabel": "Cancel",
+        "successMessage": "Request \"{{[Title]}}\" was submitted. You'll get an e-mail when Finance has reviewed it.",
+        "onSave": [{ "field": "Status", "expression": "If(FormMode() = \"New\", \"Submitted\", [Status])" }],
+        "validations": [{ "expression": "IsBlank([NeededBy]) || [NeededBy] >= Today()", "message": "\"Needed by\" can't be in the past." }],
+        "detectConflicts": true
+      },
+      "pages": [
+        {
+          "id": "p_request",
+          "title": "Request",
+          "sections": [
+            {
+              "id": "s_details",
+              "title": "Details",
+              "columns": 2,
+              "controls": [
+                { "id": "c_intro", "type": "text", "span": 12, "content": "Requests over **1,000** or marked urgent need a business justification. Pick the department first - the cost center list follows it." },
+                { "id": "c_title", "type": "field", "field": "Title", "span": 12, "placeholder": "e.g. Laptops for the new starters" },
+                { "id": "c_type", "type": "field", "field": "RequestType", "span": 1, "variant": "radio" },
+                { "id": "c_needed", "type": "field", "field": "NeededBy", "span": 1, "defaultValue": "DateAdd(Today(), 14)" },
+                { "id": "c_dept", "type": "field", "field": "Department", "span": 1 },
+                { "id": "c_cc", "type": "field", "field": "CostCenter", "span": 1, "lookupCascade": { "sourceField": "Department", "formField": "Department" }, "description": "Only cost centers of the chosen department." },
+                { "id": "c_urgent", "type": "field", "field": "Urgent", "span": 1 },
+                { "id": "c_approver", "type": "field", "field": "Approver", "span": 1, "description": "Your budget holder." }
+              ]
+            },
+            {
+              "id": "s_justify",
+              "title": "Justification",
+              "columns": 2,
+              "visibleWhen": "[Total] > 1000 || [Urgent]",
+              "controls": [
+                { "id": "c_just", "type": "field", "field": "Justification", "span": 12, "requiredWhen": "true", "validations": [{ "expression": "Len([Justification]) >= 20", "message": "Give a little more detail (20 characters or more)." }] },
+                { "id": "c_vendor", "type": "field", "field": "VendorSite", "span": 12 },
+                { "id": "c_tags", "type": "field", "field": "Tags", "span": 12, "variant": "checkboxes" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p_cost",
+          "title": "Items & cost",
+          "sections": [
+            {
+              "id": "s_lines",
+              "title": "Line items",
+              "columns": 1,
+              "controls": [
+                { "id": "c_lines", "type": "relatedItems", "span": 12, "label": "What you are buying", "relatedItems": { "listId": "44444444-4444-4444-4444-444444444444", "listTitle": "Request Lines", "parentLookupField": "Request", "columns": ["Title", "LineQty", "LinePrice"], "allowAdd": true, "allowEdit": true, "allowDelete": true } }
+              ]
+            },
+            {
+              "id": "s_cost",
+              "title": "Cost",
+              "columns": 3,
+              "controls": [
+                { "id": "c_qty", "type": "field", "field": "Quantity", "span": 1, "defaultValue": "1" },
+                { "id": "c_price", "type": "field", "field": "UnitPrice", "span": 1 },
+                { "id": "c_total", "type": "field", "field": "Total", "span": 1, "calculatedValue": "[Quantity] * [UnitPrice]" },
+                { "id": "c_files", "type": "field", "field": "Attachments", "span": 12, "description": "Quotes or screenshots." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p_approval",
+          "title": "Approval",
+          "visibleWhen": "FormMode() <> \"New\"",
+          "sections": [
+            {
+              "id": "s_decision",
+              "title": "Decision",
+              "columns": 2,
+              "controls": [
+                { "id": "c_status", "type": "field", "field": "Status", "span": 1, "readOnlyWhen": "Not(InGroup(\"Finance Approvers\"))" },
+                { "id": "c_approved", "type": "field", "field": "ApprovedOn", "span": 1, "readOnlyWhen": "true" },
+                { "id": "c_comments", "type": "field", "field": "ApproverComments", "span": 12, "requiredWhen": "[Status] = \"Rejected\"", "readOnlyWhen": "Not(InGroup(\"Finance Approvers\"))" },
+                { "id": "c_approve", "type": "button", "span": 1, "label": "Approve", "action": "save", "buttonStyle": "primary", "visibleWhen": "InGroup(\"Finance Approvers\") && [Status] = \"Submitted\"", "assignments": [{ "field": "Status", "expression": "\"Approved\"" }, { "field": "ApprovedOn", "expression": "Now()" }] },
+                { "id": "c_reject", "type": "button", "span": 1, "label": "Reject", "action": "save", "buttonStyle": "default", "visibleWhen": "FormMode() = \"Edit\" && InGroup(\"Finance Approvers\") && [Status] = \"Submitted\"", "assignments": [{ "field": "Status", "expression": "\"Rejected\"" }] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

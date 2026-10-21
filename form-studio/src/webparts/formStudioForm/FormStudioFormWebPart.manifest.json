@@ -1,0 +1,26 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "bd49e578-9ca5-48c7-aa79-97a1a1d43546",
+  "alias": "FormStudioFormWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage", "TeamsTab", "TeamsPersonalApp"],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "Other" },
+      "title": { "default": "Form Studio - Form" },
+      "description": { "default": "Shows a Form Studio form on a page, so people can submit or edit list items without opening the list." },
+      "officeFabricIconFontName": "FormLibrary",
+      "properties": {
+        "listId": "",
+        "formId": "",
+        "itemParameter": "itemId",
+        "existingItemMode": "Edit",
+        "allowAnother": true
+      }
+    }
+  ]
+}

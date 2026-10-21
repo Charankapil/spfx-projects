@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "form-studio-client-side-solution",
+    "id": "fc8424ea-79ed-4c00-bf70-cb082c497130",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "undefined"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Form Studio - design custom SharePoint list forms without Power Apps"
+      },
+      "longDescription": {
+        "default": "A drag-and-drop form designer for SharePoint lists, plus a form customizer that replaces the list's New, Edit and Display forms and a web part that puts a form on any page. Layouts with sections, tabs and wizards; conditional visibility, required and read-only rules; calculated and default values; validation; cascading lookups; audience-specific forms; approval buttons; and inline related items. Uses only SharePoint REST APIs - no Azure AD app registration, no Power Apps licence."
+      },
+      "screenshotPaths": []
+    },
+    "features": [
+      {
+        "title": "Form Studio Feature",
+        "description": "Deploys the Form Studio web parts and form customizer.",
+        "id": "9719e3b5-3a44-457b-a735-d67770a71f4b",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/form-studio.sppkg"
+  }
+}

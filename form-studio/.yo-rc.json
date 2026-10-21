@@ -1,0 +1,21 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "18.20.8",
+    "sdksVersions": {
+      "@microsoft/microsoft-graph-client": "3.0.2",
+      "@microsoft/teams-js": "2.19.0"
+    },
+    "version": "1.18.2",
+    "libraryName": "form-studio",
+    "libraryId": "fc8424ea-79ed-4c00-bf70-cb082c497130",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "form-studio",
+    "solutionShortDescription": "Form Studio - custom SharePoint list forms without Power Apps",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}
