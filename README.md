@@ -17,4 +17,6 @@ A collection of SharePoint Framework (SPFx) web part solutions.
   **Metadata Explorer** web part (documents grouped by their metadata
   categories, with links to each file and a metadata coverage view). Includes
   an **ECM Setup** web part that provisions the theme and the navigation list
-  from the browser, with no app registration or client id needed. See its own [README](./ecm-foundation/README.md).
+  from the browser, with no app registration or client id needed, and the
+  **Governance Scorecard** (module 2), which measures metadata, retention
+  labelling, stale content, storage and ownership per hub with saved trends. See its own [README](./ecm-foundation/README.md).

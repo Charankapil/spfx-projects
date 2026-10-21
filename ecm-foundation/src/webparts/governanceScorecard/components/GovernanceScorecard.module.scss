@@ -1,0 +1,302 @@
+// Chrome follows the site theme; chart colours come from vizTokens.ts.
+$primary: "[theme:themePrimary, default:#C91F3C]";
+$ink: #1E2227;
+$body: #4B5260;
+$muted: #6B717C;
+$line: #E2E5EA;
+$soft: #F4F5F7;
+$grid: #E6E8EC;
+
+.scorecard {
+  color: $ink;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  a { color: $ink; font-weight: 600; text-decoration: none; }
+  a:hover { color: $primary; text-decoration: underline; }
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title { margin: 0; font-size: 24px; font-weight: 600; }
+.subtitle { margin: 4px 0 0; color: $body; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.progress { border: 1px solid $line; border-radius: 12px; padding: 12px 16px; background: #fff; }
+.progressText { font-size: 13px; color: $body; margin-bottom: 8px; }
+.progressTrack {
+  height: 6px;
+  border-radius: 3px;
+  background: $soft;
+  overflow: hidden;
+  span { display: block; height: 100%; background: $primary; border-radius: 3px; transition: width 0.3s; }
+}
+
+// Held at reduced opacity while a new scan runs (no layout jump).
+.stale { opacity: 0.55; pointer-events: none; transition: opacity 0.2s; }
+
+.intro {
+  border: 1px solid $line;
+  border-radius: 14px;
+  background: #fff;
+  padding: 20px 24px;
+  color: $body;
+  line-height: 1.55;
+  h3 { margin: 0 0 6px; font-size: 18px; color: $ink; }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  b { color: $ink; }
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: $body;
+
+  select {
+    height: 34px;
+    min-width: 200px;
+    padding: 0 10px;
+    border: 1px solid $line;
+    border-radius: 8px;
+    background: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    color: $ink;
+    &:focus { outline: 2px solid $primary; outline-offset: 1px; }
+  }
+}
+
+.filterNote { flex: 1 1 280px; font-size: 12.5px; color: $muted; padding-bottom: 8px; }
+
+// --- KPI tiles -------------------------------------------------------------
+
+.kpis {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(4, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+  @media (max-width: 1200px) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 560px) { grid-template-columns: minmax(0, 1fr); }
+}
+
+.tile {
+  border: 1px solid $line;
+  border-radius: 14px;
+  background: #fff;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.heroTile { @media (max-width: 1200px) { grid-column: 1 / -1; } }
+
+.tileLabel { font-size: 13px; font-weight: 600; color: $body; }
+.tileValue { font-size: 30px; font-weight: 600; line-height: 1.1; }
+.tileSub { font-size: 12.5px; color: $muted; line-height: 1.45; }
+.heroRow { display: flex; align-items: baseline; gap: 6px; }
+.heroValue { font-size: 56px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }
+.heroOutOf { font-size: 16px; color: $muted; }
+.delta { font-size: 12.5px; font-weight: 600; color: $body; }
+
+.statusChip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: $ink;
+  background: $soft;
+  border-radius: 999px;
+  padding: 3px 10px 3px 6px;
+  white-space: nowrap;
+}
+
+.statusChipNone { font-size: 12.5px; color: $muted; }
+
+// --- Cards -----------------------------------------------------------------
+
+.twoCol {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+  @media (max-width: 1100px) { grid-template-columns: minmax(0, 1fr); }
+}
+
+.card {
+  border: 1px solid $line;
+  border-radius: 14px;
+  background: #fff;
+  padding: 16px 18px;
+  min-width: 0;
+}
+
+.cardHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.cardTitle { margin: 0; font-size: 16px; font-weight: 600; }
+.cardSub { margin: 2px 0 10px; font-size: 12.5px; color: $muted; }
+.hint { font-size: 12.5px; color: $body; background: $soft; border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+
+.linkButton {
+  border: none;
+  background: none;
+  color: $primary;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  white-space: nowrap;
+  &:hover { text-decoration: underline; }
+}
+
+.legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0 0 6px;
+  padding: 0;
+  font-size: 12.5px;
+  color: $body;
+  li { display: inline-flex; align-items: center; gap: 6px; }
+}
+
+.chartWrap { position: relative; width: 100%; overflow: hidden; }
+.axisText { font-size: 11px; fill: $muted; font-variant-numeric: tabular-nums; }
+.endLabel { font-size: 12px; fill: $body; }
+.endValue { font-weight: 700; fill: $ink; }
+.hitArea { cursor: crosshair; outline: none; &:focus-visible { outline: 2px solid $primary; outline-offset: -2px; } }
+
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: #fff;
+  border: 1px solid $line;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(16, 20, 26, 0.14);
+  padding: 8px 12px;
+  min-width: 170px;
+  font-size: 12.5px;
+}
+
+.tooltipTitle { font-weight: 600; margin-bottom: 4px; color: $ink; }
+.tooltipRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: $muted;
+  strong { color: $ink; min-width: 34px; font-variant-numeric: tabular-nums; }
+}
+
+// --- Field coverage bars ---------------------------------------------------
+
+.bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.9fr) minmax(0, 1.4fr) 44px;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.barLabel { font-size: 13px; color: $ink; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barTrack { height: 10px; background: $soft; border-radius: 0 4px 4px 0; }
+.barFill { display: block; height: 100%; border-radius: 0 4px 4px 0; min-width: 2px; }
+.barValue { font-size: 13px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.barNote { grid-column: 2 / -1; font-size: 11.5px; color: $muted; }
+
+// --- Table -----------------------------------------------------------------
+
+.tableWrap { overflow-x: auto; }
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    color: $body;
+    background: #FAFAFB;
+    padding: 8px 12px;
+    border-bottom: 1px solid $line;
+    white-space: nowrap;
+  }
+  td { padding: 9px 12px; border-bottom: 1px solid #EEF0F3; vertical-align: middle; }
+}
+
+.num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.muted { color: $muted; }
+.hubRow td { background: #FCFCFD; font-weight: 600; }
+.siteRow td:first-child { padding-left: 40px; }
+
+.expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: $ink;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.chevron { display: inline-block; width: 12px; font-size: 18px; line-height: 1; color: $muted; transition: transform 0.15s; }
+.chevronOpen { transform: rotate(90deg); }
+.siteCount { font-size: 12px; font-weight: 400; color: $muted; }
+
+.tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: $body;
+  background: $soft;
+  border: 1px solid $line;
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.errorCell { color: #A4262C; font-size: 12.5px; }
+
+.meterCell { display: inline-flex; align-items: center; gap: 8px; min-width: 120px; }
+.meter {
+  width: 72px;
+  height: 8px;
+  border-radius: 4px;
+  background: #ECEEF1;
+  overflow: hidden;
+  span { display: block; height: 100%; border-radius: 0 4px 4px 0; }
+}
+.meterValue { font-variant-numeric: tabular-nums; min-width: 34px; }
+
+.footnote { font-size: 12px; color: $muted; line-height: 1.5; margin: 4px 0 0; }

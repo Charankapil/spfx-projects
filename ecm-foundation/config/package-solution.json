@@ -3,7 +3,7 @@
   "solution": {
     "name": "ecm-foundation-client-side-solution",
     "id": "5def8735-cd78-432b-b166-5014f43660a4",
-    "version": "1.3.0.0",
+    "version": "1.4.0.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -16,19 +16,19 @@
     },
     "metadata": {
       "shortDescription": {
-        "default": "ECM Foundation - theme, ECM Hub Navigator and Metadata Explorer"
+        "default": "ECM Foundation - theme, ECM Hub Navigator, Metadata Explorer, ECM Setup and Governance Scorecard"
       },
       "longDescription": {
-        "default": "Module 1 of the ECM solution. Adds the ECM Hub Navigator (a security-trimmed hub and department mega menu driven by one SharePoint list) to every page, and a Metadata Explorer web part that groups documents by their metadata categories with links to each file. Uses only SharePoint REST and Search APIs; no Azure AD app registration is required."
+        "default": "Module 1 of the ECM solution. Adds the ECM Hub Navigator (a security-trimmed hub and department mega menu driven by one SharePoint list) to every page, a Metadata Explorer web part that groups documents by their metadata categories with links to each file, the ECM Setup web part, and the Governance Scorecard (module 2), which measures metadata, retention labelling, stale content, storage and ownership per hub with saved snapshots and trends. Uses only SharePoint REST and Search APIs; no Azure AD app registration is required."
       },
       "screenshotPaths": []
     },
     "features": [
       {
         "title": "ECM Foundation",
-        "description": "Deploys the ECM Hub Navigator tenant-wide (scoped through the Tenant Wide Extensions list), the ECM Setup web part and the Metadata Explorer web part.",
+        "description": "Deploys the ECM Hub Navigator tenant-wide (scoped through the Tenant Wide Extensions list), the ECM Setup, Metadata Explorer and Governance Scorecard web parts.",
         "id": "956e2995-ff02-4df4-885e-98e6b9219331",
-        "version": "1.3.0.0",
+        "version": "1.4.0.0",
         "assets": {
           "elementManifests": ["ClientSideInstance.xml"]
         }

@@ -9,6 +9,7 @@ document metadata visible:
 | **Brand and theme** | SharePoint theme + brand settings | Your logo, brand colour and dark colour drive both the navigator and an **American Tower ECM** SharePoint theme generated from them, so SharePoint's own chrome and the ECM components always match. |
 | **ECM Hub Navigator** | Application customizer | Brand bar, search, hub tabs with a mega menu, breadcrumb and site classification on every page. Security-trimmed. Driven by one SharePoint list, so governance changes the menu without a redeploy. |
 | **ECM Setup** | Web part | One-time setup from a page on the Corporate ECM Hub: creates and seeds the navigation list, registers and applies the theme, points the navigator at the hub, and checks every link. |
+| **Governance Scorecard** | Web part | Module 2. Measures the pilot's value targets across every site in the navigation: metadata completeness, retention labelling, archive candidates, storage and duplicates, and ownership. Shown per hub and site, with saved snapshots, a baseline and a trend. |
 | **Metadata Explorer** | Web part | Every document in the site's libraries (or a hub / the tenant through search), grouped by any metadata category with a second-level "then by", facet filters, links to each file, a metadata coverage view and CSV export. |
 
 Everything runs on the current user's SharePoint session through
@@ -24,8 +25,8 @@ the one-time configuration from the browser.
 
 | # | Module | Status |
 | --- | --- | --- |
-| 1 | **ECM Foundation**: theme, Hub Navigator, Metadata Explorer | This project |
-| 2 | Governance Scorecard: metadata/ownership coverage, retention labelling and storage per hub and department (pilot value targets) | Planned |
+| 1 | **ECM Foundation**: theme, Hub Navigator, Metadata Explorer, ECM Setup | In this package |
+| 2 | **Governance Scorecard**: metadata, retention labelling, stale content, storage and ownership per hub and site (pilot value targets) | In this package |
 | 3 | Site Request and provisioning: standard department template, `ATC-SP-{Dept}-*` Entra groups, sensitive-site flow | Planned |
 | 4 | Document Compliance Panel: label, owner, review date and lifecycle state on each document | Planned |
 | 5 | Content Health: duplicate, stale and ownerless content before migration (extends [`filetype-analyser`](../filetype-analyser)) | Planned |
@@ -165,6 +166,59 @@ ECM Setup step 5 writes these. You can also edit them by hand in the app catalog
 
 Only `configSiteUrl` is required.
 
+## Governance Scorecard
+
+Module 2 ships in the same package, so updating stays one upload of
+`ecm-foundation.sppkg`. Add **Governance Scorecard** (group "ECM") to a page on the
+Corporate ECM Hub, for example an *ECM Scorecard* page.
+
+![Governance Scorecard with three saved snapshots and a new scan (sample data)](docs/images/governance-scorecard.png)
+
+### What it measures
+
+**Run scan** reads every site in the ECM Navigation list: hubs, department sites and
+shared services. For each site it reads the document libraries (up to *Documents read per
+site*, 5,000 by default), the site's storage and its owners group:
+
+| Measure | How it is counted | Strategy link |
+| --- | --- | --- |
+| **Metadata complete** | Documents with **every** required field filled in. Required fields are set in the web part (default: Document Type, Confidentiality, Record Category, Document Owner) and matched by column name or internal name. A site without one of the columns counts all its documents as missing it, and is flagged "column missing". | Target 1: metadata and ownership coverage |
+| **Retention labelled** | Documents with a Purview retention label (`_ComplianceTag`). | Target 3: retention labelling |
+| **Archive candidates** | Documents not changed in *N* years (default 3), with their size. | Target 2: active storage reduction |
+| **Storage** | Site storage as SharePoint reports it, plus likely duplicate copies (same file name and size within a site) and their size. | Target 2 |
+| **Ownership** | The site's owners group holds a group (the `ATC-SP-{Dept}-Owners` Entra ID group, or a Microsoft 365 group's owners), or at least two people. One person is flagged as a risk. | Permission model |
+
+The **governance score** (0 to 100) is 40% metadata complete + 30% retention labelled +
+20% not stale + 10% ownership. A measure with no data (for example, owners you can't read)
+is left out and the weights are rebalanced. **80 and above** is *On track*, **60 to 79**
+is *Needs attention* and **below 60** is *At risk*. Status always has an icon and a label,
+never colour alone.
+
+### Snapshots, baseline and trend
+
+A scan shows its results immediately. **Save snapshot** stores them in an
+**ECM Scorecard Snapshots** list on the hub, which is created on the first save and needs
+edit rights on the hub. That list has one item per scan, with the headline numbers as
+columns and each site's counts as JSON. Everyone who opens the page then sees the latest
+snapshot without scanning. The **first saved snapshot is the baseline**: every tile shows
+its change since then, and the trend chart plots score, metadata and labelling across all
+snapshots. Use **Hub** to scope every number and the trend to one hub, **Scan** to view an
+earlier snapshot, and **Export CSV** for one row per site with every measure. Each chart
+has a table view.
+
+### Good to know
+
+- **It measures what the person scanning can open.** Sites they can't open are listed as
+  "Couldn't scan: No access", not left out. Have a SharePoint administrator, or someone
+  with access to every ECM site, run the scans you save.
+- **Large sites are sampled.** Above the per-site limit, a site is measured on its first
+  documents and marked *Sampled*. Raise the limit for exact figures; scans take longer.
+- **Subsites aren't scanned**, only each site's top-level libraries. This matches the
+  flat hub-and-spoke design.
+- Scans run in the browser, two sites at a time. Expect a few minutes for a full scan of
+  the seeded 34 sites. Scheduled scans (for example, weekly through Power Automate)
+  could be added later.
+
 ## Metadata Explorer
 
 Add **Metadata Explorer** (group "ECM") to any page. It has two sources:
@@ -220,6 +274,7 @@ src/
   common/                 shared by every ECM component
     theme/ecmTheme.ts     palette, hub colours, --ecm-* CSS variables, the SharePoint theme
     services/SpRestClient.ts  REST + search with throttling retry
+    services/ListHelper.ts    create lists and columns, add items (setup and snapshots)
   extensions/ecmHubNavigator/
     EcmHubNavigatorApplicationCustomizer.ts
     services/NavigationService.ts   list load, cache, security trimming, location
@@ -227,6 +282,11 @@ src/
   webparts/ecmSetup/
     data/navigationSeed.ts          the strategy's hubs, departments and services
     services/SetupService.ts        list, permissions, theme, navigator settings, link check
+  webparts/governanceScorecard/
+    services/ScorecardScanner.ts    sites from the navigation list, libraries, storage, owners
+    services/metrics.ts             counting, aggregation, weighted score, status
+    services/SnapshotStore.ts       ECM Scorecard Snapshots list (save / load)
+    components/                     KPI tiles, trend chart, field coverage, hub table
   webparts/metadataExplorer/
     services/LibrariesSource.ts     RenderListDataAsStream per library
     services/SearchSource.ts        search query, managed property mapping

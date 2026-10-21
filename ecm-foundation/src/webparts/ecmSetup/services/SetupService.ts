@@ -1,5 +1,6 @@
 import { SPHttpClient } from '@microsoft/sp-http';
 
+import { IFieldDefinition, ListHelper, odataString } from '../../../common/services/ListHelper';
 import { normalizeUrl, SpRestClient } from '../../../common/services/SpRestClient';
 import { buildSharePointTheme, ECM_THEME_NAME, IEcmBrand } from '../../../common/theme/ecmTheme';
 import { NAVIGATION_SEED } from '../data/navigationSeed';
@@ -26,15 +27,6 @@ export interface ILinkCheck {
   detail: string;
 }
 
-interface IFieldValue {
-  FieldName: string;
-  FieldValue: string;
-}
-
-interface IValidateResult {
-  value?: { FieldName: string; ErrorMessage: string | null; HasException: boolean }[];
-}
-
 interface INavItem {
   Id: number;
   Title: string;
@@ -43,12 +35,8 @@ interface INavItem {
   EcmUrl: { Url: string } | null;
 }
 
-/**
- * The columns of the navigation list. Name is the internal name the
- * navigator reads; option 8 (AddFieldInternalNameHint) makes SharePoint keep
- * it instead of deriving one from the display name, 16 adds it to the view.
- */
-const FIELDS: { name: string; xml: string }[] = [
+/** The columns of the navigation list; `name` is the internal name the navigator reads. */
+const FIELDS: IFieldDefinition[] = [
   {
     name: 'EcmNavType',
     xml: '<Field Type="Choice" Name="EcmNavType" StaticName="EcmNavType" DisplayName="Type" Required="TRUE" Format="Dropdown"><CHOICES><CHOICE>Hub</CHOICE><CHOICE>Department site</CHOICE><CHOICE>Shared service</CHOICE><CHOICE>Hub resource</CHOICE><CHOICE>Header link</CHOICE></CHOICES></Field>'
@@ -76,10 +64,6 @@ const FIELDS: { name: string; xml: string }[] = [
 
 const READ_ROLE_TYPE = 2;
 
-function odataString(value: string): string {
-  return value.replace(/'/g, "''");
-}
-
 /** A server-relative path inside an OData function argument: quotes doubled, unsafe characters encoded, "/" kept. */
 function odataPath(path: string): string {
   return encodeURIComponent(odataString(path)).replace(/%2F/gi, '/');
@@ -96,14 +80,16 @@ const LOGO_TYPES: { [extension: string]: string } = { png: 'image/png', svg: 'im
 export class SetupService {
   private rest: SpRestClient;
   private origin: string;
+  private navList: ListHelper;
 
   constructor(httpClient: SPHttpClient, private webUrl: string, private listTitle: string) {
     this.rest = new SpRestClient(httpClient, 'ECM Setup');
     this.origin = /^(https?:\/\/[^/]+)/i.exec(webUrl)?.[1] || '';
+    this.navList = new ListHelper(this.rest, webUrl, listTitle);
   }
 
   private get listApi(): string {
-    return `${this.webUrl}/_api/web/lists/getbytitle('${encodeURIComponent(odataString(this.listTitle))}')`;
+    return this.navList.listApi;
   }
 
   public get serverRelativeWebUrl(): string {
@@ -113,31 +99,9 @@ export class SetupService {
   // --- Step: navigation list --------------------------------------------------
 
   public async ensureNavigationList(log: Log): Promise<void> {
-    let list = await this.getList();
-    if (!list) {
-      await this.rest.postJson(`${this.webUrl}/_api/web/lists`, {
-        Title: this.listTitle,
-        BaseTemplate: 100,
-        Description: 'Drives the ECM Hub Navigator. Managed by the ECM governance team.'
-      });
-      log(`Created the list "${this.listTitle}".`);
-      list = await this.getList();
-    } else {
+    const { list, created } = await this.navList.ensure('Drives the ECM Hub Navigator. Managed by the ECM governance team.', FIELDS, log);
+    if (!created) {
       log(`The list "${this.listTitle}" already exists.`);
-    }
-    if (!list) {
-      throw new Error('The list was created but could not be read back.');
-    }
-
-    const fields = await this.rest.getJson<{ value: { InternalName: string }[] }>(`${this.listApi}/fields?$select=InternalName`);
-    const existing = (fields.value || []).map((f) => f.InternalName);
-    for (const field of FIELDS) {
-      if (existing.indexOf(field.name) < 0) {
-        await this.rest.postJson(`${this.listApi}/fields/CreateFieldAsXml`, {
-          parameters: { SchemaXml: field.xml, Options: 8 | 16 }
-        });
-        log(`Added column ${field.name}.`);
-      }
     }
 
     const items = await this.getNavItems();
@@ -151,7 +115,7 @@ export class SetupService {
       const hubPath = this.serverRelativeWebUrl === '/' ? '' : this.serverRelativeWebUrl;
       const path = row.url.replace(/^\/sites\/ecm-hub(?=\/|$)/i, hubPath);
       const url = path.indexOf('/') === 0 ? this.origin + path : path;
-      await this.addItem(list.RootFolder.ServerRelativeUrl, [
+      await this.navList.addItem(list.RootFolder.ServerRelativeUrl, [
         { FieldName: 'Title', FieldValue: row.title },
         { FieldName: 'EcmNavType', FieldValue: row.type },
         { FieldName: 'EcmParentHub', FieldValue: row.parentHub },
@@ -168,35 +132,11 @@ export class SetupService {
     this.clearNavigatorCache();
   }
 
-  private async getList(): Promise<{ Id: string; RootFolder: { ServerRelativeUrl: string } } | undefined> {
-    try {
-      return await this.rest.getJson(`${this.listApi}?$select=Id,RootFolder/ServerRelativeUrl&$expand=RootFolder`);
-    } catch (err) {
-      if ((err as { status?: number }).status === 404) {
-        return undefined;
-      }
-      throw err;
-    }
-  }
-
   private async getNavItems(): Promise<INavItem[]> {
     const json = await this.rest.getJson<{ value: INavItem[] }>(
       `${this.listApi}/items?$select=Id,Title,EcmNavType,EcmParentHub,EcmUrl&$top=5000`
     );
     return json.value || [];
-  }
-
-  /** AddValidateUpdateItemUsingPath takes display-format strings, so no entity type names are needed. */
-  private async addItem(folderUrl: string, values: IFieldValue[]): Promise<void> {
-    const result = await this.rest.postJson<IValidateResult>(`${this.listApi}/AddValidateUpdateItemUsingPath`, {
-      listItemCreateInfo: { FolderPath: { DecodedUrl: folderUrl }, UnderlyingObjectType: 0 },
-      formValues: values,
-      bNewDocumentUpdate: false
-    });
-    const failed = (result?.value || []).filter((v) => v.HasException);
-    if (failed.length) {
-      throw new Error(failed.map((f) => `${f.FieldName}: ${f.ErrorMessage}`).join('; '));
-    }
   }
 
   /** So the person running setup sees the new menu straight away instead of after the cache expires. */
@@ -526,7 +466,7 @@ export class SetupService {
 
   /** Where the navigation list lives, to link to it once it exists. */
   public async getNavigationListUrl(): Promise<string | undefined> {
-    const list = await this.getList().catch(() => undefined);
+    const list = await this.navList.getList().catch(() => undefined);
     return list ? this.origin + list.RootFolder.ServerRelativeUrl : undefined;
   }
 }

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "bd6fddfa-8919-4ce9-b4c3-de1e97537039",
+  "alias": "GovernanceScorecardWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "ECM" },
+      "title": { "default": "Governance Scorecard" },
+      "description": { "default": "Metadata, retention labelling, stale content, storage and ownership across every hub and site, with saved snapshots and trends." },
+      "officeFabricIconFontName": "BarChartVertical",
+      "properties": {
+        "title": "Governance Scorecard",
+        "requiredFields": "Document Type\nConfidentiality\nRecord Category\nDocument Owner",
+        "staleYears": 3,
+        "maxDocsPerSite": 5000,
+        "configSiteUrl": "",
+        "navListTitle": "ECM Navigation",
+        "snapshotListTitle": "ECM Scorecard Snapshots"
+      }
+    }
+  ]
+}

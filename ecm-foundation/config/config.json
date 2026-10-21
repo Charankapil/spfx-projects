@@ -25,12 +25,21 @@
           "manifest": "./src/webparts/ecmSetup/EcmSetupWebPart.manifest.json"
         }
       ]
+    },
+    "governance-scorecard-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/governanceScorecard/GovernanceScorecardWebPart.js",
+          "manifest": "./src/webparts/governanceScorecard/GovernanceScorecardWebPart.manifest.json"
+        }
+      ]
     }
   },
   "externals": {},
   "localizedResources": {
     "EcmHubNavigatorStrings": "lib/extensions/ecmHubNavigator/loc/{locale}.js",
     "MetadataExplorerWebPartStrings": "lib/webparts/metadataExplorer/loc/{locale}.js",
-    "EcmSetupWebPartStrings": "lib/webparts/ecmSetup/loc/{locale}.js"
+    "EcmSetupWebPartStrings": "lib/webparts/ecmSetup/loc/{locale}.js",
+    "GovernanceScorecardWebPartStrings": "lib/webparts/governanceScorecard/loc/{locale}.js"
   }
 }

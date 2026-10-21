@@ -18,6 +18,8 @@ export interface IDocumentRecord {
   location: string;
   locationUrl: string;
   modified?: Date;
+  /** File size in bytes, when the source provides it. */
+  size?: number;
   /** Every metadata value per field key, already flattened to display strings. */
   values: { [fieldKey: string]: string[] };
 }

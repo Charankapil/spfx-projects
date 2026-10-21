@@ -205,7 +205,7 @@ export class LibrariesSource implements IMetadataSource {
     limit: number,
     onCount: (n: number) => void
   ): Promise<IDocumentRecord[]> {
-    const viewFields = ['FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Type', 'Modified', 'UniqueId']
+    const viewFields = ['FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Type', 'File_x0020_Size', 'Modified', 'UniqueId']
       .concat(fields.map((f) => f.key))
       .map((name) => `<FieldRef Name="${name}"/>`)
       .join('');
@@ -252,6 +252,7 @@ export class LibrariesSource implements IMetadataSource {
       location: library.Title,
       locationUrl: this.origin + library.RootFolder.ServerRelativeUrl,
       modified,
+      size: parseInt(String(row.File_x0020_Size || ''), 10) || undefined,
       values
     };
   }
