@@ -3,7 +3,7 @@
   "solution": {
     "name": "ecm-foundation-client-side-solution",
     "id": "5def8735-cd78-432b-b166-5014f43660a4",
-    "version": "1.2.0.0",
+    "version": "1.3.0.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -28,7 +28,7 @@
         "title": "ECM Foundation",
         "description": "Deploys the ECM Hub Navigator tenant-wide (scoped through the Tenant Wide Extensions list), the ECM Setup web part and the Metadata Explorer web part.",
         "id": "956e2995-ff02-4df4-885e-98e6b9219331",
-        "version": "1.2.0.0",
+        "version": "1.3.0.0",
         "assets": {
           "elementManifests": ["ClientSideInstance.xml"]
         }

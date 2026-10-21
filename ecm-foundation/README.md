@@ -64,7 +64,7 @@ to approve.)
    | 3. Register the ECM theme | Adds **American Tower ECM**, generated from your brand colour, to "Change the look" for all sites. Optional. | SharePoint administrator |
    | 4. Apply the ECM theme | Applies that theme to the hub and every site in the menu. Sites you don't own are skipped and reported. | Owner of each site |
    | 5. Point the navigator at this hub | Writes this site's address, the hub title, the logo and the brand colours into the navigator's settings in the Tenant Wide Extensions list. Adds the entry if it is missing. | App catalog owner (SharePoint administrator) |
-   | 6. Check the links | Opens every site the menu links to and lists the ones that don't exist. | Anyone |
+   | 6. Check the links | Checks every entry in the menu (sites, pages and libraries) and lists the ones that don't exist. | Anyone |
 
    The seeded site URLs follow `/sites/<name>` (`/sites/leasing`, `/sites/hr`, …). Step 6 shows
    which ones don't match your tenant. Correct those in the list (the step 1 card links to it)
@@ -94,23 +94,31 @@ template filter, or disable that entry.
 | Hub colour | `EcmColor` | Optional hex accent for a hub (defaults follow the strategy deck) |
 
 The first **Header link** is shown as the primary button (the seed makes this
-"Request a site").
+"Request a site", pointing at `SitePages/Request-a-site.aspx` on the hub). Create that page, or
+change the link to your request form. The site request form itself comes in Module 3.
 
 **Everyone must be able to read this list.** If they can't, the navigator shows
 "Navigation could not be loaded". ECM Setup step 2 takes care of this.
 
 ### How it behaves
 
-- **Fast.** The menu is cached in `localStorage` for `cacheMinutes` (30 by default). Pages paint from
-  the cache and refresh in the background. The bundle is about 44 KB because it uses no Fluent UI.
+- **Fast.** The menu is cached in the browser for `cacheMinutes` (30 by default). While the cache is
+  fresh, a page view makes no requests at all. After that, the next page view reloads the menu
+  once. Changes in the list therefore reach everyone within `cacheMinutes`. The bundle is about
+  55 KB because it uses no Fluent UI.
+- **Hidden until it's set up.** Deploying the package registers the navigator on every site before
+  ECM Setup has created the list. Until it can read the list, the navigator shows nothing at all,
+  not an error, and retries every few minutes. The reason is written to the browser console
+  (`[ECM Hub Navigator] Hidden: …`).
 - **Security-trimmed.** Rows marked *Restricted* are kept only if a search query (which SharePoint
   security-trims) returns that site for the current user. One small query covers every restricted
   site. If it fails, restricted rows stay hidden (fail closed). The result is cached per session.
   Unrestricted rows show to everyone, so leave a site unrestricted only if everyone can open it.
 - **Knows where you are.** It matches the current site against the list. A site that isn't listed
   but is associated with a hub still gets that hub's breadcrumb, through SharePoint's hub association.
-- **Works on phones.** Below 768 px the tabs become a drawer with an accordion per hub.
-  Escape and clicking outside close the menu.
+- **Works on phones.** Below 768 px the tabs become a drawer with an accordion per hub, opened on
+  the current hub. Escape, clicking outside, following a link and moving to another page all close
+  the menu.
 
 ### Brand
 
@@ -129,7 +137,7 @@ The defaults follow American Tower's public identity: a red mark with charcoal t
 white. They come from public brand listings, not the official brand guide, so
 **check them against the guide** and enter the exact values. A live preview shows the
 result before you run any step. Steps 3 and 4 then build the SharePoint theme from
-the brand colour (all 27 theme slots), and step 5 stores the brand in the navigator's
+the brand colour (all 26 theme colours), and step 5 stores the brand in the navigator's
 settings, where ECM Setup also reads it back next time.
 
 ![ECM Setup: brand settings with live preview, then the setup steps](docs/images/ecm-setup.png)

@@ -80,6 +80,14 @@ function odataString(value: string): string {
   return value.replace(/'/g, "''");
 }
 
+/** A server-relative path inside an OData function argument: quotes doubled, unsafe characters encoded, "/" kept. */
+function odataPath(path: string): string {
+  return encodeURIComponent(odataString(path)).replace(/%2F/gi, '/');
+}
+
+const SITE_URL = /^(https?:\/\/[^/]+(?:\/(?:sites|teams)\/[^/?#]+)?)(\/[^?#]*)?/i;
+const LOGO_TYPES: { [extension: string]: string } = { png: 'image/png', svg: 'image/svg+xml', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
+
 /**
  * Everything ECM Setup does, through SharePoint REST as the signed-in user:
  * no app registration, client id or API permission. Each step only adds what
@@ -139,7 +147,10 @@ export class SetupService {
       if (have.indexOf(`${row.title}|${row.type}|${row.parentHub}`.toLowerCase()) >= 0) {
         continue;
       }
-      const url = row.url.indexOf('/') === 0 ? this.origin + row.url : row.url;
+      // The seed's own links into the hub (/sites/ecm-hub/...) follow the hub's real address.
+      const hubPath = this.serverRelativeWebUrl === '/' ? '' : this.serverRelativeWebUrl;
+      const path = row.url.replace(/^\/sites\/ecm-hub(?=\/|$)/i, hubPath);
+      const url = path.indexOf('/') === 0 ? this.origin + path : path;
       await this.addItem(list.RootFolder.ServerRelativeUrl, [
         { FieldName: 'Title', FieldValue: row.title },
         { FieldName: 'EcmNavType', FieldValue: row.type },
@@ -199,7 +210,7 @@ export class SetupService {
       }
       for (let i = sessionStorage.length - 1; i >= 0; i--) {
         const key = sessionStorage.key(i);
-        if (key && key.indexOf('ecm-nav-access:') === 0) {
+        if (key && (key.indexOf('ecm-nav-access:') === 0 || key.indexOf('ecm-nav-unavailable:') === 0)) {
           sessionStorage.removeItem(key);
         }
       }
@@ -426,7 +437,10 @@ export class SetupService {
    * people who cannot open the hub see the text badge instead of the logo.
    */
   public async uploadLogo(file: File, everyoneRead: boolean, tenantId: string, log: Log): Promise<string> {
-    if (!/^image\/(png|svg\+xml|jpeg|gif|webp)$/.test(file.type)) {
+    const extension = (file.name.split('.').pop() || '').toLowerCase();
+    // Some browsers report an empty type for SVG files, so fall back to the extension.
+    const type = file.type || LOGO_TYPES[extension] || '';
+    if (!/^image\/(png|svg\+xml|jpeg|gif|webp)$/.test(type) || !LOGO_TYPES[extension]) {
       throw new Error('Choose a PNG, SVG, JPG, GIF or WebP image.');
     }
     if (file.size > 1024 * 1024) {
@@ -437,16 +451,15 @@ export class SetupService {
     );
     const folder = library.RootFolder?.ServerRelativeUrl ||
       (await this.rest.getJson<{ ServerRelativeUrl: string }>(`${this.webUrl}/_api/web/lists(guid'${library.Id}')/RootFolder?$select=ServerRelativeUrl`)).ServerRelativeUrl;
-    const extension = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
     const fileName = `ecm-logo.${extension}`;
     const content = await file.arrayBuffer();
     const uploaded = await this.rest.postBinary<{ ServerRelativeUrl: string }>(
-      `${this.webUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${encodeURIComponent(odataString(folder))}')/Files/AddUsingPath(decodedurl='${fileName}',overwrite=true)`,
+      `${this.webUrl}/_api/web/GetFolderByServerRelativePath(decodedurl='${odataPath(folder)}')/Files/AddUsingPath(decodedurl='${fileName}',overwrite=true)`,
       content
     );
     log(`Uploaded ${file.name} to ${folder}.`);
     if (everyoneRead) {
-      const itemApi = `${this.webUrl}/_api/web/GetFileByServerRelativePath(decodedurl='${encodeURIComponent(odataString(uploaded.ServerRelativeUrl))}')/ListItemAllFields`;
+      const itemApi = `${this.webUrl}/_api/web/GetFileByServerRelativePath(decodedurl='${odataPath(uploaded.ServerRelativeUrl)}')/ListItemAllFields`;
       const item = await this.rest.getJson<{ HasUniqueRoleAssignments: boolean }>(`${itemApi}?$select=HasUniqueRoleAssignments`);
       if (!item.HasUniqueRoleAssignments) {
         await this.rest.postJson(`${itemApi}/breakroleinheritance(copyRoleAssignments=true,clearSubscopes=true)`);
@@ -464,29 +477,46 @@ export class SetupService {
 
   // --- Step: link check -------------------------------------------------------
 
-  /** Opens every site the menu links to, so placeholder URLs from the seed stand out. */
+  /**
+   * Opens everything the menu links to, so placeholder URLs from the seed
+   * stand out: sites by reading the web, pages and libraries by checking
+   * that the file or folder exists. Links outside the tenant are not checked.
+   */
   public async checkLinks(onResult: (result: ILinkCheck) => void): Promise<void> {
-    const items = (await this.getNavItems()).filter(
-      (i) => i.EcmNavType === 'Hub' || i.EcmNavType === 'Department site' || i.EcmNavType === 'Shared service'
-    );
-    const queue = items.slice();
+    const queue = (await this.getNavItems()).slice();
     const worker = async (): Promise<void> => {
       for (let item = queue.shift(); item; item = queue.shift()) {
-        const url = item.EcmUrl?.Url || '';
+        const url = (item.EcmUrl?.Url || '').trim();
         const base = { title: item.Title, type: item.EcmNavType, url };
-        if (!url || normalizeUrl(url, this.origin).indexOf(this.origin.toLowerCase()) !== 0) {
-          onResult({ ...base, status: 'error', detail: 'Not a site in this tenant' });
+        const parts = SITE_URL.exec(url);
+        if (!url || !parts || normalizeUrl(url, this.origin).indexOf(this.origin.toLowerCase()) !== 0) {
+          onResult({ ...base, status: url ? 'ok' : 'error', detail: url ? 'External link (not checked)' : 'No URL' });
           continue;
         }
+        const site = parts[1];
+        const rest = (parts[2] || '').replace(/\/+$/, '');
         try {
-          const web = await this.rest.getJson<{ Title: string }>(`${url.replace(/\/+$/, '')}/_api/web?$select=Title`);
+          const web = await this.rest.getJson<{ Title: string; ServerRelativeUrl: string }>(`${site}/_api/web?$select=Title,ServerRelativeUrl`);
+          if (rest) {
+            const path = odataPath(decodeURIComponent(url.substring(this.origin.length).replace(/[?#].*$/, '').replace(/\/+$/, '')));
+            const isFile = /\.[a-z0-9]{2,5}$/i.test(rest);
+            const target = await this.rest.getJson<{ Exists?: boolean }>(
+              isFile
+                ? `${site}/_api/web/GetFileByServerRelativePath(decodedurl='${path}')?$select=Exists`
+                : `${site}/_api/web/GetFolderByServerRelativePath(decodedurl='${path}')?$select=Exists`
+            );
+            if (target.Exists === false) {
+              onResult({ ...base, status: 'missing', detail: `Not found in ${web.Title}` });
+              continue;
+            }
+          }
           onResult({ ...base, status: 'ok', detail: web.Title });
         } catch (err) {
           const status = (err as { status?: number }).status;
           onResult({
             ...base,
             status: status === 404 ? 'missing' : status === 401 || status === 403 ? 'no-access' : 'error',
-            detail: status === 404 ? 'No site at this URL' : status === 401 || status === 403 ? 'Exists, but you have no access' : (err as Error).message
+            detail: status === 404 ? 'Not found' : status === 401 || status === 403 ? 'Exists, but you have no access' : (err as Error).message
           });
         }
       }

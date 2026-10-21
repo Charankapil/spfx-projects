@@ -17,6 +17,8 @@ export interface IHubNavigatorProps {
   /** Search results page the box submits to; "{q}" is replaced by the query. */
   searchUrlTemplate: string;
   location: INavigationLocation;
+  /** Changes on every in-site page navigation; open menus close when it does. */
+  navigationKey?: number;
   currentSiteTitle: string;
   classification?: string;
 }
@@ -119,6 +121,23 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
 
   React.useEffect(() => setLogoFailed(false), [brand.logoUrl]);
 
+  // The location is resolved after the first paint; open the drawer on the current hub once known.
+  React.useEffect(() => setDrawerHubId(location.hubId), [location.hubId]);
+
+  // SharePoint navigates within a site without reloading the page.
+  React.useEffect(() => {
+    setOpenHubId(undefined);
+    setDrawerOpen(false);
+  }, [props.navigationKey]);
+
+  /** Following a link closes the menu (the page may change without a reload). */
+  const closeOnLink = (e: React.MouseEvent): void => {
+    if ((e.target as HTMLElement).closest('a')) {
+      setOpenHubId(undefined);
+      setDrawerOpen(false);
+    }
+  };
+
   const hubs = model?.hubs || [];
   const openHub = hubs.filter((h) => h.id === openHubId)[0];
   const currentHub = hubs.filter((h) => h.id === location.hubId)[0];
@@ -217,7 +236,14 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
         )}
 
         {openHub && (
-          <div id="ecm-hub-mega-menu" className={styles.mega} style={hubStyle(openHub)} role="region" aria-label={openHub.title}>
+          <div
+            id="ecm-hub-mega-menu"
+            className={`${styles.mega} ${styles.desktopOnly}`}
+            style={hubStyle(openHub)}
+            role="region"
+            aria-label={openHub.title}
+            onClick={closeOnLink}
+          >
             <div className={styles.megaGrid}>
               <aside className={styles.hubPanel}>
                 <span className={styles.hubPanelIcon} aria-hidden="true">
@@ -269,7 +295,7 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
       </div>
 
       {drawerOpen && (
-        <div className={`${styles.drawer} ${styles.mobileOnly}`}>
+        <div className={`${styles.drawer} ${styles.mobileOnly}`} onClick={closeOnLink}>
           <div className={styles.drawerSearch}>{searchBox}</div>
           <div className={styles.drawerTitle}>{strings.HubsNavLabel}</div>
           {hubs.map((hub) => {
@@ -324,7 +350,7 @@ export const HubNavigator = (props: IHubNavigatorProps): JSX.Element => {
             <span className={styles.crumbDot} aria-hidden="true" />
             {currentHub.url ? <a href={currentHub.url}>{currentHub.title}</a> : currentHub.title}
           </span>
-          {location.siteId !== undefined && (
+          {(location.siteId !== undefined || location.associated) && (
             <>
               <span className={styles.crumbSep} aria-hidden="true">
                 /

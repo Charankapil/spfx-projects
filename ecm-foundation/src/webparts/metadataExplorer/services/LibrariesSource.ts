@@ -37,6 +37,12 @@ interface IRenderListDataResponse {
 /** Libraries SharePoint creates for its own use; they hold no business documents. */
 const SYSTEM_LIBRARIES = ['SiteAssets', 'Style_x0020_Library', 'FormServerTemplates', 'PreservationHoldLibrary', 'IWConvertedForms'];
 
+/**
+ * Columns SharePoint adds by itself that are visible but are not business
+ * metadata: Image Tags (AI image tagging) and the document ID columns.
+ */
+const SYSTEM_COLUMNS = ['lcf76f155ced4ddcb4097134ff3c332f', 'MediaServiceImageTags', 'TaxCatchAll', 'TaxCatchAllLabel', '_dlc_DocId', '_dlc_DocIdUrl', '_dlc_DocIdPersistId'];
+
 /** Column types that make sensible categories. Notes, pictures, locations etc. do not. */
 const KIND_BY_TYPE: { [type: string]: FieldKind } = {
   Text: 'text',
@@ -166,6 +172,9 @@ export class LibrariesSource implements IMetadataSource {
     const json = await this.rest.getJson<{ value: IFieldInfo[] }>(url);
     const fields: IMetadataField[] = [];
     (json.value || []).forEach((f) => {
+      if (SYSTEM_COLUMNS.indexOf(f.InternalName) >= 0) {
+        return;
+      }
       const builtIn = BUILT_IN_COLUMNS.filter((c) => c.key === f.InternalName)[0];
       if (builtIn) {
         fields.push(builtIn);

@@ -14,15 +14,30 @@ export interface IEcmSetupWebPartProps {
 }
 
 export default class EcmSetupWebPart extends BaseClientSideWebPart<IEcmSetupWebPartProps> {
+  /**
+   * Kept across renders: a new service would make the component reload the
+   * saved brand and overwrite what the person has typed (renders happen on
+   * edit/view switches and theme changes, not only on settings changes).
+   */
+  private service: SetupService | undefined;
+
   public render(): void {
     const page = this.context.pageContext;
+    if (!this.service) {
+      this.service = new SetupService(this.context.spHttpClient, page.web.absoluteUrl, this.properties.listTitle || 'ECM Navigation');
+    }
     const element: React.ReactElement<IEcmSetupProps> = React.createElement(EcmSetup, {
-      service: new SetupService(this.context.spHttpClient, page.web.absoluteUrl, this.properties.listTitle || 'ECM Navigation'),
+      service: this.service,
       tenantId: page.aadInfo?.tenantId?.toString() || '',
       siteTitle: page.web.title,
       isSiteOwner: !!page.web.permissions?.hasPermission(SPPermission.manageWeb)
     });
     ReactDom.render(element, this.domElement);
+  }
+
+  protected onAfterPropertyPaneChangesApplied(): void {
+    this.service = undefined;
+    this.render();
   }
 
   protected get disableReactivePropertyChanges(): boolean {

@@ -27,4 +27,6 @@ export interface INavigationModel {
 export interface INavigationLocation {
   hubId?: number;
   siteId?: number;
+  /** The site is not in the menu but is associated with the hub in SharePoint. */
+  associated?: boolean;
 }

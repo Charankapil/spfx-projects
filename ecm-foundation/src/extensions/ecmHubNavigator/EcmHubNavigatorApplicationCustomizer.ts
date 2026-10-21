@@ -42,15 +42,22 @@ export default class EcmHubNavigatorApplicationCustomizer extends BaseApplicatio
   private error: string | undefined;
   private location: INavigationLocation = {};
   private hubSiteUrl: string | undefined;
+  /** Bumped on every in-site page navigation so open menus close. */
+  private navigationKey = 0;
 
   private get origin(): string {
     return /^(https?:\/\/[^/]+)/i.exec(this.context.pageContext.site.absoluteUrl)?.[1] || '';
   }
 
   private get configSiteUrl(): string {
-    const configured = (this.properties.configSiteUrl || '').trim().replace(/\/+$/, '');
-    if (!configured) {
+    const raw = (this.properties.configSiteUrl || '').trim();
+    if (!raw) {
       return this.context.pageContext.site.absoluteUrl;
+    }
+    // "/" is the tenant root site, so trimming slashes must not turn it into "not configured".
+    const configured = raw.replace(/\/+$/, '');
+    if (!configured) {
+      return this.origin;
     }
     return configured.indexOf('/') === 0 ? this.origin + configured : configured;
   }
@@ -71,16 +78,22 @@ export default class EcmHubNavigatorApplicationCustomizer extends BaseApplicatio
       userKey: this.context.pageContext.user.loginName || 'anonymous'
     });
 
-    // Paint straight from cache when we can, then refresh in the background.
+    // A fresh cache means no request at all for this page view; the menu is
+    // reloaded once the cache is older than cacheMinutes.
     this.model = this.service.getCached();
     this.context.placeholderProvider.changedEvent.add(this, this.render);
     this.context.application.navigatedEvent.add(this, this.onNavigated);
-    this.render();
 
-    if (!this.model) {
-      await this.refresh();
+    if (this.model) {
+      await this.resolveLocation();
+      this.render();
+    } else if (this.service.isTemporarilyUnavailable()) {
+      // Failed moments ago (e.g. ECM Setup has not run yet): stay hidden without retrying on every page.
+      this.error = 'The navigation list was not available a few minutes ago.';
+      this.render();
     } else {
-      this.refresh().catch(() => undefined);
+      this.render();
+      await this.refresh();
     }
   }
 
@@ -89,8 +102,13 @@ export default class EcmHubNavigatorApplicationCustomizer extends BaseApplicatio
       this.model = await this.service.load();
       this.error = undefined;
     } catch (err) {
-      // Keep showing a cached menu if we have one; only surface the error otherwise.
+      // Keep showing a cached menu if we have one; otherwise the navigator
+      // hides itself (see render), so a missing or unreadable list never
+      // shows a broken band on every site.
       this.error = this.model ? undefined : (err as Error).message;
+      if (!this.model) {
+        this.service.markUnavailable();
+      }
     }
     await this.resolveLocation();
     this.render();
@@ -98,6 +116,7 @@ export default class EcmHubNavigatorApplicationCustomizer extends BaseApplicatio
 
   private onNavigated(): void {
     this.hubSiteUrl = undefined;
+    this.navigationKey++;
     this.resolveLocation()
       .then(() => this.render())
       .catch(() => this.render());
@@ -125,14 +144,24 @@ export default class EcmHubNavigatorApplicationCustomizer extends BaseApplicatio
   private render(): void {
     if (!this.placeholder) {
       this.placeholder = this.context.placeholderProvider.tryCreateContent(PlaceholderName.Top, {
-        onDispose: () => {
-          if (this.placeholder) {
-            ReactDom.unmountComponentAtNode(this.placeholder.domElement);
-          }
+        onDispose: (content) => {
+          ReactDom.unmountComponentAtNode(content.domElement);
+          // SharePoint can recreate the placeholder; the next render must use the new one.
+          this.placeholder = undefined;
         }
       });
+      if (this.placeholder) {
+        // Lets the mega menu overlay the page content below the header.
+        this.placeholder.domElement.style.position = 'relative';
+        this.placeholder.domElement.style.zIndex = '1000';
+      }
     }
     if (!this.placeholder) {
+      return;
+    }
+    if (this.error && !this.model) {
+      console.warn(`[ECM Hub Navigator] Hidden: the navigation list could not be loaded from ${this.configSiteUrl}. ${this.error}`);
+      ReactDom.unmountComponentAtNode(this.placeholder.domElement);
       return;
     }
 
@@ -146,6 +175,7 @@ export default class EcmHubNavigatorApplicationCustomizer extends BaseApplicatio
       brandBadge: this.properties.brandBadge,
       searchUrlTemplate: this.properties.searchUrl || `${this.origin}/_layouts/15/search.aspx/?q={q}`,
       location: this.location,
+      navigationKey: this.navigationKey,
       currentSiteTitle: this.context.pageContext.web.title,
       classification: legacy?.siteClassification || undefined
     };

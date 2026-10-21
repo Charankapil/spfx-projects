@@ -92,7 +92,7 @@ export function mix(hex: string, target: string, amount: number): string {
 }
 
 /**
- * The SharePoint theme for a brand, in the 27-slot format "Change the look"
+ * The SharePoint theme for a brand, in the 26-colour format "Change the look"
  * uses. Theme shades follow the ratios of Microsoft's theme generator closely
  * enough that hover and pressed states stay legible.
  */

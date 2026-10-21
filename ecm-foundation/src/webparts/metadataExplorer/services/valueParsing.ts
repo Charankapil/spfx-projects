@@ -39,12 +39,12 @@ function fromString(value: string, splitMulti: boolean): string[] {
       return labels;
     }
   }
-  // Classic lookup / multi-choice encoding: ";#a;#b;#" or "1;#Label;#2;#Other".
+  // Classic encodings: multi-choice ";#a;#b;#", lookups "1;#Label;#2;#Other".
   if (text.indexOf(';#') >= 0) {
-    return text
-      .split(';#')
-      .map((part) => part.trim())
-      .filter((part) => part && !/^\d+$/.test(part));
+    const parts = text.split(';#').map((part) => part.trim());
+    const isLookup = /^\d+$/.test(parts[0]) && parts.length % 2 === 0 && parts.every((p, i) => i % 2 === 1 || /^\d+$/.test(p));
+    // Only lookup ids are dropped: a multi-choice value such as "2024" is kept.
+    return (isLookup ? parts.filter((p, i) => i % 2 === 1) : parts).filter(Boolean);
   }
   // Search returns multi-valued managed properties joined with ";".
   if (splitMulti && text.indexOf(';') >= 0) {

@@ -86,6 +86,9 @@ export const EcmSetup = (props: IEcmSetupProps): JSX.Element => {
   const [dark, setDark] = React.useState(DEFAULT_BRAND.dark);
   const [logoUrl, setLogoUrl] = React.useState('');
   const [logoState, setLogoState] = React.useState<IStepState>({ status: 'idle', log: [] });
+  const [logoBroken, setLogoBroken] = React.useState(false);
+  const primaryValid = isHexColor(primary);
+  const darkValid = isHexColor(dark);
   const brand: IEcmBrand = resolveBrand({ primary, dark, logoUrl });
 
   // Pick up the brand saved by an earlier run, when this person can read it.
@@ -121,6 +124,7 @@ export const EcmSetup = (props: IEcmSetupProps): JSX.Element => {
     try {
       const url = await service.uploadLogo(file, includeRead, props.tenantId, (l) => lines.push(l));
       setLogoUrl(url);
+      setLogoBroken(false);
       lines.push('Run step 5 to show it in the navigator on every site.');
       setLogoState({ status: 'done', log: lines });
     } catch (err) {
@@ -241,14 +245,23 @@ export const EcmSetup = (props: IEcmSetupProps): JSX.Element => {
               <span className={styles.fieldLabel}>Logo</span>
               <div className={styles.logoRow}>
                 <span className={styles.logoPreview}>
-                  {brand.logoUrl ? <img src={brand.logoUrl} alt="Current logo" /> : <span>No logo yet</span>}
+                  {brand.logoUrl && !logoBroken ? (
+                    <img src={brand.logoUrl} alt="Current logo" onError={() => setLogoBroken(true)} />
+                  ) : (
+                    <span>{brand.logoUrl ? 'Logo could not be loaded' : 'No logo yet'}</span>
+                  )}
                 </span>
                 <label className={styles.fileButton}>
                   Upload logo…
                   <input
                     type="file"
                     accept="image/png,image/svg+xml,image/jpeg,image/gif,image/webp"
-                    onChange={(e) => onLogoChosen(e.target.files ? e.target.files[0] : undefined)}
+                    onChange={(e) => {
+                      const file = e.target.files ? e.target.files[0] : undefined;
+                      // Clear it so choosing the same file again still uploads.
+                      e.target.value = '';
+                      onLogoChosen(file).catch(() => undefined);
+                    }}
                   />
                 </label>
               </div>
@@ -270,7 +283,9 @@ export const EcmSetup = (props: IEcmSetupProps): JSX.Element => {
                   <input id="ecm-primary-swatch" type="color" aria-label="Pick brand colour" value={brand.primary} onChange={(e) => setPrimary(e.target.value.toUpperCase())} />
                   <input id="ecm-primary" className={styles.hexInput} value={primary} onChange={(e) => setPrimary(e.target.value)} maxLength={7} />
                 </div>
-                <span className={styles.hint}>Buttons, links and the accent line.</span>
+                <span className={primaryValid ? styles.hint : styles.hintError}>
+                  {primaryValid ? 'Buttons, links and the accent line.' : `Use a 6-digit hex code like #C91F3C; ${DEFAULT_BRAND.primary} is used until then.`}
+                </span>
               </div>
               <div className={styles.colorField}>
                 <label htmlFor="ecm-dark" className={styles.fieldLabel}>
@@ -280,7 +295,9 @@ export const EcmSetup = (props: IEcmSetupProps): JSX.Element => {
                   <input id="ecm-dark-swatch" type="color" aria-label="Pick dark colour" value={brand.dark} onChange={(e) => setDark(e.target.value.toUpperCase())} />
                   <input id="ecm-dark" className={styles.hexInput} value={dark} onChange={(e) => setDark(e.target.value)} maxLength={7} />
                 </div>
-                <span className={styles.hint}>The hub band behind the tabs.</span>
+                <span className={darkValid ? styles.hint : styles.hintError}>
+                  {darkValid ? 'The hub band behind the tabs.' : `Use a 6-digit hex code like #1E2227; ${DEFAULT_BRAND.dark} is used until then.`}
+                </span>
               </div>
             </div>
           </div>
@@ -288,7 +305,7 @@ export const EcmSetup = (props: IEcmSetupProps): JSX.Element => {
           <div className={styles.preview} aria-label="Navigator preview" role="img">
             <div className={styles.previewAccent} style={{ background: brand.primary }} />
             <div className={styles.previewTop}>
-              {brand.logoUrl ? (
+              {brand.logoUrl && !logoBroken ? (
                 <img src={brand.logoUrl} alt="" />
               ) : (
                 <span className={styles.previewBadge} style={{ background: brand.primary }}>

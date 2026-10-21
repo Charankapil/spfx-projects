@@ -22,6 +22,8 @@ interface ICacheEntry<T> {
 }
 
 const CACHE_VERSION = 'v1';
+/** How long a failed load keeps the navigator hidden before it tries again. */
+const UNAVAILABLE_MS = 5 * 60 * 1000;
 const SHARED_HUB_ID = -1;
 
 function readCache<T>(storage: Storage, key: string, maxAgeMs: number): T | undefined {
@@ -87,11 +89,27 @@ export class NavigationService {
     return `ecm-nav-access:${CACHE_VERSION}:${this.options.userKey}`;
   }
 
+  private get unavailableKey(): string {
+    return `ecm-nav-unavailable:${CACHE_VERSION}:${this.options.configSiteUrl.toLowerCase()}`;
+  }
+
+  /** True when loading failed in the last few minutes (e.g. setup has not run yet). */
+  public isTemporarilyUnavailable(): boolean {
+    return readCache<boolean>(sessionStorage, this.unavailableKey, UNAVAILABLE_MS) === true;
+  }
+
+  public markUnavailable(): void {
+    writeCache(sessionStorage, this.unavailableKey, true);
+  }
+
   private get maxAgeMs(): number {
     return Math.max(0, this.options.cacheMinutes) * 60 * 1000;
   }
 
-  /** The cached menu, already trimmed, if both caches are fresh — lets the header paint instantly. */
+  /**
+   * The cached menu, already trimmed, if both caches are younger than
+   * cacheMinutes. While it is fresh the navigator makes no requests at all.
+   */
   public getCached(): INavigationModel | undefined {
     const model = readCache<INavigationModel>(localStorage, this.modelCacheKey, this.maxAgeMs);
     const access = readCache<string[]>(sessionStorage, this.accessCacheKey, this.maxAgeMs);
@@ -100,6 +118,11 @@ export class NavigationService {
 
   public async load(): Promise<INavigationModel> {
     const model = await this.loadModel();
+    try {
+      sessionStorage.removeItem(this.unavailableKey);
+    } catch {
+      // Storage blocked.
+    }
     writeCache(localStorage, this.modelCacheKey, model);
     const access = await this.loadAccessibleSites(model);
     writeCache(sessionStorage, this.accessCacheKey, access);
@@ -248,8 +271,14 @@ export class NavigationService {
     }
     for (const hub of model.hubs) {
       const url = hub.url ? normalizeUrl(hub.url, this.origin) : '';
-      if (url && (url === current || url === hubUrl)) {
+      if (url && url === current) {
         return { hubId: hub.id };
+      }
+    }
+    for (const hub of model.hubs) {
+      const url = hub.url ? normalizeUrl(hub.url, this.origin) : '';
+      if (url && url === hubUrl) {
+        return { hubId: hub.id, associated: true };
       }
     }
     return {};
