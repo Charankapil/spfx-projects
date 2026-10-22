@@ -124,7 +124,7 @@ export class SearchApi {
     const origin = (/^(https:\/\/[^/]+)/i.exec(homeWebUrl) || [''])[1].toLowerCase();
     const sites: ISiteRow[] = [];
     const seen: { [url: string]: boolean } = {};
-    const select = ['Title', 'Path', 'WebTemplate', 'Created', 'LastModifiedTime', 'GroupId', 'DocId'];
+    const select = ['Title', 'Path', 'WebTemplate', 'Created', 'LastModifiedTime', 'GroupId', 'RelatedGroupId', 'DocId'];
     let lastDocId = 0;
     let useDocId = true;
     let startRow = 0;
@@ -149,7 +149,9 @@ export class SearchApi {
           template: r.WebTemplate || '',
           created: toDate(r.Created),
           lastModified: toDate(r.LastModifiedTime),
-          groupConnected: !!r.GroupId && r.GroupId !== '00000000-0000-0000-0000-000000000000',
+          groupConnected: !!realGuid(r.GroupId),
+          groupId: realGuid(r.GroupId),
+          relatedGroupId: realGuid(r.RelatedGroupId),
           manageable: url.toLowerCase().indexOf(origin) === 0
         });
       });
@@ -241,6 +243,12 @@ export class SearchApi {
     }
     return out;
   }
+}
+
+/** A GUID other than the empty one, lower-case; search may wrap it in braces. */
+export function realGuid(v: string | undefined | null): string | undefined {
+  const m = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(v || '');
+  return m && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(m[1]) ? m[1].toLowerCase() : undefined;
 }
 
 export function toDate(value: string | undefined | null): Date | undefined {

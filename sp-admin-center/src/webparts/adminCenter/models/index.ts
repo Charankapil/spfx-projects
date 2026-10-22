@@ -115,6 +115,10 @@ export interface ISiteRow {
   created?: Date;
   lastModified?: Date;
   groupConnected: boolean;
+  /** Microsoft 365 group behind the site (group-connected sites only). */
+  groupId?: string;
+  /** Teams channel sites: the team's group (the channel has its own membership). */
+  relatedGroupId?: string;
   manageable: boolean;
 }
 
@@ -169,6 +173,7 @@ export type ViewKey =
   | 'activity'
   | 'health'
   | 'm365groups'
+  | 'sitegroups'
   | 'guests'
   | 'apiaccess'
   | 'settings';

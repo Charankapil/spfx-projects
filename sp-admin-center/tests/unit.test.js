@@ -1753,6 +1753,93 @@ test('create site: communication / group requests, templates and availability', 
   await assert.rejects(() => c.create({ ...g, template: SC.BUILT_IN_TEMPLATES.find((x) => x.route === 'powershell') }), /PowerShell/);
 });
 
+// ---------------------------------------------------------------- sites & M365 groups
+const SGX = src('services/siteGroupsExport');
+const { realGuid } = src('services/SearchApi');
+
+test('sites & groups: search GroupId / RelatedGroupId are read; empty GUIDs ignored', async () => {
+  assert.strictEqual(realGuid('{EE000000-0000-0000-0000-00000000ABCD}'), 'ee000000-0000-0000-0000-00000000abcd');
+  assert.strictEqual(realGuid('00000000-0000-0000-0000-000000000000'), undefined);
+  assert.strictEqual(realGuid(''), undefined);
+  const c = make(async () => json({ d: { query: { PrimaryQueryResult: { RelevantResults: { TotalRows: 2, Table: { Rows: { results: [
+    { Cells: { results: [{ Key: 'Title', Value: 'Team' }, { Key: 'Path', Value: ORIGIN + '/sites/team' }, { Key: 'WebTemplate', Value: 'GROUP' }, { Key: 'GroupId', Value: 'ee000000-0000-0000-0000-000000000001' }, { Key: 'DocId', Value: '1' }] } },
+    { Cells: { results: [{ Key: 'Title', Value: 'Chan' }, { Key: 'Path', Value: ORIGIN + '/sites/team-chan' }, { Key: 'WebTemplate', Value: 'TEAMCHANNEL' }, { Key: 'GroupId', Value: '00000000-0000-0000-0000-000000000000' }, { Key: 'RelatedGroupId', Value: 'ee000000-0000-0000-0000-000000000001' }, { Key: 'DocId', Value: '2' }] } }
+  ] } } } } } } }));
+  const r = await new SearchApi(c).listSites(ORIGIN + '/sites/it');
+  assert.deepStrictEqual(r.sites.map((x) => [x.groupConnected, x.groupId, x.relatedGroupId]), [[true, 'ee000000-0000-0000-0000-000000000001', undefined], [false, undefined, 'ee000000-0000-0000-0000-000000000001']]);
+});
+
+const gid = (n) => 'ee000000-0000-0000-0000-' + String(n).padStart(12, '0');
+const person = (n, extra) => Object.assign({ '@odata.type': '#microsoft.graph.user', id: 'aaaaaaaa-0000-0000-0000-' + String(n).padStart(12, '0'), displayName: 'User ' + n, mail: 'u' + n + '@contoso.com', userType: 'Member' }, extra || {});
+
+test('sites & groups: owners and members of many groups are read 10 groups per batch, with retries and extra pages', async () => {
+  const batches = [];
+  let throttledOnce = false;
+  const g = graphWith(async (url, method, h, body) => {
+    if (/\$batch$/.test(url)) {
+      const reqs = JSON.parse(body).requests;
+      batches.push(reqs.length);
+      return gres({ responses: reqs.map((r) => {
+        const m = /\/groups\/([^/]+)\/(owners|members)/.exec(r.url);
+        if (m[1] === gid(3)) return { id: r.id, status: 404, body: { error: { message: 'gone' } } };
+        if (m[1] === gid(2) && m[2] === 'members' && !throttledOnce) { throttledOnce = true; return { id: r.id, status: 429, headers: { 'Retry-After': '1' }, body: {} }; }
+        if (m[1] === gid(4) && m[2] === 'members') return { id: r.id, status: 200, body: { value: [person(40)], '@odata.nextLink': 'https://graph.microsoft.com/v1.0/groups/' + gid(4) + '/members?$skiptoken=x' } };
+        return { id: r.id, status: 200, body: { value: m[2] === 'owners' ? [person(1)] : [person(1), person(2, { userType: 'Guest' })] } };
+      }) });
+    }
+    if (/skiptoken=x/.test(url)) return gres({ value: [person(41), person(42)] });
+    return gres({ error: { message: 'no route' } }, 404);
+  });
+  const api = new G.GraphApi(g.c);
+  const ids = Array.from({ length: 12 }, (_, i) => gid(i + 1));
+  const progress = [];
+  const mem = await api.membershipMany(ids.concat([gid(1)]), (d, t) => progress.push(d + '/' + t));
+  assert.deepStrictEqual(batches, [20, 1, 4], '12 groups = 10 + 2 groups; only the throttled part is retried');
+  assert.strictEqual(mem[gid(1)].members.length, 2);
+  assert.strictEqual(mem[gid(2)].members.length, 2, 'retried after 429');
+  assert.strictEqual(mem[gid(3)].error, 'Group not found (deleted?)');
+  assert.deepStrictEqual(mem[gid(4)].members.map((p) => p.displayName), ['User 40', 'User 41', 'User 42'], 'next page followed');
+  assert.deepStrictEqual(progress, ['0/12', '10/12', '12/12']);
+  // Second call: everything but the failed group comes from the cache.
+  batches.length = 0;
+  await api.membershipMany(ids);
+  assert.deepStrictEqual(batches, [2]);
+  // Stop between batches.
+  const api2 = new G.GraphApi(g.c);
+  let calls = 0;
+  const part = await api2.membershipMany(ids, () => undefined, () => ++calls > 1);
+  assert.strictEqual(Object.keys(part).length, 10);
+});
+
+test('sites & groups: group directory and export rows (per site and per person)', async () => {
+  const g = graphWith(async () => gres({ value: [{ id: gid(1).toUpperCase(), displayName: 'Finance', mail: 'fin@contoso.com', visibility: 'Private', resourceProvisioningOptions: ['Team'] }] }));
+  const dir = await new G.GraphApi(g.c).groupDirectory();
+  assert.deepStrictEqual(dir[gid(1)], { id: gid(1).toUpperCase(), displayName: 'Finance', mail: 'fin@contoso.com', visibility: 'Private', isTeam: true });
+  const sites = [
+    { url: ORIGIN + '/sites/fin', title: 'Finance', template: 'GROUP#0', groupConnected: true, groupId: gid(1), manageable: true },
+    { url: ORIGIN + '/sites/intranet', title: 'Intranet', template: 'SITEPAGEPUBLISHING#0', groupConnected: false, manageable: true },
+    { url: ORIGIN + '/sites/fin-ch', title: 'Finance - Audit', template: 'TEAMCHANNEL#1', groupConnected: false, relatedGroupId: gid(1), manageable: true },
+    { url: ORIGIN + '/sites/old', title: 'Old', template: 'GROUP#0', groupConnected: true, groupId: gid(9), manageable: true }
+  ];
+  const mem = {
+    [gid(1)]: { owners: [{ id: '1', displayName: 'Ann', mail: 'ann@contoso.com', type: 'user' }], members: [{ id: '1', displayName: 'Ann', mail: 'ann@contoso.com', type: 'user' }, { id: '2', displayName: 'Bob', userPrincipalName: 'bob_ext#EXT#@contoso.onmicrosoft.com', userType: 'Guest', type: 'user' }], truncated: false },
+    [gid(9)]: { owners: [], members: [], truncated: false, error: 'Group not found (deleted?)' }
+  };
+  const bySite = SGX.siteGroupRows(sites, dir, mem, 'site');
+  assert.strictEqual(bySite.length, 4);
+  assert.deepStrictEqual(bySite[0], [ORIGIN + '/sites/fin', 'Finance', 'Team site (M365 group)', 'Yes', 'Finance', 'fin@contoso.com', 'Private', 'Yes', 1, 'Ann <ann@contoso.com>', 2, 'Ann <ann@contoso.com>; Bob <bob_ext#EXT#@contoso.onmicrosoft.com>', '']);
+  assert.deepStrictEqual(bySite[1].slice(3, 5), ['No', '']);
+  assert.ok(/Teams channel site/.test(bySite[2][12]));
+  assert.deepStrictEqual([bySite[3][8], bySite[3][12]], ['', 'Group not found (deleted?)']);
+  assert.strictEqual(bySite[0].length, SGX.SITE_HEADERS.length);
+  const byPerson = SGX.siteGroupRows(sites, dir, mem, 'person');
+  assert.deepStrictEqual(byPerson.slice(0, 3).map((r) => [r[4], r[5], r[7]]), [['Owner', 'Ann', 'Member'], ['Member', 'Ann', 'Member'], ['Member', 'Bob', 'Guest']]);
+  assert.deepStrictEqual(byPerson[3].slice(0, 5), [ORIGIN + '/sites/intranet', 'Intranet', '', '', 'Not group-connected']);
+  assert.strictEqual(byPerson[0].length, SGX.PERSON_HEADERS.length);
+  const notRead = SGX.siteGroupRows([sites[0]], dir, {}, 'site');
+  assert.ok(/stopped early/.test(notRead[0][12]));
+});
+
 // ---------------------------------------------------------------- runner
 (async () => {
   let failed = 0;

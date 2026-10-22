@@ -53,6 +53,7 @@ export function hasScope(granted: string[], scope: string): boolean {
   const broader: { [k: string]: string[] } = {
     'user.read.all': ['user.readwrite.all', 'directory.read.all', 'directory.readwrite.all'],
     'group.readwrite.all': ['directory.readwrite.all'],
+    'group.read.all': ['group.readwrite.all', 'directory.read.all', 'directory.readwrite.all'],
     'auditlog.read.all': []
   };
   return (broader[s] || []).some((b) => all.indexOf(b) >= 0);
@@ -316,6 +317,28 @@ export function assertGuid(id: string): string {
 }
 
 const MEMBER_SELECT = '$select=id,displayName,mail,userPrincipalName,userType';
+const BATCH_SIZE = 20;
+const MEMBERSHIP_TTL_MS = 10 * 60 * 1000;
+
+export interface IGroupMembership {
+  owners: IDirectoryObject[];
+  members: IDirectoryObject[];
+  truncated: boolean;
+  error?: string;
+}
+
+export interface IGroupSummary {
+  id: string;
+  displayName: string;
+  mail: string;
+  visibility: string;
+  isTeam: boolean;
+}
+
+export interface IBatchPart {
+  status: number;
+  body: unknown;
+}
 
 export class GraphApi {
   constructor(public client: GraphClient) {}
@@ -389,6 +412,128 @@ export class GraphApi {
       onProgress
     );
     return { groups: res.items.map(toGroup), truncated: res.truncated };
+  }
+
+  // ---- membership of many groups (sites & groups report)
+
+  private membershipCache: { [id: string]: { at: number; value: IGroupMembership } } = {};
+
+  /** Owners and members of one group (2 requests, cached 10 minutes). */
+  public async membership(groupId: string, fresh = false): Promise<IGroupMembership> {
+    const id = assertGuid(groupId).toLowerCase();
+    const hit = this.membershipCache[id];
+    if (!fresh && hit && Date.now() - hit.at < MEMBERSHIP_TTL_MS) {
+      return hit.value;
+    }
+    const [owners, members] = await Promise.all([this.getGroupPeople(id, 'owners'), this.getGroupPeople(id, 'members')]);
+    const value: IGroupMembership = { owners: owners.people, members: members.people, truncated: owners.truncated || members.truncated };
+    this.membershipCache[id] = { at: Date.now(), value };
+    return value;
+  }
+
+  /** Name, e-mail, privacy and Teams flag of every Microsoft 365 group (999 per request). */
+  public async groupDirectory(onProgress?: (n: number) => void): Promise<{ [id: string]: IGroupSummary }> {
+    const filter = encodeURIComponent("groupTypes/any(c:c eq 'Unified')");
+    const res = await this.client.getAll<IRawGroup>(`/v1.0/groups?$filter=${filter}&$select=id,displayName,mail,visibility,resourceProvisioningOptions&$top=999`, 200000, onProgress);
+    const out: { [id: string]: IGroupSummary } = {};
+    res.items.forEach((g) => {
+      out[String(g.id).toLowerCase()] = { id: g.id, displayName: g.displayName || g.mail || g.id, mail: g.mail || '', visibility: g.visibility || '', isTeam: (g.resourceProvisioningOptions || []).indexOf('Team') >= 0 };
+    });
+    return out;
+  }
+
+  /**
+   * Graph JSON batching: up to 20 GETs per request. Throttled (429/503/504) parts are
+   * retried after the longest Retry-After they asked for, at most 5 rounds.
+   */
+  public async batchGet(paths: string[]): Promise<IBatchPart[]> {
+    const results: IBatchPart[] = paths.map(() => ({ status: 0, body: undefined }));
+    let pending = paths.map((_, i) => i);
+    for (let round = 0; pending.length && round < 5; round++) {
+      const waitSecs: number[] = [];
+      for (let start = 0; start < pending.length; start += BATCH_SIZE) {
+        const chunk = pending.slice(start, start + BATCH_SIZE);
+        const reply = await this.client.send<{ responses?: Array<{ id: string; status: number; body?: unknown; headers?: { [k: string]: string } }> }>('POST', '/v1.0/$batch', {
+          requests: chunk.map((i) => ({ id: String(i), method: 'GET', url: paths[i] }))
+        });
+        ((reply && reply.responses) || []).forEach((r) => {
+          const i = Number(r.id);
+          results[i] = { status: Number(r.status), body: r.body };
+          if (r.status === 429 || r.status === 503 || r.status === 504) {
+            const h = r.headers || {};
+            waitSecs.push(Number(h['Retry-After'] || h['retry-after']) || 5);
+          }
+        });
+      }
+      pending = pending.filter((i) => results[i].status === 0 || results[i].status === 429 || results[i].status === 503 || results[i].status === 504);
+      if (pending.length) {
+        await new Promise((r) => setTimeout(r, Math.min(Math.max.apply(null, waitSecs.concat(2)), 60) * 1000));
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Owners and members of many groups, 10 groups (20 lookups) per batch request, one batch
+   * at a time. Groups with more than 999 owners or members get their extra pages read
+   * separately. `shouldStop` is checked between batches.
+   */
+  public async membershipMany(groupIds: string[], onProgress?: (done: number, total: number) => void, shouldStop?: () => boolean): Promise<{ [id: string]: IGroupMembership }> {
+    const ids = groupIds.map((g) => assertGuid(g).toLowerCase()).filter((g, i, a) => a.indexOf(g) === i);
+    const out: { [id: string]: IGroupMembership } = {};
+    const todo = ids.filter((id) => {
+      const hit = this.membershipCache[id];
+      if (hit && Date.now() - hit.at < MEMBERSHIP_TTL_MS) {
+        out[id] = hit.value;
+        return false;
+      }
+      return true;
+    });
+    let done = ids.length - todo.length;
+    if (onProgress) {
+      onProgress(done, ids.length);
+    }
+    const perBatch = BATCH_SIZE / 2;
+    for (let start = 0; start < todo.length; start += perBatch) {
+      if (shouldStop && shouldStop()) {
+        break;
+      }
+      const chunk = todo.slice(start, start + perBatch);
+      const paths: string[] = [];
+      chunk.forEach((id) => {
+        paths.push(`/groups/${id}/owners?${MEMBER_SELECT}&$top=999`);
+        paths.push(`/groups/${id}/members?${MEMBER_SELECT}&$top=999`);
+      });
+      const parts = await this.batchGet(paths);
+      for (let k = 0; k < chunk.length; k++) {
+        const id = chunk[k];
+        const value: IGroupMembership = { owners: [], members: [], truncated: false };
+        for (const [kind, part] of [['owners', parts[2 * k]], ['members', parts[2 * k + 1]]] as Array<['owners' | 'members', IBatchPart]>) {
+          if (part.status >= 200 && part.status < 300) {
+            const body = (part.body || {}) as { value?: IRawDirObject[]; '@odata.nextLink'?: string };
+            let people = (body.value || []).map(dirObject);
+            if (body['@odata.nextLink']) {
+              const more = await this.client.getAll<IRawDirObject>(body['@odata.nextLink'], 50000);
+              people = people.concat(more.items.map(dirObject));
+              value.truncated = value.truncated || more.truncated;
+            }
+            value[kind] = people;
+          } else {
+            const err = (part.body as { error?: { message?: string } } | undefined) || {};
+            value.error = part.status === 404 ? 'Group not found (deleted?)' : part.status === 403 ? 'Access denied to this group' : `${part.status || 'No answer'}: ${(err.error && err.error.message) || 'could not read'}`;
+          }
+        }
+        out[id] = value;
+        if (!value.error) {
+          this.membershipCache[id] = { at: Date.now(), value };
+        }
+      }
+      done += chunk.length;
+      if (onProgress) {
+        onProgress(done, ids.length);
+      }
+    }
+    return out;
   }
 
   // ---- people

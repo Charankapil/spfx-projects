@@ -37,6 +37,7 @@ import { PeopleView } from './views/PeopleView';
 import { RecycleView } from './views/RecycleView';
 import { SettingsView } from './views/SettingsView';
 import { SitesView } from './views/SitesView';
+import { SitesGroupsView } from './views/SitesGroupsView';
 import { TenantDashboardView } from './views/TenantDashboardView';
 import { StorageView } from './views/StorageView';
 
@@ -64,7 +65,8 @@ const NAV: Array<{ key: ViewKey; text: string; icon: string; section?: string }>
   { key: 'locks', text: 'Read-only locks', icon: 'Lock' },
   { key: 'activity', text: 'Activity', icon: 'History', section: 'Monitor' },
   { key: 'health', text: 'Health check', icon: 'HealthSolid' },
-  { key: 'm365groups', text: 'Groups & owners', icon: 'Group', section: 'Microsoft 365' },
+  { key: 'sitegroups', text: 'Sites & M365 groups', icon: 'SharepointLogo', section: 'Microsoft 365' },
+  { key: 'm365groups', text: 'Groups & owners', icon: 'Group' },
   { key: 'guests', text: 'Guest users', icon: 'UserWarning' },
   { key: 'settings', text: 'Settings & log', icon: 'Settings', section: 'Administration' },
   { key: 'apiaccess', text: 'API access', icon: 'PlugConnected' }
@@ -208,6 +210,8 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, 
         return <GrantAccessView />;
       case 'create':
         return <CreateSiteView />;
+      case 'sitegroups':
+        return <SitesGroupsView />;
       case 'm365groups':
         return <GroupsView />;
       case 'guests':
