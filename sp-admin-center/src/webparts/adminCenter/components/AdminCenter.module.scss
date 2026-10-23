@@ -977,3 +977,11 @@ $shadow-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.05);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.navVersion {
+  margin-top: 12px;
+  padding: 8px 12px 2px;
+  border-top: 1px solid $line;
+  font-size: 11px;
+  color: $ink-3;
+}

@@ -1821,23 +1821,78 @@ test('sites & groups: group directory and export rows (per site and per person)'
     { url: ORIGIN + '/sites/fin-ch', title: 'Finance - Audit', template: 'TEAMCHANNEL#1', groupConnected: false, relatedGroupId: gid(1), manageable: true },
     { url: ORIGIN + '/sites/old', title: 'Old', template: 'GROUP#0', groupConnected: true, groupId: gid(9), manageable: true }
   ];
-  const mem = {
-    [gid(1)]: { owners: [{ id: '1', displayName: 'Ann', mail: 'ann@contoso.com', type: 'user' }], members: [{ id: '1', displayName: 'Ann', mail: 'ann@contoso.com', type: 'user' }, { id: '2', displayName: 'Bob', userPrincipalName: 'bob_ext#EXT#@contoso.onmicrosoft.com', userType: 'Guest', type: 'user' }], truncated: false },
-    [gid(9)]: { owners: [], members: [], truncated: false, error: 'Group not found (deleted?)' }
+  const ann = { id: '1', displayName: 'Ann', mail: 'ann@contoso.com', type: 'user' };
+  const bob = { id: '2', displayName: 'Bob', userPrincipalName: 'bob_ext#EXT#@contoso.onmicrosoft.com', userType: 'Guest', type: 'user' };
+  const access = {
+    [sites[0].url]: SGX.fromGroupMembership({ owners: [ann], members: [ann, bob], truncated: false }),
+    [sites[1].url]: { source: 'sharepoint', owners: [ann], members: [bob], visitors: [{ id: '9', displayName: 'Everyone except external users', type: 'group' }], admins: [ann], ownerGroup: 'Intranet Owners', memberGroup: 'Intranet Members', visitorGroup: 'Intranet Visitors', truncated: false },
+    [sites[2].url]: { source: 'sharepoint', owners: [], members: [], visitors: [], truncated: false },
+    [sites[3].url]: { ...SGX.fromGroupMembership({ owners: [], members: [], truncated: false, error: 'Group not found (deleted?)' }) }
   };
-  const bySite = SGX.siteGroupRows(sites, dir, mem, 'site');
+  const accessOf = (x) => access[x.url];
+  const bySite = SGX.siteGroupRows(sites, dir, accessOf, 'site');
   assert.strictEqual(bySite.length, 4);
-  assert.deepStrictEqual(bySite[0], [ORIGIN + '/sites/fin', 'Finance', 'Team site (M365 group)', 'Yes', 'Finance', 'fin@contoso.com', 'Private', 'Yes', 1, 'Ann <ann@contoso.com>', 2, 'Ann <ann@contoso.com>; Bob <bob_ext#EXT#@contoso.onmicrosoft.com>', '']);
-  assert.deepStrictEqual(bySite[1].slice(3, 5), ['No', '']);
-  assert.ok(/Teams channel site/.test(bySite[2][12]));
-  assert.deepStrictEqual([bySite[3][8], bySite[3][12]], ['', 'Group not found (deleted?)']);
   assert.strictEqual(bySite[0].length, SGX.SITE_HEADERS.length);
-  const byPerson = SGX.siteGroupRows(sites, dir, mem, 'person');
-  assert.deepStrictEqual(byPerson.slice(0, 3).map((r) => [r[4], r[5], r[7]]), [['Owner', 'Ann', 'Member'], ['Member', 'Ann', 'Member'], ['Member', 'Bob', 'Guest']]);
-  assert.deepStrictEqual(byPerson[3].slice(0, 5), [ORIGIN + '/sites/intranet', 'Intranet', '', '', 'Not group-connected']);
+  const col = (row, name) => row[SGX.SITE_HEADERS.indexOf(name)];
+  assert.deepStrictEqual([col(bySite[0], 'Membership from'), col(bySite[0], 'Group name'), col(bySite[0], 'Owners (count)'), col(bySite[0], 'Members')], ['Microsoft 365 group', 'Finance', 1, 'Ann <ann@contoso.com>; Bob <bob_ext#EXT#@contoso.onmicrosoft.com>']);
+  assert.deepStrictEqual([col(bySite[0], 'Visitors (count)'), col(bySite[0], 'Site admins')], ['', '']);
+  assert.deepStrictEqual([col(bySite[1], 'Membership from'), col(bySite[1], 'Microsoft 365 group'), col(bySite[1], 'Owners'), col(bySite[1], 'Members (count)'), col(bySite[1], 'Visitors'), col(bySite[1], 'Site admins')], ['SharePoint groups', 'No', 'Ann <ann@contoso.com>', 1, 'Everyone except external users', 'Ann <ann@contoso.com>']);
+  assert.ok(/Teams channel site/.test(col(bySite[2], 'Note')));
+  assert.deepStrictEqual([col(bySite[3], 'Owners (count)'), col(bySite[3], 'Note')], ['', 'Group not found (deleted?)']);
+  const byPerson = SGX.siteGroupRows(sites, dir, accessOf, 'person');
   assert.strictEqual(byPerson[0].length, SGX.PERSON_HEADERS.length);
-  const notRead = SGX.siteGroupRows([sites[0]], dir, {}, 'site');
-  assert.ok(/stopped early/.test(notRead[0][12]));
+  assert.deepStrictEqual(byPerson.map((r) => [r[0].replace(ORIGIN, ''), r[3], r[4], r[5], r[7]]), [
+    ['/sites/fin', 'Finance', 'Owner', 'Ann', 'Member'],
+    ['/sites/fin', 'Finance', 'Member', 'Ann', 'Member'],
+    ['/sites/fin', 'Finance', 'Member', 'Bob', 'Guest'],
+    ['/sites/intranet', 'Intranet Owners', 'Owner', 'Ann', 'Member'],
+    ['/sites/intranet', 'Intranet Members', 'Member', 'Bob', 'Guest'],
+    ['/sites/intranet', 'Intranet Visitors', 'Visitor', 'Everyone except external users', 'Group'],
+    ['/sites/intranet', '', 'Site collection admin', 'Ann', 'Member'],
+    ['/sites/fin-ch', '', 'No owners or members', '', 'Teams channel site: membership is the channel\u2019s'],
+    ['/sites/old', '', '', '', 'Group not found (deleted?)']
+  ]);
+  const notRead = SGX.siteGroupRows([sites[1]], dir, () => undefined, 'site');
+  assert.ok(/stopped early/.test(notRead[0][SGX.SITE_HEADERS.indexOf('Note')]));
+});
+
+test('sites & groups: a site’s SharePoint Owners / Members / Visitors and admins in one or two requests', async () => {
+  const calls = [];
+  const u = (Id, Title, LoginName, extra) => Object.assign({ Id, Title, LoginName, Email: '', PrincipalType: 1 }, extra || {});
+  const web = {
+    AssociatedOwnerGroup: { Id: 3, Title: 'HR Owners', Users: [u(5, 'Ann', 'i:0#.f|membership|ann@contoso.com', { Email: 'ann@contoso.com' }), u(1, 'System Account', 'SHAREPOINT\\system')] },
+    AssociatedMemberGroup: { Id: 4, Title: 'HR Members', Users: [u(7, 'Bob', 'i:0#.f|membership|bob_fabrikam.com#ext#@contoso.onmicrosoft.com'), u(8, 'Everyone except external users', 'c:0-.f|rolemanager|spo-grid-all-users/abc', { PrincipalType: 4 })] },
+    AssociatedVisitorGroup: null
+  };
+  let rejectExpand = false;
+  const c = make(async (m, url) => {
+    const d = decodeURIComponent(url);
+    calls.push(d.replace(ORIGIN, ''));
+    if (/\/sites\/locked\//.test(d)) return json({ error: { message: { value: 'Access denied.' } } }, 403);
+    if (/siteusers\?\$filter=IsSiteAdmin eq true/.test(d)) return json({ value: [u(5, 'Ann', 'i:0#.f|membership|ann@contoso.com')] });
+    if (/sitegroups\/getbyid\((\d)\)\/users/.test(d)) { const id = Number(/getbyid\((\d)\)/.exec(d)[1]); return json({ value: (id === 3 ? web.AssociatedOwnerGroup : web.AssociatedMemberGroup).Users }); }
+    if (/_api\/web\?\$select=.*Users/.test(d)) return rejectExpand ? json({ error: { message: { value: 'bad expand' } } }, 400) : json(web);
+    if (/_api\/web\?\$select=Associated/.test(d)) return json({ AssociatedOwnerGroup: { Id: 3, Title: 'HR Owners' }, AssociatedMemberGroup: { Id: 4, Title: 'HR Members' }, AssociatedVisitorGroup: null });
+    return json({ error: { message: { value: 'no route ' + d } } }, 404);
+  });
+  const api = new AdminApi(c);
+  const a = await api.siteAccess(ORIGIN + '/sites/hr', false);
+  assert.strictEqual(calls.length, 1, 'one request without admins');
+  assert.deepStrictEqual([a.source, a.ownerGroup, a.memberGroup, a.visitorGroup], ['sharepoint', 'HR Owners', 'HR Members', undefined]);
+  assert.deepStrictEqual(a.owners.map((p) => [p.displayName, p.mail]), [['Ann', 'ann@contoso.com']], 'system account dropped');
+  assert.deepStrictEqual(a.members.map((p) => [p.displayName, p.userType, p.type]), [['Bob', 'Guest', 'user'], ['Everyone except external users', 'Member', 'group']]);
+  assert.strictEqual(a.admins, undefined);
+  calls.length = 0;
+  const b = await api.siteAccess(ORIGIN + '/sites/hr', true);
+  assert.strictEqual(calls.length, 2);
+  assert.deepStrictEqual(b.admins.map((p) => p.userPrincipalName), ['ann@contoso.com']);
+  rejectExpand = true;
+  calls.length = 0;
+  const f = await api.siteAccess(ORIGIN + '/sites/hr', false);
+  assert.deepStrictEqual([f.owners.length, f.members.length], [1, 2], 'fallback reads each group');
+  assert.strictEqual(calls.length, 4, 'combined (refused) + groups + 2 group reads');
+  const locked = await api.siteAccess(ORIGIN + '/sites/locked', true);
+  assert.ok(/No access to this site/.test(locked.error));
 });
 
 // ---------------------------------------------------------------- runner

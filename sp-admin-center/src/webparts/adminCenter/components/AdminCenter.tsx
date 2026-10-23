@@ -49,6 +49,7 @@ export interface IAdminCenterProps {
   homeTitle: string;
   heading: string;
   currentUser: string;
+  version?: string;
 }
 
 const NAV: Array<{ key: ViewKey; text: string; icon: string; section?: string }> = [
@@ -98,7 +99,7 @@ function writeRecent(t: ITarget): void {
   }
 }
 
-export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, homeWebUrl, homeSiteUrl, homeTitle, heading, currentUser }) => {
+export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, homeWebUrl, homeSiteUrl, homeTitle, heading, currentUser, version }) => {
   const api = React.useMemo(() => new AdminApi(client), [client]);
   const search = React.useMemo(() => new SearchApi(client), [client]);
   const graph = React.useMemo(() => new GraphApi(graphClient), [graphClient]);
@@ -285,6 +286,11 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, 
               </button>
               </React.Fragment>
             ))}
+            {version && (
+              <div className={styles.navVersion} title="Installed package version">
+                Version {version}
+              </div>
+            )}
           </nav>
           <main className={styles.content}>
             {/* key forces a clean state when the administered site changes */}

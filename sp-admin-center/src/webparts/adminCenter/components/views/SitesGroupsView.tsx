@@ -1,10 +1,10 @@
 import * as React from 'react';
-import { ChoiceGroup, DefaultButton, DetailsList, DetailsListLayoutMode, Dropdown, IColumn, MessageBar, MessageBarType, Panel, PanelType, PrimaryButton, ProgressIndicator, SearchBox, SelectionMode } from '@fluentui/react';
+import { Checkbox, ChoiceGroup, DefaultButton, DetailsList, DetailsListLayoutMode, Dropdown, IColumn, MessageBar, MessageBarType, Panel, PanelType, PrimaryButton, ProgressIndicator, SearchBox, SelectionMode } from '@fluentui/react';
 import { ISiteRow } from '../../models';
 import { downloadCsv } from '../../services/exportCsv';
 import { formatDate } from '../../services/format';
 import { hasScope, IDirectoryObject, IGroupMembership, IGroupSummary } from '../../services/GraphApi';
-import { ExportLayout, PERSON_HEADERS, SITE_HEADERS, siteGroupRows } from '../../services/siteGroupsExport';
+import { ExportLayout, fromGroupMembership, ISiteAccess, PERSON_HEADERS, SITE_HEADERS, siteGroupRows } from '../../services/siteGroupsExport';
 import { siteType } from '../../services/siteTypes';
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
@@ -37,6 +37,7 @@ export const SitesGroupsView: React.FC = () => {
   const [query, setQuery] = React.useState('');
   const [open, setOpen] = React.useState<ISiteRow | undefined>();
   const [layout, setLayout] = React.useState<ExportLayout>('site');
+  const [includeAdmins, setIncludeAdmins] = React.useState(false);
   const [exporting, setExporting] = React.useState<{ done: number; total: number } | undefined>();
   const stopRef = React.useRef(false);
   const mounted = React.useRef(true);
@@ -132,38 +133,107 @@ export const SitesGroupsView: React.FC = () => {
 
   const exportMembership = async (): Promise<void> => {
     const list = rows;
-    const ids = list.filter((s) => !!s.groupId).map((s) => s.groupId as string);
+    const groupSites = list.filter((s) => !!s.groupId);
+    // Sites on another host (e.g. OneDrive) cannot be read from this page.
+    const spSites = list.filter((s) => !s.groupId && s.manageable);
+    const ids = graphOk ? groupSites.map((s) => s.groupId as string) : [];
+    const adminSites = includeAdmins ? groupSites.filter((s) => s.manageable) : [];
+    const graphRequests = Math.ceil(ids.length / 10);
+    const spRequests = spSites.length * (includeAdmins ? 2 : 1) + adminSites.length;
+    const minutes = Math.max(1, Math.round(Math.max(graphRequests * 1.2, spRequests / 4) / 60));
     const ok = await ctx.confirm({
       title: 'Export owners and members',
-      message: `Read the owners and members of ${ids.length.toLocaleString()} Microsoft 365 groups for ${list.length.toLocaleString()} sites? This uses about ${Math.max(1, Math.ceil(ids.length / 10)).toLocaleString()} batched Microsoft Graph requests, one at a time (roughly ${Math.max(1, Math.round(ids.length / 10 / 60))} minute${ids.length > 600 ? 's' : ''}). You can stop it and export what was read so far.`,
+      message:
+        `Read the owners and members of ${list.length.toLocaleString()} sites: ` +
+        (groupSites.length ? `${groupSites.length.toLocaleString()} Microsoft 365 groups ${graphOk ? `(about ${graphRequests.toLocaleString()} batched Microsoft Graph requests)` : '(skipped: the Microsoft Graph permission is not approved)'} and ` : '') +
+        `the SharePoint Owners, Members and Visitors groups of ${spSites.length.toLocaleString()} other sites (${spRequests.toLocaleString()} SharePoint requests, at most 2 at a time). ` +
+        `Roughly ${minutes} minute${minutes === 1 ? '' : 's'}. You can stop it and export what was read so far.`,
       confirmText: 'Start export'
     });
     if (!ok) {
       return;
     }
     stopRef.current = false;
-    setExporting({ done: 0, total: ids.length });
+    const total = ids.length + spSites.length + adminSites.length;
+    let graphDone = 0;
+    let spDone = 0;
+    const tick = (): void => {
+      if (mounted.current) {
+        setExporting({ done: graphDone + spDone, total });
+      }
+    };
+    tick();
     try {
-      let names = groups;
-      if (!names) {
+      let names = groups || {};
+      if (graphOk && !groups) {
         names = sessionGroups = await ctx.graph.groupDirectory();
         if (mounted.current) {
           setGroups(names);
         }
       }
-      const mem = await ctx.graph.membershipMany(ids, (done, total) => mounted.current && setExporting({ done, total }), () => stopRef.current);
+      const spAccess: { [url: string]: ISiteAccess } = {};
+      const admins: { [url: string]: IDirectoryObject[] } = {};
+      // SharePoint sites: two workers (SPClient also never has more than 2 requests in flight).
+      const queue: Array<() => Promise<void>> = spSites
+        .map((s) => async () => {
+          spAccess[s.url] = await ctx.api.siteAccess(s.url, includeAdmins);
+        })
+        .concat(
+          adminSites.map((s) => async () => {
+            admins[s.url] = await ctx.api.siteAdmins(s.url).catch(() => []);
+          })
+        );
+      const worker = async (): Promise<void> => {
+        for (let job = queue.shift(); job && !stopRef.current; job = queue.shift()) {
+          await job();
+          spDone++;
+          tick();
+        }
+      };
+      const [mem] = await Promise.all([
+        ids.length
+          ? ctx.graph.membershipMany(
+              ids,
+              (d) => {
+                graphDone = d;
+                tick();
+              },
+              () => stopRef.current
+            )
+          : Promise.resolve({} as { [id: string]: IGroupMembership }),
+        worker(),
+        worker()
+      ]);
       if (!mounted.current) {
         return;
       }
+      const accessOf = (s: ISiteRow): ISiteAccess | undefined => {
+        if (s.groupId) {
+          if (!graphOk) {
+            return { source: 'm365', owners: [], members: [], visitors: [], truncated: false, error: 'Microsoft 365 group members need the Group.Read.All Graph permission' };
+          }
+          const m = mem[s.groupId];
+          return m ? { ...fromGroupMembership(m), admins: admins[s.url] } : undefined;
+        }
+        if (!s.manageable) {
+          return { source: 'sharepoint', owners: [], members: [], visitors: [], truncated: false, error: 'On another host; open that site to read it' };
+        }
+        return spAccess[s.url];
+      };
       const stamp = new Date().toISOString().substring(0, 10);
       downloadCsv(
-        layout === 'site' ? `sites-m365-owners-members-${stamp}.csv` : `sites-m365-people-${stamp}.csv`,
+        layout === 'site' ? `sites-owners-members-${stamp}.csv` : `sites-owners-members-people-${stamp}.csv`,
         layout === 'site' ? SITE_HEADERS : PERSON_HEADERS,
-        siteGroupRows(list, names || {}, mem, layout)
+        siteGroupRows(list, names, accessOf, layout)
       );
-      const read = Object.keys(mem).length;
-      ctx.log('Export sites with group owners and members', `${list.length} sites, ${read} groups`, true);
-      ctx.notify(stopRef.current ? `Stopped: exported with ${read.toLocaleString()} of ${ids.length.toLocaleString()} groups read.` : `Exported ${list.length.toLocaleString()} sites with the owners and members of ${read.toLocaleString()} groups.`, 'success');
+      const read = Object.keys(mem).length + Object.keys(spAccess).length;
+      ctx.log('Export sites with owners and members', `${list.length} sites, ${read} read`, true);
+      ctx.notify(
+        stopRef.current
+          ? `Stopped: exported with ${read.toLocaleString()} of ${(ids.length + spSites.length).toLocaleString()} sites read.`
+          : `Exported ${list.length.toLocaleString()} sites with their owners and members.`,
+        'success'
+      );
     } catch (e) {
       ctx.notify(graphErrorText(e), 'error');
     } finally {
@@ -214,7 +284,7 @@ export const SitesGroupsView: React.FC = () => {
       name: '',
       minWidth: 150,
       onRender: (s: ISiteRow) =>
-        s.groupId ? (
+        s.groupId || s.manageable ? (
           <button type="button" className={styles.link} onClick={() => setOpen(s)}>
             Owners &amp; members
           </button>
@@ -224,11 +294,11 @@ export const SitesGroupsView: React.FC = () => {
 
   return (
     <div className={styles.view}>
-      <ViewHeader title="Sites & Microsoft 365 groups" hint="Every active site collection, whether it is connected to a Microsoft 365 group, and who owns and belongs to that group." />
+      <ViewHeader title="Sites & Microsoft 365 groups" hint="Every active site collection, whether it is connected to a Microsoft 365 group, and who its owners and members are." />
 
       {access.scopes && !graphOk && (
         <MessageBar messageBarType={MessageBarType.warning} isMultiline>
-          The site list works now. Showing group names, owners and members needs the Microsoft Graph permission <strong>Group.Read.All</strong> (or the Group.ReadWrite.All this solution requests) to be approved by a Global Administrator.{' '}
+          The site list, and owners and members of sites that are not group-connected (their SharePoint groups), work now. Group names and the owners and members of Microsoft 365 groups need the Microsoft Graph permission <strong>Group.Read.All</strong> (or the Group.ReadWrite.All this solution requests) to be approved by a Global Administrator.{' '}
           <button type="button" className={styles.link} onClick={() => ctx.openView('apiaccess')}>
             How to approve
           </button>
@@ -281,7 +351,8 @@ export const SitesGroupsView: React.FC = () => {
                 disabled={!!exporting}
                 styles={{ flexContainer: { display: 'flex', gap: 16, flexWrap: 'wrap' } }}
               />
-              <PrimaryButton iconProps={{ iconName: 'ExcelDocument' }} onClick={exportMembership} disabled={!graphOk || !!exporting || !!loading}>
+              <Checkbox label="Include site collection administrators (1 more request per site)" checked={includeAdmins} onChange={(_, v) => setIncludeAdmins(!!v)} disabled={!!exporting} />
+              <PrimaryButton iconProps={{ iconName: 'ExcelDocument' }} onClick={exportMembership} disabled={!!exporting || !!loading}>
                 Export with owners &amp; members
               </PrimaryButton>
               {exporting && (
@@ -302,7 +373,7 @@ export const SitesGroupsView: React.FC = () => {
               />
             )}
             <p className={styles.muted} style={{ marginBottom: 0, fontSize: 12 }}>
-              Exports follow the filter below. Owners and members are read in batches of 10 groups per request, one batch at a time, and reused for 10 minutes.
+              Exports follow the filter below. Group-connected sites: owners and members of the Microsoft 365 group (Graph, 10 groups per request). Other sites: the people in the site&rsquo;s SharePoint Owners, Members and Visitors groups (one SharePoint request per site, at most 2 at a time).
             </p>
           </Card>
 
@@ -336,17 +407,21 @@ export const SitesGroupsView: React.FC = () => {
 
 const GroupPanel: React.FC<{ site?: ISiteRow; group?: IGroupSummary; graphOk: boolean; onDismiss: () => void }> = ({ site, group, graphOk, onDismiss }) => {
   const ctx = useAdmin();
-  const [state, setState] = React.useState<{ loading: boolean; data?: IGroupMembership; error?: string }>({ loading: false });
+  const [state, setState] = React.useState<{ loading: boolean; data?: ISiteAccess; error?: string }>({ loading: false });
+  const url = site && site.url;
   const groupId = site && site.groupId;
+  const needsGraph = !!groupId && !graphOk;
 
   const load = React.useCallback(
     (fresh: boolean) => {
-      if (!groupId || !graphOk) {
+      if (!url || needsGraph) {
         return () => undefined;
       }
       let alive = true;
       setState({ loading: true });
-      ctx.graph.membership(groupId, fresh).then(
+      // Microsoft 365 group sites: the group's owners and members. Other sites: their SharePoint groups and admins.
+      const read: Promise<ISiteAccess> = groupId ? ctx.graph.membership(groupId, fresh).then(fromGroupMembership) : ctx.api.siteAccess(url, true);
+      read.then(
         (data) => alive && setState({ loading: false, data }),
         (e) => alive && setState({ loading: false, error: graphErrorText(e) })
       );
@@ -355,7 +430,7 @@ const GroupPanel: React.FC<{ site?: ISiteRow; group?: IGroupSummary; graphOk: bo
       };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [groupId, graphOk]
+    [url, groupId, needsGraph]
   );
   React.useEffect(() => load(false), [load]);
 
@@ -366,38 +441,43 @@ const GroupPanel: React.FC<{ site?: ISiteRow; group?: IGroupSummary; graphOk: bo
     try {
       const [web, s] = await Promise.all([ctx.api.getWeb(site.url), ctx.api.getSite(site.url)]);
       ctx.setTarget({ webUrl: web.url, siteUrl: s.url, title: web.title });
-      ctx.openView('m365groups');
+      ctx.openView(groupId ? 'm365groups' : 'people');
     } catch (e) {
       ctx.notify((e as Error).message, 'error');
     }
   };
 
   const d = state.data;
+  const sp = !!d && d.source === 'sharepoint';
   return (
     <Panel isOpen={!!site} onDismiss={onDismiss} type={PanelType.medium} headerText={group ? group.displayName : site ? site.title : ''} closeButtonAriaLabel="Close" isLightDismiss>
       {site && (
         <>
           <p className={styles.muted} style={{ wordBreak: 'break-all', marginTop: 0 }}>
             {site.url}
-            {group && (
+            <br />
+            {group ? (
               <>
-                <br />
-                {group.mail} · {group.visibility || 'privacy unknown'}
+                Microsoft 365 group · {group.mail} · {group.visibility || 'privacy unknown'}
                 {group.isTeam ? ' · Microsoft Teams team' : ''}
               </>
+            ) : groupId ? (
+              'Microsoft 365 group'
+            ) : (
+              'Not group-connected: owners and members come from the site\u2019s SharePoint groups'
             )}
           </p>
-          {!graphOk ? (
-            <NeedsApproval scopes={[GROUP_SCOPE]} feature="Showing group owners and members" />
+          {needsGraph ? (
+            <NeedsApproval scopes={[GROUP_SCOPE]} feature="Showing Microsoft 365 group owners and members" />
           ) : state.loading ? (
             <ProgressIndicator label="Reading owners and members…" />
-          ) : state.error ? (
+          ) : state.error || (d && d.error) ? (
             <MessageBar messageBarType={MessageBarType.error} isMultiline>
-              {state.error}
+              {state.error || (d && d.error)}
             </MessageBar>
           ) : d ? (
             <>
-              {d.owners.filter((o) => o.type === 'user').length === 0 && <MessageBar messageBarType={MessageBarType.severeWarning}>This group has no owners.</MessageBar>}
+              {d.owners.filter((o) => o.type === 'user').length === 0 && <MessageBar messageBarType={MessageBarType.severeWarning}>{sp ? 'The Owners group has no people in it.' : 'This group has no owners.'}</MessageBar>}
               <div className={styles.actions} style={{ margin: '8px 0' }}>
                 <DefaultButton
                   iconProps={{ iconName: 'Download' }}
@@ -405,11 +485,11 @@ const GroupPanel: React.FC<{ site?: ISiteRow; group?: IGroupSummary; graphOk: bo
                     downloadCsv(
                       `${(group ? group.displayName : site.title).replace(/[^A-Za-z0-9_-]+/g, '-')}-owners-members.csv`,
                       PERSON_HEADERS,
-                      siteGroupRows([site], group ? { [site.groupId as string]: group } : {}, { [site.groupId as string]: d }, 'person')
+                      siteGroupRows([site], group && site.groupId ? { [site.groupId]: group } : {}, () => d, 'person')
                     )
                   }
                 >
-                  Export this group
+                  Export this site
                 </DefaultButton>
                 <DefaultButton iconProps={{ iconName: 'Refresh' }} onClick={() => load(true)}>
                   Refresh
@@ -419,8 +499,10 @@ const GroupPanel: React.FC<{ site?: ISiteRow; group?: IGroupSummary; graphOk: bo
                 </DefaultButton>
               </div>
               {d.truncated && <MessageBar messageBarType={MessageBarType.info}>Very large group: the first 5,000 are shown.</MessageBar>}
-              <PeopleList title={`Owners (${d.owners.length})`} people={d.owners} />
-              <PeopleList title={`Members (${d.members.length})`} people={d.members} />
+              <PeopleList title={`Owners (${d.owners.length})${sp && d.ownerGroup ? ` · ${d.ownerGroup}` : ''}`} people={d.owners} />
+              <PeopleList title={`Members (${d.members.length})${sp && d.memberGroup ? ` · ${d.memberGroup}` : ''}`} people={d.members} />
+              {sp && <PeopleList title={`Visitors (${d.visitors.length})${d.visitorGroup ? ` · ${d.visitorGroup}` : ''}`} people={d.visitors} />}
+              {d.admins && <PeopleList title={`Site collection administrators (${d.admins.length})`} people={d.admins} />}
             </>
           ) : null}
         </>

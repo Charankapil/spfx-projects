@@ -1,4 +1,4 @@
-import { entityOf, nextLinkOf, odataString, rowsOf, SPClient, trimSlash } from '../core/SPClient';
+import { entityOf, HttpError, nextLinkOf, odataString, rowsOf, SPClient, trimSlash } from '../core/SPClient';
 import {
   IChangeRow,
   IGroupInfo,
@@ -12,7 +12,9 @@ import {
   ListKind,
   UserKind
 } from '../models';
+import { IDirectoryObject } from './GraphApi';
 import { toDate } from './SearchApi';
+import { ISiteAccess } from './siteGroupsExport';
 
 /**
  * SharePoint REST calls for administration. Every method is a small, bounded
@@ -23,6 +25,50 @@ import { toDate } from './SearchApi';
 
 const USER_PAGE = 1000;
 const USER_MAX_PAGES = 5;
+
+interface IRawSpUser {
+  Id?: number;
+  Title?: string;
+  Email?: string;
+  LoginName?: string;
+  PrincipalType?: number;
+}
+
+interface IRawSpGroup {
+  Id?: number;
+  Title?: string;
+  Users?: unknown;
+}
+
+const ROLE_KEYS: Array<['owners' | 'members' | 'visitors', string]> = [
+  ['owners', 'AssociatedOwnerGroup'],
+  ['members', 'AssociatedMemberGroup'],
+  ['visitors', 'AssociatedVisitorGroup']
+];
+
+/** A SharePoint user / group principal as a directory entry (system accounts dropped). */
+export function spPrincipal(u: IRawSpUser): IDirectoryObject | undefined {
+  const kind = classifyUser(u);
+  if (kind === 'System') {
+    return undefined;
+  }
+  const login = u.LoginName || '';
+  const tail = login.substring(login.lastIndexOf('|') + 1);
+  return {
+    id: String(u.Id),
+    displayName: u.Title || tail || login,
+    mail: u.Email || undefined,
+    userPrincipalName: tail.indexOf('@') > 0 ? tail : undefined,
+    userType: kind === 'Guest' ? 'Guest' : 'Member',
+    type: kind === 'Group' || kind === 'OrgWide' ? 'group' : 'user'
+  };
+}
+
+function principals(users: unknown): IDirectoryObject[] {
+  return rowsOf<IRawSpUser>(users)
+    .map(spPrincipal)
+    .filter((p): p is IDirectoryObject => !!p);
+}
 
 function num(v: unknown): number {
   const n = Number(v);
@@ -387,6 +433,74 @@ export class AdminApi {
     const e = entityOf<{ [k: string]: unknown }>(j);
     const bp = ((e.GetUserEffectivePermissions || e.value || e) as { [k: string]: unknown });
     return permissionLevel(num(bp.Low), num(bp.High));
+  }
+
+  // ---- site owners / members (SharePoint groups) -------------------------------
+
+  /**
+   * The site's own Owners, Members and Visitors SharePoint groups with their people,
+   * in one request (falls back to one request per group if the combined read is refused),
+   * plus site collection administrators when asked (one more request). Never cached:
+   * used by the tenant-wide export, which reads thousands of sites once.
+   */
+  public async siteAccess(siteUrl: string, includeAdmins: boolean): Promise<ISiteAccess> {
+    const web = trimSlash(siteUrl);
+    const fields = ['Id', 'Title', 'Email', 'LoginName', 'PrincipalType'];
+    const select = ROLE_KEYS.map(([, k]) => [`${k}/Id`, `${k}/Title`].concat(fields.map((f) => `${k}/Users/${f}`)).join(',')).join(',');
+    const expand = ROLE_KEYS.map(([, k]) => `${k},${k}/Users`).join(',');
+    const out: ISiteAccess = { source: 'sharepoint', owners: [], members: [], visitors: [], truncated: false };
+    try {
+      let w: { [k: string]: IRawSpGroup | undefined };
+      try {
+        w = entityOf(await this.client.get(this.api(web, `web?$select=${select}&$expand=${expand}`), { cacheTtlMs: 0 }));
+      } catch (e) {
+        if (!(e instanceof HttpError) || e.status !== 400) {
+          throw e;
+        }
+        // Older farms reject the two-level expand: read the groups, then each group's users.
+        w = entityOf(await this.client.get(this.api(web, `web?$select=${ROLE_KEYS.map(([, k]) => `${k}/Id,${k}/Title`).join(',')}&$expand=${ROLE_KEYS.map(([, k]) => k).join(',')}`), { cacheTtlMs: 0 }));
+        for (const [, k] of ROLE_KEYS) {
+          const g = w[k];
+          if (g && g.Id) {
+            g.Users = await this.client.get(this.api(web, `web/sitegroups/getbyid(${Number(g.Id)})/users?$select=${fields.join(',')}&$top=5000`), { cacheTtlMs: 0 });
+          }
+        }
+      }
+      for (const [role, k] of ROLE_KEYS) {
+        const g = w[k];
+        if (g && g.Id) {
+          out[role] = principals(g.Users);
+          if (role === 'owners') {
+            out.ownerGroup = str(g.Title);
+          } else if (role === 'members') {
+            out.memberGroup = str(g.Title);
+          } else {
+            out.visitorGroup = str(g.Title);
+          }
+        }
+      }
+      if (includeAdmins) {
+        out.admins = await this.siteAdmins(web);
+      }
+      if (!out.ownerGroup && !out.memberGroup && !out.visitorGroup && !(out.admins && out.admins.length)) {
+        out.error = 'No default Owners / Members / Visitors groups on this site';
+      }
+    } catch (e) {
+      out.error = e instanceof HttpError
+        ? e.status === 401 || e.status === 403
+          ? 'No access to this site (you are not a site collection administrator there)'
+          : e.status === 404
+            ? 'Site not found'
+            : `Could not read: ${e.message.substring(0, 120)}`
+        : `Could not read: ${(e as Error).message.substring(0, 120)}`;
+    }
+    return out;
+  }
+
+  /** Site collection administrators of a site (one request, not cached). */
+  public async siteAdmins(siteUrl: string): Promise<IDirectoryObject[]> {
+    const a = await this.client.get(this.api(trimSlash(siteUrl), 'web/siteusers?$filter=IsSiteAdmin eq true&$select=Id,Title,Email,LoginName,PrincipalType'), { cacheTtlMs: 0 });
+    return principals(a);
   }
 
   // ---- recycle bin ----------------------------------------------------------
