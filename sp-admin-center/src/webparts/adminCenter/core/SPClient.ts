@@ -67,6 +67,8 @@ export interface IRequestOptions {
   method?: 'MERGE' | 'DELETE' | 'PATCH' | 'PUT';
   /** Send the body as-is (a string such as file content) instead of JSON-encoding it. */
   raw?: boolean;
+  /** POST that only reads (e.g. GetWebUrlFromPageUrl): keep the read cache. */
+  keepCache?: boolean;
 }
 
 interface ICacheEntry {
@@ -322,31 +324,6 @@ export class SPClient {
     });
   }
 
-  /**
-   * Sends a SharePoint $batch (many writes in one request) and returns each operation's
-   * HTTP status in order. The batch as a whole goes through the same queue, pacing and
-   * 429 / 503 handling as every other request.
-   */
-  public async batch(webUrl: string, ops: IBatchOp[]): Promise<number[]> {
-    const web = trimSlash(webUrl);
-    ops.forEach((op) => this.assertSameOrigin(op.url));
-    const id = String(Date.now()) + String(Math.floor(Math.random() * 1e6));
-    const body = buildBatchBody(ops, id, 'c' + id);
-    const url = `${web}/_api/$batch`;
-    this.assertSameOrigin(url);
-    const init: ISPHttpClientOptions = { headers: { 'Content-Type': `multipart/mixed; boundary=batch_${id}` }, body };
-    (init as { webUrl?: string }).webUrl = web;
-    const text = await this.enqueue<string>(async () => {
-      const response = await this.execute(url, init, false, 'POST');
-      if (!response.ok) {
-        throw await this.readError(response, url);
-      }
-      return response.text();
-    });
-    this.clearCache();
-    return parseBatchStatuses(text);
-  }
-
   /** POST (or MERGE / DELETE via X-HTTP-Method). Any write drops the read cache. */
   public async post<T = undefined>(url: string, body?: unknown, options: IRequestOptions = {}, webUrl?: string): Promise<T | undefined> {
     this.assertSameOrigin(url);
@@ -371,39 +348,11 @@ export class SPClient {
       const text = await response.text();
       return text ? (JSON.parse(text) as T) : undefined;
     });
-    this.clearCache();
+    if (!options.keepCache) {
+      this.clearCache();
+    }
     return result;
   }
-}
-
-/** One operation inside a SharePoint $batch request. */
-export interface IBatchOp {
-  method: 'POST' | 'GET';
-  url: string;
-  body?: unknown;
-}
-
-/** The multipart body of a SharePoint $batch request (one changeset holding every write). */
-export function buildBatchBody(ops: IBatchOp[], batchId: string, changesetId: string): string {
-  const lines: string[] = [`--batch_${batchId}`, `Content-Type: multipart/mixed; boundary="changeset_${changesetId}"`, ''];
-  ops.forEach((op) => {
-    lines.push(`--changeset_${changesetId}`, 'Content-Type: application/http', 'Content-Transfer-Encoding: binary', '');
-    lines.push(`${op.method} ${op.url} HTTP/1.1`, 'Content-Type: application/json;odata=nometadata', 'Accept: application/json;odata=nometadata', '');
-    lines.push(op.body === undefined ? '' : JSON.stringify(op.body), '');
-  });
-  lines.push(`--changeset_${changesetId}--`, '', `--batch_${batchId}--`, '');
-  return lines.join('\r\n');
-}
-
-/** HTTP status of each operation in a $batch response, in order. */
-export function parseBatchStatuses(text: string): number[] {
-  const out: number[] = [];
-  const re = /^HTTP\/1\.1 (\d{3})/gm;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text || '')) !== null) {
-    out.push(Number(m[1]));
-  }
-  return out;
 }
 
 function friendlyStatus(status: number, detail: string): string {
@@ -461,6 +410,14 @@ export function nextLinkOf(json: unknown): string | undefined {
   const j = json as { [k: string]: unknown; d?: { __next?: string } };
   const link = j['odata.nextLink'] || j['@odata.nextLink'] || (j.d && j.d.__next);
   return typeof link === 'string' ? link : undefined;
+}
+
+/**
+ * A server-relative path for a ('...') literal inside a REST URL: encodeURI keeps # and ?,
+ * which would cut the URL short for folders named like "Q1 #2" or "What?".
+ */
+export function encodePathLiteral(path: string): string {
+  return encodeURI(odataString(path)).replace(/#/g, '%23').replace(/\?/g, '%3F');
 }
 
 /** Escapes a value for use inside an OData string literal ('...'). */

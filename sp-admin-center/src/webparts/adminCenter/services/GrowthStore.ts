@@ -1,4 +1,4 @@
-import { HttpError, odataString, SPClient, trimSlash } from '../core/SPClient';
+import { HttpError, SPClient, trimSlash, encodePathLiteral } from '../core/SPClient';
 import { AdminApi } from './AdminApi';
 import { addPoint, emptyDoc, IGrowthDoc, IGrowthSettings, MAX_TRACKED, MIN_GAP_SEC, normalizeDoc } from './GrowthEngine';
 
@@ -46,7 +46,7 @@ export class GrowthStore {
     if (fresh) {
       this.client.clearCache();
     }
-    const url = `${trimSlash(this.homeWebUrl)}/_api/web/GetFileByServerRelativeUrl('${encodeURI(odataString(this.filePath))}')/$value`;
+    const url = `${trimSlash(this.homeWebUrl)}/_api/web/GetFileByServerRelativeUrl('${encodePathLiteral(this.filePath)}')/$value`;
     try {
       return normalizeDoc(await this.client.get<unknown>(url, { cacheTtlMs: fresh ? 0 : 60000 }));
     } catch (e) {
@@ -61,7 +61,7 @@ export class GrowthStore {
   }
 
   private async save(doc: IGrowthDoc): Promise<void> {
-    const folder = encodeURI(odataString(`${this.serverRelativeWeb()}/SiteAssets`));
+    const folder = encodePathLiteral(`${this.serverRelativeWeb()}/SiteAssets`);
     const url = `${trimSlash(this.homeWebUrl)}/_api/web/GetFolderByServerRelativeUrl('${folder}')/Files/add(url='${HISTORY_FILE}',overwrite=true)`;
     try {
       await this.client.post(url, JSON.stringify(doc), { raw: true }, trimSlash(this.homeWebUrl));

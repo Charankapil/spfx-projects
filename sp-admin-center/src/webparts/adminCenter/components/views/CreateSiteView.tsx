@@ -33,10 +33,12 @@ export const CreateSiteView: React.FC = () => {
   const [owner, setOwner] = React.useState('');
   const [isPublic, setIsPublic] = React.useState(false);
   const [hubId, setHubId] = React.useState('');
-  const [check, setCheck] = React.useState<{ ok: boolean; message: string; suggestion?: string } | undefined>();
+  const [check, setCheck] = React.useState<{ ok: boolean; message: string; suggestion?: string; url?: string } | undefined>();
   const [busy, setBusy] = React.useState<string | undefined>();
   const [result, setResult] = React.useState<(ICreateResult & { title: string; request: ICreateRequest; extra: string[] }) | undefined>();
   const [showPs, setShowPs] = React.useState(false);
+  // While the automatic status checks run, the manual "Check status" button is hidden so the two never overlap.
+  const [polling, setPolling] = React.useState(false);
   const alive = React.useRef(true);
   // Template and hub steps run once per created site, whether the poll or a manual check sees it ready first.
   const finished = React.useRef<{ [url: string]: boolean }>({});
@@ -64,7 +66,8 @@ export const CreateSiteView: React.FC = () => {
   const t = template || templates[0];
   const isGroup = t.route === 'group';
   const request: ICreateRequest = { template: t, title: title.trim(), managedPath: isGroup ? 'teams' : managedPath, alias: alias.trim(), description: description.trim(), lcid, owner: owner.trim(), isPublic, hubId: hubId || undefined };
-  const url = `${origin}/${request.managedPath}/${request.alias || '…'}`;
+  // Group sites: SharePoint chooses /sites/ or /teams/; once checked, show the address it reported.
+  const url = isGroup && check && check.ok && check.url ? check.url : `${origin}/${request.managedPath}/${request.alias || '…'}`;
   const formOk = !!request.title && validAlias(request.alias);
 
   const onTitle = (v: string): void => {
@@ -75,51 +78,60 @@ export const CreateSiteView: React.FC = () => {
     setCheck(undefined);
   };
 
-  const runCheck = async (): Promise<boolean> => {
+  const runCheck = async (): Promise<{ ok: boolean; url?: string }> => {
     setBusy('Checking the address…');
     try {
       const c = await creator.checkAvailable(request);
       setCheck(c);
-      return c.ok;
+      return c;
     } catch (e) {
       setCheck({ ok: false, message: (e as Error).message });
-      return false;
+      return { ok: false };
     } finally {
       setBusy(undefined);
     }
   };
 
   const poll = async (res: ICreateResult, req: ICreateRequest, extra: string[]): Promise<void> => {
-    for (let i = 0; i < MAX_POLLS && alive.current; i++) {
-      await new Promise((r) => setTimeout(r, POLL_MS));
-      if (!alive.current) {
-        return;
+    setPolling(true);
+    try {
+      for (let i = 0; i < MAX_POLLS && alive.current; i++) {
+        await new Promise((r) => setTimeout(r, POLL_MS));
+        if (!alive.current) {
+          return;
+        }
+        try {
+          res.status = await creator.refreshStatus(res);
+        } catch {
+          /* try again on the next round */
+        }
+        setResult({ ...res, title: req.title, request: req, extra });
+        if (res.status === 2) {
+          const more = await finishOnce(req, res);
+          setResult({ ...res, title: req.title, request: req, extra: extra.concat(more) });
+          ctx.notify(`${req.title} is ready.`, 'success');
+          return;
+        }
+        if (res.status === 3) {
+          return;
+        }
       }
-      try {
-        res.status = await creator.refreshStatus(res);
-      } catch {
-        /* try again on the next round */
-      }
-      setResult({ ...res, title: req.title, request: req, extra });
-      if (res.status === 2) {
-        const more = await finishOnce(req, res);
-        setResult({ ...res, title: req.title, request: req, extra: extra.concat(more) });
-        ctx.notify(`${req.title} is ready.`, 'success');
-        return;
-      }
-      if (res.status === 3) {
-        return;
+    } finally {
+      if (alive.current) {
+        setPolling(false);
       }
     }
   };
 
+
   const create = async (): Promise<void> => {
-    if (!(await runCheck())) {
+    const checked = await runCheck();
+    if (!checked.ok) {
       return;
     }
     const ok = await ctx.confirm({
       title: 'Create site',
-      message: `Create "${request.title}" at ${url} using "${t.title}"${request.owner ? ` with ${request.owner} as owner` : ''}?`,
+      message: `Create "${request.title}" at ${isGroup && checked.url ? checked.url : url} using "${t.title}"${request.owner ? ` with ${request.owner} as owner` : ''}?`,
       confirmText: 'Create'
     });
     if (!ok) {
@@ -349,7 +361,7 @@ export const CreateSiteView: React.FC = () => {
             <PrimaryButton iconProps={{ iconName: 'Settings' }} onClick={() => manage(result.url)} disabled={result.status !== 2}>
               Manage in this tool
             </PrimaryButton>
-            {result.status === 1 && (
+            {result.status === 1 && !polling && (
               <DefaultButton
                 iconProps={{ iconName: 'Refresh' }}
                 onClick={async () => {

@@ -1,10 +1,9 @@
 import * as React from 'react';
-import { Checkbox, ChoiceGroup, DefaultButton, TextField, DetailsList, DetailsListLayoutMode, Dropdown, IColumn, MessageBar, MessageBarType, Panel, PanelType, PrimaryButton, ProgressIndicator, SearchBox, SelectionMode } from '@fluentui/react';
+import { Checkbox, ChoiceGroup, DefaultButton, DetailsList, DetailsListLayoutMode, Dropdown, IColumn, MessageBar, MessageBarType, Panel, PanelType, PrimaryButton, ProgressIndicator, SearchBox, SelectionMode } from '@fluentui/react';
 import { ISiteRow } from '../../models';
 import { downloadCsv } from '../../services/exportCsv';
 import { formatDate } from '../../services/format';
 import { hasScope, IDirectoryObject, IGroupMembership, IGroupSummary } from '../../services/GraphApi';
-import { ListExport, listItemsFor } from '../../services/ListExport';
 import { ExportLayout, fitForExcel, fromGroupMembership, ISiteAccess, PERSON_HEADERS, SITE_HEADERS, siteGroupRows } from '../../services/siteGroupsExport';
 import { siteType } from '../../services/siteTypes';
 import styles from '../AdminCenter.module.scss';
@@ -39,17 +38,14 @@ export const SitesGroupsView: React.FC = () => {
   const [open, setOpen] = React.useState<ISiteRow | undefined>();
   const [layout, setLayout] = React.useState<ExportLayout>('site');
   const [includeAdmins, setIncludeAdmins] = React.useState(false);
-  const [saveTo, setSaveTo] = React.useState<'csv' | 'list'>('csv');
-  const [listSite, setListSite] = React.useState(ctx.homeWebUrl);
-  const [listName, setListName] = React.useState(`Site owners and members ${new Date().toISOString().substring(0, 10)}`);
-  const [savedList, setSavedList] = React.useState<{ url: string; title: string; added: number; failed: string[] } | undefined>();
-  const [exporting, setExporting] = React.useState<{ done: number; total: number; phase?: string } | undefined>();
-  const stopRef = React.useRef(false);
+  const [exporting, setExporting] = React.useState<{ done: number; total: number } | undefined>();
+  // Each export run has its own stop flag, so a failed or replaced run never keeps sending requests.
+  const runRef = React.useRef<{ stop: boolean }>({ stop: false });
   const mounted = React.useRef(true);
   React.useEffect(
     () => () => {
       mounted.current = false;
-      stopRef.current = true;
+      runRef.current.stop = true;
     },
     []
   );
@@ -138,18 +134,6 @@ export const SitesGroupsView: React.FC = () => {
 
   const exportMembership = async (): Promise<void> => {
     const list = rows;
-    if (saveTo === 'list') {
-      try {
-        ctx.client.assertSameOrigin(listSite.trim());
-      } catch {
-        ctx.notify('Enter the address of a SharePoint site on this tenant for the list.', 'error');
-        return;
-      }
-      if (!listName.trim()) {
-        ctx.notify('Enter a name for the list.', 'error');
-        return;
-      }
-    }
     const groupSites = list.filter((s) => !!s.groupId);
     // Sites on another host (e.g. OneDrive) cannot be read from this page.
     const spSites = list.filter((s) => !s.groupId && s.manageable);
@@ -163,16 +147,19 @@ export const SitesGroupsView: React.FC = () => {
       message:
         `Read the owners and members of ${list.length.toLocaleString()} sites: ` +
         (groupSites.length ? `${groupSites.length.toLocaleString()} Microsoft 365 groups ${graphOk ? `(about ${graphRequests.toLocaleString()} batched Microsoft Graph requests)` : '(skipped: the Microsoft Graph permission is not approved)'} and ` : '') +
-        `the SharePoint Owners, Members and Visitors groups of ${spSites.length.toLocaleString()} other sites (${spRequests.toLocaleString()} SharePoint requests, at most 2 at a time). ` +
+        `the SharePoint Owners, Members and Visitors groups of ${spSites.length.toLocaleString()} other sites (${(spSites.length * (includeAdmins ? 2 : 1)).toLocaleString()} SharePoint requests` +
+        (adminSites.length ? `, plus ${adminSites.length.toLocaleString()} to read the administrators of the group-connected sites` : '') +
+        ', at most 2 at a time). ' +
         `Roughly ${minutes} minute${minutes === 1 ? '' : 's'}. ` +
-        (saveTo === 'list' ? `Then ${list.length.toLocaleString()} items are added to the list "${listName.trim()}" on ${listSite.trim()} (created if it does not exist), up to 50 per request. ` : '') +
         'You can stop it and export what was read so far.',
       confirmText: 'Start export'
     });
     if (!ok) {
       return;
     }
-    stopRef.current = false;
+    runRef.current.stop = true;
+    const run = { stop: false };
+    runRef.current = run;
     const total = ids.length + spSites.length + adminSites.length;
     let graphDone = 0;
     let spDone = 0;
@@ -184,10 +171,16 @@ export const SitesGroupsView: React.FC = () => {
     tick();
     try {
       let names = groups || {};
+      // A Microsoft Graph failure must not lose the SharePoint part: those groups are marked "not read".
+      let graphError: string | undefined;
       if (graphOk && !groups) {
-        names = sessionGroups = await ctx.graph.groupDirectory();
-        if (mounted.current) {
-          setGroups(names);
+        try {
+          names = sessionGroups = await ctx.graph.groupDirectory();
+          if (mounted.current) {
+            setGroups(names);
+          }
+        } catch (e) {
+          graphError = graphErrorText(e);
         }
       }
       const spAccess: { [url: string]: ISiteAccess } = {};
@@ -203,22 +196,27 @@ export const SitesGroupsView: React.FC = () => {
           })
         );
       const worker = async (): Promise<void> => {
-        for (let job = queue.shift(); job && !stopRef.current; job = queue.shift()) {
+        for (let job = queue.shift(); job && !run.stop; job = queue.shift()) {
           await job();
           spDone++;
           tick();
         }
       };
       const [mem] = await Promise.all([
-        ids.length
-          ? ctx.graph.membershipMany(
-              ids,
-              (d) => {
-                graphDone = d;
-                tick();
-              },
-              () => stopRef.current
-            )
+        ids.length && !graphError
+          ? ctx.graph
+              .membershipMany(
+                ids,
+                (d) => {
+                  graphDone = d;
+                  tick();
+                },
+                () => run.stop
+              )
+              .catch((e) => {
+                graphError = graphErrorText(e);
+                return {} as { [id: string]: IGroupMembership };
+              })
           : Promise.resolve({} as { [id: string]: IGroupMembership }),
         worker(),
         worker()
@@ -232,6 +230,9 @@ export const SitesGroupsView: React.FC = () => {
             return { source: 'm365', owners: [], members: [], visitors: [], truncated: false, error: 'Microsoft 365 group members need the Group.Read.All Graph permission' };
           }
           const m = mem[s.groupId];
+          if (!m && graphError) {
+            return { source: 'm365', owners: [], members: [], visitors: [], truncated: false, error: `Not read: ${graphError.substring(0, 150)}` };
+          }
           return m ? { ...fromGroupMembership(m), admins: admins[s.url] } : undefined;
         }
         if (!s.manageable) {
@@ -240,44 +241,24 @@ export const SitesGroupsView: React.FC = () => {
         return spAccess[s.url];
       };
       const read = Object.keys(mem).length + Object.keys(spAccess).length;
-      const stoppedEarly = stopRef.current;
-      if (saveTo === 'csv') {
-        const stamp = new Date().toISOString().substring(0, 10);
-        // Cells longer than Excel allows are spread over extra "(part 2)" columns instead of breaking the row.
-        const fitted = fitForExcel(layout === 'site' ? SITE_HEADERS : PERSON_HEADERS, siteGroupRows(list, names, accessOf, layout));
-        downloadCsv(layout === 'site' ? `sites-owners-members-${stamp}.csv` : `sites-owners-members-people-${stamp}.csv`, fitted.headers, fitted.rows);
-        ctx.log('Export sites with owners and members', `${list.length} sites, ${read} read`, true);
-        ctx.notify(
-          stoppedEarly ? `Stopped: exported with ${read.toLocaleString()} of ${(ids.length + spSites.length).toLocaleString()} sites read.` : `Exported ${list.length.toLocaleString()} sites with their owners and members.`,
-          'success'
-        );
-      } else {
-        stopRef.current = false;
-        const site = listSite.trim().replace(/\/+$/, '');
-        const title = listName.trim();
-        setExporting({ done: 0, total: list.length, phase: 'Preparing the list…' });
-        const exporter = new ListExport(ctx.client);
-        const info = await exporter.ensureList(site, title);
-        const items = listItemsFor(list, names, accessOf, new Date());
-        const r = await exporter.addItems(
-          site,
-          info.id,
-          items,
-          (d) => mounted.current && setExporting({ done: d, total: items.length, phase: 'Saving to the SharePoint list' }),
-          () => stopRef.current
-        );
-        ctx.log('Save sites with owners and members to a list', `${info.url} (${r.added} items)`, r.failed.length === 0);
-        if (mounted.current) {
-          setSavedList({ url: info.url, title, added: r.added, failed: r.failed });
-        }
-        ctx.notify(
-          `${r.added.toLocaleString()} sites saved to "${title}"${info.created ? ' (new list)' : ''}${r.failed.length ? `; ${r.failed.length} failed` : ''}${stopRef.current ? ' (stopped early)' : ''}.`,
-          r.failed.length ? 'error' : 'success'
-        );
-      }
+      const stoppedEarly = run.stop;
+      const stamp = new Date().toISOString().substring(0, 10);
+      // Cells longer than Excel allows are spread over extra "(part 2)" columns instead of breaking the row.
+      const fitted = fitForExcel(layout === 'site' ? SITE_HEADERS : PERSON_HEADERS, siteGroupRows(list, names, accessOf, layout));
+      downloadCsv(layout === 'site' ? `sites-owners-members-${stamp}.csv` : `sites-owners-members-people-${stamp}.csv`, fitted.headers, fitted.rows);
+      ctx.log('Export sites with owners and members', `${list.length} sites, ${read} read`, true);
+      ctx.notify(
+        stoppedEarly
+          ? `Stopped: exported with ${read.toLocaleString()} of ${(ids.length + spSites.length).toLocaleString()} sites read.`
+          : graphError
+            ? `Exported, but Microsoft 365 group members could not be read (${graphError.substring(0, 120)}). Those rows say "Not read".`
+            : `Exported ${list.length.toLocaleString()} sites with their owners and members.`,
+        graphError ? 'error' : 'success'
+      );
     } catch (e) {
       ctx.notify(graphErrorText(e), 'error');
     } finally {
+      run.stop = true;
       if (mounted.current) {
         setExporting(undefined);
       }
@@ -384,66 +365,39 @@ export const SitesGroupsView: React.FC = () => {
                 Export site list ({rows.length.toLocaleString()})
               </DefaultButton>
               <ChoiceGroup
-                label="Save as"
-                selectedKey={saveTo}
-                onChange={(_, o) => o && setSaveTo(o.key as 'csv' | 'list')}
+                label="Layout"
+                selectedKey={layout}
+                onChange={(_, o) => o && setLayout(o.key as ExportLayout)}
                 options={[
-                  { key: 'csv', text: 'CSV file' },
-                  { key: 'list', text: 'SharePoint list (one item per site)' }
+                  { key: 'site', text: 'One row per site (e-mail addresses in cells)' },
+                  { key: 'person', text: 'One row per person (easy to filter in Excel)' }
                 ]}
                 disabled={!!exporting}
                 styles={{ flexContainer: { display: 'flex', gap: 16, flexWrap: 'wrap' } }}
               />
-              {saveTo === 'csv' ? (
-                <ChoiceGroup
-                  label="Layout"
-                  selectedKey={layout}
-                  onChange={(_, o) => o && setLayout(o.key as ExportLayout)}
-                  options={[
-                    { key: 'site', text: 'One row per site (e-mail addresses in cells)' },
-                    { key: 'person', text: 'One row per person (easy to filter in Excel)' }
-                  ]}
-                  disabled={!!exporting}
-                  styles={{ flexContainer: { display: 'flex', gap: 16, flexWrap: 'wrap' } }}
-                />
-              ) : (
-                <>
-                  <TextField label="Site for the list" value={listSite} onChange={(_, v) => setListSite(v || '')} disabled={!!exporting} styles={{ root: { minWidth: 280, flex: 1 } }} />
-                  <TextField label="List name" value={listName} onChange={(_, v) => setListName(v || '')} disabled={!!exporting} styles={{ root: { minWidth: 240 } }} />
-                </>
-              )}
               <Checkbox label="Include site collection administrators (1 more request per site)" checked={includeAdmins} onChange={(_, v) => setIncludeAdmins(!!v)} disabled={!!exporting} />
-              <PrimaryButton iconProps={{ iconName: saveTo === 'list' ? 'BulletedList' : 'ExcelDocument' }} onClick={exportMembership} disabled={!!exporting || !!loading}>
-                {saveTo === 'list' ? 'Save owners & members to the list' : 'Export with owners & members'}
+              <PrimaryButton iconProps={{ iconName: 'ExcelDocument' }} onClick={exportMembership} disabled={!!exporting || !!loading}>
+                Export with owners &amp; members
               </PrimaryButton>
               {exporting && (
                 <DefaultButton
                   iconProps={{ iconName: 'Stop' }}
                   onClick={() => {
-                    stopRef.current = true;
+                    runRef.current.stop = true;
                   }}
                 >
-                  {exporting.phase ? 'Stop saving' : 'Stop and export what is read'}
+                  Stop and export what is read
                 </DefaultButton>
               )}
             </div>
             {exporting && (
               <ProgressIndicator
-                label={`${exporting.phase || 'Reading owners and members'}… ${exporting.done.toLocaleString()} of ${exporting.total.toLocaleString()} sites`}
+                label={`Reading owners and members… ${exporting.done.toLocaleString()} of ${exporting.total.toLocaleString()} sites`}
                 percentComplete={exporting.total ? exporting.done / exporting.total : undefined}
               />
             )}
-            {savedList && (
-              <MessageBar messageBarType={savedList.failed.length ? MessageBarType.warning : MessageBarType.success} isMultiline onDismiss={() => setSavedList(undefined)}>
-                {savedList.added.toLocaleString()} sites saved to{' '}
-                <a href={savedList.url} target="_blank" rel="noopener noreferrer">
-                  {savedList.title}
-                </a>
-                .{savedList.failed.length > 0 && ` Not saved: ${savedList.failed.slice(0, 10).join(', ')}${savedList.failed.length > 10 ? '…' : ''}`}
-              </MessageBar>
-            )}
             <p className={styles.muted} style={{ marginBottom: 0, fontSize: 12 }}>
-              People are listed by e-mail address, separated by semicolons. In the CSV, a cell too long for Excel continues in a &ldquo;(part 2)&rdquo; column so rows never break. In the list, very long columns are cut with a count of what was left out (use the CSV for those). Exports follow the filter below. Group-connected sites: owners and members of the Microsoft 365 group (Graph, 10 groups per request). Other sites: the people in the site&rsquo;s SharePoint Owners, Members and Visitors groups (one SharePoint request per site, at most 2 at a time).
+              People are listed by e-mail address, separated by semicolons. In the CSV, a cell too long for Excel continues in a &ldquo;(part 2)&rdquo; column so rows never break. Exports follow the filter below. Group-connected sites: owners and members of the Microsoft 365 group (Graph, 10 groups per request). Other sites: the people in the site&rsquo;s SharePoint Owners, Members and Visitors groups (one SharePoint request per site, at most 2 at a time).
             </p>
           </Card>
 
@@ -482,27 +436,32 @@ const GroupPanel: React.FC<{ site?: ISiteRow; group?: IGroupSummary; graphOk: bo
   const groupId = site && site.groupId;
   const needsGraph = !!groupId && !graphOk;
 
+  // Only the newest read may update the panel: a slow answer for an earlier site or an earlier
+  // Refresh is ignored, so the panel (and "Export this site") never mixes two sites.
+  const latest = React.useRef(0);
   const load = React.useCallback(
     (fresh: boolean) => {
+      const ticket = ++latest.current;
       if (!url || needsGraph) {
-        return () => undefined;
+        return;
       }
-      let alive = true;
       setState({ loading: true });
       // Microsoft 365 group sites: the group's owners and members. Other sites: their SharePoint groups and admins.
       const read: Promise<ISiteAccess> = groupId ? ctx.graph.membership(groupId, fresh).then(fromGroupMembership) : ctx.api.siteAccess(url, true);
       read.then(
-        (data) => alive && setState({ loading: false, data }),
-        (e) => alive && setState({ loading: false, error: graphErrorText(e) })
+        (data) => ticket === latest.current && setState({ loading: false, data }),
+        (e) => ticket === latest.current && setState({ loading: false, error: graphErrorText(e) })
       );
-      return () => {
-        alive = false;
-      };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [url, groupId, needsGraph]
   );
-  React.useEffect(() => load(false), [load]);
+  React.useEffect(() => {
+    load(false);
+    return () => {
+      latest.current++;
+    };
+  }, [load]);
 
   const manage = async (): Promise<void> => {
     if (!site) {

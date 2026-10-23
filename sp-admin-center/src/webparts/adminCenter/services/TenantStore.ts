@@ -1,4 +1,4 @@
-import { entityOf, HttpError, odataString, rowsOf, SPClient, trimSlash } from '../core/SPClient';
+import { entityOf, HttpError, odataString, rowsOf, SPClient, trimSlash, encodePathLiteral } from '../core/SPClient';
 import { IGrowthSettings } from './GrowthEngine';
 import { parseCsv } from './csv';
 import { buildSnapshot, IBuildStats, IMapping, ISnapshotData } from './StorageImport';
@@ -90,11 +90,11 @@ export class TenantStore {
   }
 
   private fileUrl(serverRelative: string): string {
-    return `${this.web}/_api/web/GetFileByServerRelativeUrl('${encodeURI(odataString(serverRelative))}')`;
+    return `${this.web}/_api/web/GetFileByServerRelativeUrl('${encodePathLiteral(serverRelative)}')`;
   }
 
   private folderUrl(serverRelative: string): string {
-    return `${this.web}/_api/web/GetFolderByServerRelativeUrl('${encodeURI(odataString(serverRelative))}')`;
+    return `${this.web}/_api/web/GetFolderByServerRelativeUrl('${encodePathLiteral(serverRelative)}')`;
   }
 
   // ---- index ----------------------------------------------------------------

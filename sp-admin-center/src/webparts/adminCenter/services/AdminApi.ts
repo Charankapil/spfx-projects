@@ -463,6 +463,9 @@ export class AdminApi {
           const g = w[k];
           if (g && g.Id) {
             g.Users = await this.client.get(this.api(web, `web/sitegroups/getbyid(${Number(g.Id)})/users?$select=${fields.join(',')}&$top=5000`), { cacheTtlMs: 0 });
+            if (rowsOf(g.Users).length >= 5000) {
+              out.truncated = true;
+            }
           }
         }
       }
@@ -480,9 +483,14 @@ export class AdminApi {
         }
       }
       if (includeAdmins) {
-        out.admins = await this.siteAdmins(web);
+        try {
+          out.admins = await this.siteAdmins(web);
+        } catch (e) {
+          // Keep the owners and members already read; say why the admins are missing.
+          out.adminsError = e instanceof HttpError && (e.status === 401 || e.status === 403) ? 'Site admins: no access' : 'Site admins could not be read';
+        }
       }
-      if (!out.ownerGroup && !out.memberGroup && !out.visitorGroup && !(out.admins && out.admins.length)) {
+      if (!out.ownerGroup && !out.memberGroup && !out.visitorGroup && !(out.admins && out.admins.length) && !out.adminsError) {
         out.error = 'No default Owners / Members / Visitors groups on this site';
       }
     } catch (e) {

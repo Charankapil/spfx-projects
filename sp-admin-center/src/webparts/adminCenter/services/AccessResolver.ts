@@ -357,7 +357,7 @@ export class AccessResolver {
       const r = await this.client.post<{ value?: string; d?: { GetWebUrlFromPageUrl?: string } }>(
         `${trimSlash(this.homeWebUrl)}/_api/SP.Web.GetWebUrlFromPageUrl`,
         { pageFullUrl: url },
-        {},
+        { keepCache: true },
         this.homeWebUrl
       );
       const v = r && (r.value || (r.d && r.d.GetWebUrlFromPageUrl));
@@ -380,11 +380,13 @@ export class AccessResolver {
       const candidate = originPart + (n ? '/' + segs.slice(0, n).join('/') : '');
       try {
         const j = entityOf<{ Url?: string }>(await this.client.get(`${candidate}/_api/web?$select=Url`, { cacheTtlMs: 60000 }));
-        if (j && j.Url && trimSlash(j.Url).toLowerCase() === candidate.toLowerCase()) {
+        // Compare decoded: the candidate comes from an encoded address, Url is returned decoded.
+        if (j && j.Url && safeDecode(trimSlash(j.Url)).toLowerCase() === safeDecode(candidate).toLowerCase()) {
           found = trimSlash(j.Url);
         }
       } catch (e) {
-        if (isAccessError(e)) {
+        // A refusal at the tenant root (n = 0) says nothing about the site that was pasted: keep probing.
+        if (isAccessError(e) && n > 0) {
           return candidate;
         }
       }

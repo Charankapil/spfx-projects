@@ -1730,7 +1730,7 @@ test('create site: communication / group requests, templates and availability', 
   assert.deepStrictEqual(all.filter((t) => t.group === 'Your organisation').map((t) => [t.title, t.route, t.webTemplate]), [['Project hub', 'spsite', 'SITEPAGEPUBLISHING#0'], ['Dept team', 'group', 'GROUP#0']]);
   const showcase = all.find((t) => t.key === 'comm-showcase');
   const req = { template: showcase, title: 'Finance', managedPath: 'sites', alias: 'fin', description: 'd', lcid: 1036, owner: 'boss@contoso.com', isPublic: false, hubId: 'hhhh' };
-  assert.deepStrictEqual(await c.checkAvailable(req), { ok: true, message: ORIGIN + '/sites/fin is available.' });
+  assert.deepStrictEqual(await c.checkAvailable(req), { ok: true, message: ORIGIN + '/sites/fin is available.', url: ORIGIN + '/sites/fin' });
   status = 2;
   assert.strictEqual((await c.checkAvailable(req)).ok, false);
   const res = await c.create(req);
@@ -1919,9 +1919,7 @@ test('sites: OneDrive personal sites are left out of every site list', async () 
   assert.ok(/querytext='contentclass:STS_Site -WebTemplate:SPSPERS IndexDocId>0'/.test(queries[0]), queries[0]);
 });
 
-// ---------------------------------------------------------------- export: Excel limits & SharePoint list
-const LX = src('services/ListExport');
-const { buildBatchBody, parseBatchStatuses } = src('core/SPClient');
+// ---------------------------------------------------------------- export: Excel limits
 
 test('export: long people cells are split between addresses into extra columns, never across rows', () => {
   const many = Array.from({ length: 3000 }, (_, i) => `user${i}@contoso.com`).join(';');
@@ -1940,77 +1938,45 @@ test('export: long people cells are split between addresses into extra columns, 
   assert.deepStrictEqual(same, { headers: ['A'], rows: [['short']] });
 });
 
-test('export: SharePoint $batch body and status parsing', () => {
-  const body = buildBatchBody([{ method: 'POST', url: ORIGIN + "/sites/a/_api/web/lists(guid'x')/items", body: { Title: 'A' } }, { method: 'POST', url: ORIGIN + "/sites/a/_api/web/lists(guid'x')/items", body: { Title: 'B' } }], 'B1', 'C1');
-  assert.ok(body.startsWith('--batch_B1\r\nContent-Type: multipart/mixed; boundary="changeset_C1"\r\n\r\n--changeset_C1\r\n'));
-  assert.strictEqual((body.match(/--changeset_C1\r\n/g) || []).length, 2);
-  assert.ok(body.includes("POST " + ORIGIN + "/sites/a/_api/web/lists(guid'x')/items HTTP/1.1\r\nContent-Type: application/json;odata=nometadata\r\nAccept: application/json;odata=nometadata\r\n\r\n{\"Title\":\"A\"}"));
-  assert.ok(body.endsWith('--changeset_C1--\r\n\r\n--batch_B1--\r\n'));
-  const reply = '--batchresponse_1\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 201 Created\r\nCONTENT-TYPE: application/json\r\n\r\n{}\r\n--batchresponse_1\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 429 Too Many Requests\r\n\r\n--batchresponse_1--';
-  assert.deepStrictEqual(parseBatchStatuses(reply), [201, 429]);
+test('release fixes: OneDrive check is anchored, root-site locks show the banner, paths with # are encoded, ; cells are quoted', () => {
+  const { isOneDriveSite } = src('services/SearchApi');
+  assert.ok(!isOneDriveSite(ORIGIN + '/sites/personal'));
+  assert.ok(!isOneDriveSite(ORIGIN + '/teams/x/personal/notes'));
+  assert.ok(isOneDriveSite(ORIGIN + '/personal/ann_contoso_com'));
+  const { matchLock } = src('../../shared/readOnlyLocks');
+  const rootLock = { path: '', message: 'Root is read-only', scope: 'web' };
+  assert.strictEqual(matchLock([rootLock], '/SitePages/Home.aspx', ''), rootLock);
+  assert.strictEqual(matchLock([rootLock], '/', ''), rootLock);
+  const { encodePathLiteral } = src('core/SPClient');
+  assert.strictEqual(encodePathLiteral("/sites/a/Shared Documents/Q1 #2/What?/O'Neil"), "/sites/a/Shared%20Documents/Q1%20%232/What%3F/O''Neil");
+  assert.strictEqual(csvCell('a@x.com;b@x.com'), '"a@x.com;b@x.com"');
 });
 
-test('export: list items carry e-mails, counts and notes; long columns are cut with a count', () => {
-  const sites = [
-    { url: ORIGIN + '/sites/fin', title: 'Finance', template: 'GROUP#0', groupConnected: true, groupId: gid(1), manageable: true },
-    { url: ORIGIN + '/sites/hr', title: 'HR', template: 'STS#3', groupConnected: false, manageable: true },
-    { url: ORIGIN + '/sites/locked', title: 'Locked', template: 'STS#3', groupConnected: false, manageable: true }
-  ];
-  const ann = { id: '1', displayName: 'Ann', mail: 'ann@contoso.com', type: 'user' };
-  const lots = Array.from({ length: 4000 }, (_, i) => ({ id: String(i), displayName: 'U' + i, mail: `user${i}@contoso.com`, type: 'user' }));
-  const acc = {
-    [sites[0].url]: SGX.fromGroupMembership({ owners: [ann], members: lots, truncated: false }),
-    [sites[1].url]: { source: 'sharepoint', owners: [ann], members: [], visitors: [ann], admins: [ann], truncated: false, ownerGroup: 'HR Owners' },
-    [sites[2].url]: { source: 'sharepoint', owners: [], members: [], visitors: [], truncated: false, error: 'No access to this site' }
-  };
-  const when = new Date('2026-10-23T10:00:00Z');
-  const items = LX.listItemsFor(sites, { [gid(1)]: { id: gid(1), displayName: 'Finance', mail: 'fin@contoso.com', visibility: 'Private', isTeam: true } }, (x) => acc[x.url], when);
-  assert.deepStrictEqual([items[0].Title, items[0].SiteUrl, items[0].GroupName, items[0].Owners, items[0].OwnersCount, items[0].MembersCount, items[0].VisitorsCount, items[0].ExportedOn], ['Finance', ORIGIN + '/sites/fin', 'Finance', 'ann@contoso.com', 1, 4000, undefined, '2026-10-23T10:00:00.000Z']);
-  assert.ok(items[0].Members.length <= LX.NOTE_LIMIT, 'fits in a list column');
-  assert.ok(/… \([\d,]+ more; too many for one list column/.test(items[0].Members));
-  assert.deepStrictEqual([items[1].MembershipFrom, items[1].VisitorsCount, items[1].Visitors, items[1].SiteAdmins, items[1].M365Group], ['SharePoint groups', 1, 'ann@contoso.com', 'ann@contoso.com', 'No']);
-  assert.deepStrictEqual([items[2].OwnersCount, items[2].ExportNote], [undefined, 'No access to this site']);
-  assert.ok(LX.LIST_COLUMNS.every((c) => /^[A-Za-z0-9]+$/.test(c.name)), 'internal names without spaces');
-  assert.strictEqual(LX.fieldXml({ name: 'Members', display: 'Members & co', type: 'Note' }), '<Field Type="Note" DisplayName="Members &amp; co" Name="Members" StaticName="Members" NumLines="6" RichText="FALSE" UnlimitedLengthInDocumentLibrary="TRUE" />');
-});
-
-test('export: the list is created with its columns, then items are added in batches with a retry for throttled ones', async () => {
-  const W = ORIGIN + '/sites/reports';
-  const env = { posts: [], batches: [], fields: ['Title', 'SiteUrl'], listExists: false, throttleOnce: true };
-  const c = make(async (m, url, cfg, o) => {
+test('release fixes: group site check uses the URL SharePoint reports (/sites/ or /teams/)', async () => {
+  const client = make(async (m, url) => {
     const u = decodeURIComponent(url);
-    if (/getbytitle\('Owners report'\)/.test(u)) return env.listExists ? json({ Id: 'L1', RootFolder: { ServerRelativeUrl: '/sites/reports/Lists/Owners report' } }) : json({ error: { message: { value: 'List does not exist' } } }, 404);
-    if (m === 'POST' && /\/_api\/web\/lists$/.test(u)) { env.listExists = true; env.posts.push(JSON.parse(o.body)); return json({ Id: 'L1' }); }
-    if (/lists\(guid'L1'\)\?/.test(u)) return json({ Id: 'L1', RootFolder: { ServerRelativeUrl: '/sites/reports/Lists/Owners report' } });
-    if (/lists\(guid'L1'\)\/fields\?/.test(u)) return json({ value: env.fields.map((f) => ({ InternalName: f })) });
-    if (/CreateFieldAsXml/.test(u)) { const b = JSON.parse(o.body); env.fields.push(/ Name="([^"]+)"/.exec(b.parameters.SchemaXml)[1]); assert.strictEqual(b.parameters.Options, 25); return json({}); }
-    if (/\/_api\/\$batch$/.test(u)) {
-      assert.ok(/^multipart\/mixed; boundary=batch_/.test(o.headers['Content-Type']));
-      const titles = (o.body.match(/\{"Title":"[^"]*"/g) || []).map((x) => x.slice(10, -1));
-      env.batches.push(titles);
-      const parts = titles.map((t) => {
-        if (t === 'S3' && env.throttleOnce) { env.throttleOnce = false; return 'HTTP/1.1 429 Too Many Requests'; }
-        return t === 'S7' ? 'HTTP/1.1 400 Bad Request' : 'HTTP/1.1 201 Created';
-      });
-      return new Response(parts.map((p) => '--batchresponse_x\r\nContent-Type: application/http\r\n\r\n' + p + '\r\n\r\n{}').join('\r\n') + '\r\n--batchresponse_x--', { status: 200 });
-    }
-    return json({ error: { message: { value: 'no route ' + u } } }, 404);
+    if (/GetValidSiteUrlFromAlias/.test(u)) return json({ value: ORIGIN + '/sites/fin' });
+    if (/SPSiteManager\/status/.test(u)) return json({ SiteStatus: 0 });
+    return json({ value: [] });
   });
-  const ex = new LX.ListExport(c);
-  const info = await ex.ensureList(W, 'Owners report');
-  assert.deepStrictEqual([info.id, info.created, info.url], ['L1', true, ORIGIN + '/sites/reports/Lists/Owners report']);
-  assert.deepStrictEqual(env.posts[0].BaseTemplate, 100);
-  assert.deepStrictEqual(env.fields.slice(2), LX.LIST_COLUMNS.map((x) => x.name).filter((n) => n !== 'SiteUrl'), 'only missing columns added: ' + env.fields.join());
-  const again = await ex.ensureList(W, 'Owners report');
-  assert.strictEqual(again.created, false);
-  const items = Array.from({ length: 120 }, (_, i) => ({ Title: 'S' + i, SiteUrl: ORIGIN + '/sites/s' + i }));
-  const progress = [];
-  const r = await ex.addItems(W, 'L1', items, (d) => progress.push(d));
-  assert.deepStrictEqual(env.batches.map((b) => b.length), [50, 1, 50, 20], '50 per batch; the throttled one retried alone');
-  assert.deepStrictEqual(env.batches[1], ['S3']);
-  assert.strictEqual(r.added, 119);
-  assert.deepStrictEqual(r.failed, [ORIGIN + '/sites/s7 (400)']);
-  assert.deepStrictEqual(progress, [50, 100, 120]);
+  const c = new SC.SiteCreator(client, ORIGIN + '/sites/it');
+  const g = { template: SC.BUILT_IN_TEMPLATES.find((x) => x.route === 'group'), title: 'Fin', managedPath: 'teams', alias: 'fin', description: '', lcid: 1033, owner: '', isPublic: false };
+  const r = await c.checkAvailable(g);
+  assert.deepStrictEqual([r.ok, r.url], [true, ORIGIN + '/sites/fin'], 'not reported as taken just because the tenant uses /sites/');
+});
+
+test('release fixes: a failed admin read keeps the owners and members of the site', async () => {
+  const c = make(async (m, url) => {
+    const d = decodeURIComponent(url);
+    if (/IsSiteAdmin eq true/.test(d)) return json({ error: { message: { value: 'Access denied.' } } }, 403);
+    return json({ AssociatedOwnerGroup: { Id: 3, Title: 'X Owners', Users: [{ Id: 5, Title: 'Ann', LoginName: 'i:0#.f|membership|ann@contoso.com', Email: 'ann@contoso.com', PrincipalType: 1 }] }, AssociatedMemberGroup: null, AssociatedVisitorGroup: null });
+  });
+  const a = await new AdminApi(c).siteAccess(ORIGIN + '/sites/x', true);
+  assert.strictEqual(a.error, undefined);
+  assert.strictEqual(a.owners.length, 1);
+  assert.strictEqual(a.adminsError, 'Site admins: no access');
+  const row = SGX.siteGroupRows([{ url: ORIGIN + '/sites/x', title: 'X', template: 'STS#3', groupConnected: false, manageable: true }], {}, () => a, 'site')[0];
+  assert.ok(/Site admins: no access/.test(row[SGX.SITE_HEADERS.indexOf('Note')]));
 });
 
 // ---------------------------------------------------------------- runner

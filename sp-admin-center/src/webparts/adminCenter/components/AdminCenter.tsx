@@ -52,26 +52,38 @@ export interface IAdminCenterProps {
   version?: string;
 }
 
-const NAV: Array<{ key: ViewKey; text: string; icon: string; section?: string }> = [
-  { key: 'overview', text: 'Site dashboard', icon: 'ViewDashboard', section: 'Overview' },
-  { key: 'tenant', text: 'Tenant dashboard', icon: 'BIDashboard' },
-  { key: 'sites', text: 'Sites', icon: 'Globe', section: 'Sites & storage' },
-  { key: 'storage', text: 'Storage insights', icon: 'Database' },
-  { key: 'growth', text: 'Storage growth', icon: 'AreaChart' },
-  { key: 'create', text: 'Create site', icon: 'CirclePlus' },
-  { key: 'people', text: 'People & permissions', icon: 'Permissions', section: 'Manage' },
-  { key: 'grant', text: 'Grant access by URL', icon: 'Link' },
-  { key: 'content', text: 'Lists & libraries', icon: 'Library' },
-  { key: 'recycle', text: 'Recycle bin', icon: 'RecycleBin' },
-  { key: 'locks', text: 'Read-only locks', icon: 'Lock' },
-  { key: 'activity', text: 'Activity', icon: 'History', section: 'Monitor' },
-  { key: 'health', text: 'Health check', icon: 'HealthSolid' },
-  { key: 'sitegroups', text: 'Sites & M365 groups', icon: 'SharepointLogo', section: 'Microsoft 365' },
-  { key: 'm365groups', text: 'Groups & owners', icon: 'Group' },
-  { key: 'guests', text: 'Guest users', icon: 'UserWarning' },
-  { key: 'settings', text: 'Settings & log', icon: 'Settings', section: 'Administration' },
-  { key: 'apiaccess', text: 'API access', icon: 'PlugConnected' }
+type NavTab = 'site' | 'tenant';
+
+/**
+ * Two tabs: everything that works on the selected site, and everything tenant-wide
+ * (all sites, creating sites, access by URL, guests, API access).
+ */
+const NAV: Array<{ key: ViewKey; text: string; icon: string; tab: NavTab; section?: string }> = [
+  { key: 'overview', text: 'Site dashboard', icon: 'ViewDashboard', tab: 'site', section: 'Overview' },
+  { key: 'health', text: 'Health check', icon: 'HealthSolid', tab: 'site' },
+  { key: 'people', text: 'People & permissions', icon: 'Permissions', tab: 'site', section: 'Manage' },
+  { key: 'm365groups', text: 'M365 group & owners', icon: 'Group', tab: 'site' },
+  { key: 'content', text: 'Lists & libraries', icon: 'Library', tab: 'site' },
+  { key: 'recycle', text: 'Recycle bin', icon: 'RecycleBin', tab: 'site' },
+  { key: 'locks', text: 'Read-only locks', icon: 'Lock', tab: 'site' },
+  { key: 'activity', text: 'Activity', icon: 'History', tab: 'site', section: 'Monitor' },
+  { key: 'storage', text: 'Storage insights', icon: 'Database', tab: 'site' },
+  { key: 'settings', text: 'Site settings & log', icon: 'Settings', tab: 'site', section: 'Settings' },
+  { key: 'tenant', text: 'Tenant dashboard', icon: 'BIDashboard', tab: 'tenant', section: 'Overview' },
+  { key: 'sites', text: 'Sites', icon: 'Globe', tab: 'tenant', section: 'Sites' },
+  { key: 'sitegroups', text: 'Sites & M365 groups', icon: 'SharepointLogo', tab: 'tenant' },
+  { key: 'create', text: 'Create site', icon: 'CirclePlus', tab: 'tenant' },
+  { key: 'growth', text: 'Storage growth', icon: 'AreaChart', tab: 'tenant', section: 'Storage' },
+  { key: 'grant', text: 'Grant access by URL', icon: 'Link', tab: 'tenant', section: 'Access' },
+  { key: 'guests', text: 'Guest users', icon: 'UserWarning', tab: 'tenant' },
+  { key: 'apiaccess', text: 'API access', icon: 'PlugConnected', tab: 'tenant', section: 'Administration' }
 ];
+
+function tabOf(v: ViewKey): NavTab {
+  const n = NAV.filter((x) => x.key === v)[0];
+  return n ? n.tab : 'site';
+}
+
 
 interface IToast {
   id: number;
@@ -275,7 +287,33 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, 
 
         <div className={styles.body}>
           <nav className={styles.nav} aria-label="Administration sections">
-            {NAV.map((n) => (
+            <div className={styles.navTabs} role="tablist" aria-label="Scope">
+              {(['site', 'tenant'] as NavTab[]).map((t) => {
+                const active = tabOf(view) === t;
+                const count = t === 'site' ? badge : growthBadge;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`${styles.navTab} ${active ? styles.navTabActive : ''}`}
+                    onClick={() => !active && setView(NAV.filter((x) => x.tab === t)[0].key)}
+                    title={t === 'site' ? `Work on ${target.title}` : 'Tenant-wide tools'}
+                  >
+                    <Icon iconName={t === 'site' ? 'Home' : 'CityNext'} aria-hidden="true" />
+                    {t === 'site' ? 'This site' : 'Tenant'}
+                    {count > 0 && <span className={styles.navTabBadge}>{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {tabOf(view) === 'site' && (
+              <div className={styles.navScope} title={target.webUrl}>
+                {target.title}
+              </div>
+            )}
+            {NAV.filter((n) => n.tab === tabOf(view)).map((n) => (
               <React.Fragment key={n.key}>
               {n.section && <div className={styles.navSection}>{n.section}</div>}
               <button type="button" className={`${styles.navItem} ${view === n.key ? styles.navItemActive : ''}`} onClick={() => setView(n.key)} aria-current={view === n.key ? 'page' : undefined}>

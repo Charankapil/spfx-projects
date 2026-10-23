@@ -1,4 +1,4 @@
-import { entityOf, HttpError, odataString, rowsOf, SPClient, trimSlash } from '../core/SPClient';
+import { entityOf, HttpError, odataString, rowsOf, SPClient, trimSlash, encodePathLiteral } from '../core/SPClient';
 import {
   IAssignment,
   IBannerLock,
@@ -150,7 +150,7 @@ export class LockService {
   }
 
   public async listFolders(webUrl: string, folderPath: string): Promise<Array<{ name: string; path: string }>> {
-    const j = await this.client.get(this.api(webUrl, `web/GetFolderByServerRelativeUrl('${encodeURI(odataString(folderPath))}')/Folders?$select=Name,ServerRelativeUrl&$top=500`), { cacheTtlMs: 0 });
+    const j = await this.client.get(this.api(webUrl, `web/GetFolderByServerRelativeUrl('${encodePathLiteral(folderPath)}')/Folders?$select=Name,ServerRelativeUrl&$top=500`), { cacheTtlMs: 0 });
     return rowsOf<{ Name?: string; ServerRelativeUrl?: string }>(j)
       .filter((f) => f.Name && f.Name !== 'Forms' && str(f.Name).charAt(0) !== '_')
       .map((f) => ({ name: str(f.Name), path: str(f.ServerRelativeUrl) }))
@@ -159,7 +159,7 @@ export class LockService {
 
   private async folderItem(webUrl: string, folderPath: string): Promise<{ listId: string; itemId: number }> {
     const j = entityOf<{ Id?: number; ParentList?: { Id?: string } }>(
-      await this.client.get(this.api(webUrl, `web/GetFolderByServerRelativeUrl('${encodeURI(odataString(folderPath))}')/ListItemAllFields?$select=Id,ParentList/Id&$expand=ParentList`), { cacheTtlMs: 0 })
+      await this.client.get(this.api(webUrl, `web/GetFolderByServerRelativeUrl('${encodePathLiteral(folderPath)}')/ListItemAllFields?$select=Id,ParentList/Id&$expand=ParentList`), { cacheTtlMs: 0 })
     );
     if (!j || !j.Id || !j.ParentList || !j.ParentList.Id) {
       throw new Error('That folder could not be found (only folders inside a library or list can be locked).');
@@ -170,7 +170,7 @@ export class LockService {
   // ---- lock store ------------------------------------------------------------
 
   public async loadLocks(webUrl: string): Promise<ILockRecord[]> {
-    const url = this.api(webUrl, `web/GetFileByServerRelativeUrl('${encodeURI(odataString(`${this.serverRelative(webUrl)}/SiteAssets/${LOCK_FILE}`))}')/$value`);
+    const url = this.api(webUrl, `web/GetFileByServerRelativeUrl('${encodePathLiteral(`${this.serverRelative(webUrl)}/SiteAssets/${LOCK_FILE}`)}')/$value`);
     try {
       const raw = await this.client.get<ILockStore>(url, { cacheTtlMs: 0 });
       return raw && Array.isArray(raw.locks) ? raw.locks : [];
@@ -185,7 +185,7 @@ export class LockService {
   private async saveLocks(webUrl: string, locks: ILockRecord[]): Promise<void> {
     const folder = `${this.serverRelative(webUrl)}/SiteAssets`;
     const write = (): Promise<unknown> =>
-      this.client.post(this.api(webUrl, `web/GetFolderByServerRelativeUrl('${encodeURI(odataString(folder))}')/Files/add(url='${LOCK_FILE}',overwrite=true)`), JSON.stringify({ v: 1, locks }), { raw: true }, webUrl);
+      this.client.post(this.api(webUrl, `web/GetFolderByServerRelativeUrl('${encodePathLiteral(folder)}')/Files/add(url='${LOCK_FILE}',overwrite=true)`), JSON.stringify({ v: 1, locks }), { raw: true }, webUrl);
     try {
       await write();
     } catch (e) {

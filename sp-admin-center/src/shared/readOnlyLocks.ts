@@ -121,7 +121,11 @@ function norm(path: string): string {
 function within(path: string, root: string): boolean {
   const p = norm(path);
   const r = norm(root);
-  return !!r && (p === r || p.indexOf(r + '/') === 0);
+  // The tenant root site has an empty path: every page of it is inside (the banner is registered on that web only).
+  if (!r) {
+    return true;
+  }
+  return p === r || p.indexOf(r + '/') === 0;
 }
 
 /**

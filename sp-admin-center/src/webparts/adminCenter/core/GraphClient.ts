@@ -277,7 +277,7 @@ export class GraphClient {
   }
 
   /** POST / PATCH / DELETE with a JSON body. Any write drops the read cache. */
-  public async send<T = undefined>(method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T | undefined> {
+  public async send<T = undefined>(method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown, readOnly = false): Promise<T | undefined> {
     const url = this.resolve(path);
     const result = await this.enqueue<T | undefined>(async () => {
       const response = await this.execute(url, method, { Accept: 'application/json', 'Content-Type': 'application/json' }, body === undefined ? undefined : JSON.stringify(body));
@@ -287,7 +287,10 @@ export class GraphClient {
       const text = response.status === 204 ? '' : await response.text();
       return text ? (JSON.parse(text) as T) : undefined;
     });
-    this.clearCache();
+    // A read-only POST (a $batch of GETs) keeps the cache.
+    if (!readOnly) {
+      this.clearCache();
+    }
     return result;
   }
 }

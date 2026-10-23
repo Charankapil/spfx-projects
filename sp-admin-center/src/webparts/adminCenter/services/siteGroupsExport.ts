@@ -19,6 +19,8 @@ export interface ISiteAccess {
   visitors: IDirectoryObject[];
   /** Site collection administrators (only when asked for). */
   admins?: IDirectoryObject[];
+  /** Why the admins are missing when they were asked for but could not be read. */
+  adminsError?: string;
   /** SharePoint group names (SharePoint source). */
   ownerGroup?: string;
   memberGroup?: string;
@@ -161,6 +163,9 @@ export function siteGroupRows(
       notes.push(a.error);
     } else if (a.truncated) {
       notes.push('Very large group: list truncated');
+    }
+    if (a && a.adminsError) {
+      notes.push(a.adminsError);
     }
     if (layout === 'site') {
       rows.push([

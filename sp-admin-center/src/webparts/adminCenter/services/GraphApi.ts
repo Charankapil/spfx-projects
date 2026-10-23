@@ -455,7 +455,7 @@ export class GraphApi {
         const chunk = pending.slice(start, start + BATCH_SIZE);
         const reply = await this.client.send<{ responses?: Array<{ id: string; status: number; body?: unknown; headers?: { [k: string]: string } }> }>('POST', '/v1.0/$batch', {
           requests: chunk.map((i) => ({ id: String(i), method: 'GET', url: paths[i] }))
-        });
+        }, true);
         ((reply && reply.responses) || []).forEach((r) => {
           const i = Number(r.id);
           results[i] = { status: Number(r.status), body: r.body };

@@ -9,7 +9,8 @@ export function csvCell(value: unknown): string {
   if (/^[=+\-@\t\r]/.test(s)) {
     s = "'" + s;
   }
-  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  // Quoted also when it holds ; so Excel set to a semicolon list separator keeps the cell whole.
+  return /[",;\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
 export function toCsv(headers: string[], rows: unknown[][]): string {

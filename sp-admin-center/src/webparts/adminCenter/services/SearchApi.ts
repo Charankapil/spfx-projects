@@ -254,9 +254,9 @@ export class SearchApi {
   }
 }
 
-/** OneDrive (personal) site: the -my host, a /personal/ path or the SPSPERS template. */
+/** OneDrive (personal) site: the -my host, a /personal/... address right under the host, or the SPSPERS template. */
 export function isOneDriveSite(url: string, template?: string): boolean {
-  return /^https:\/\/[^/]+-my\.sharepoint\.(com|us|de|cn)\//i.test(url + '/') || /\/personal\//i.test(url + '/') || /^SPSPERS/i.test(template || '');
+  return /^https:\/\/[^/]+-my\.sharepoint\.(com|us|de|cn)\//i.test(url + '/') || /^https:\/\/[^/]+\/personal\//i.test(url + '/') || /^SPSPERS/i.test(template || '');
 }
 
 /** A GUID other than the empty one, lower-case; search may wrap it in braces. */

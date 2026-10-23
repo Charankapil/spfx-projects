@@ -132,7 +132,7 @@ export class SiteCreator {
   public async templates(): Promise<ISiteTemplate[]> {
     let custom: ISiteTemplate[] = [];
     try {
-      const j = await this.client.post<unknown>(`${this.home}/_api/Microsoft.SharePoint.Utilities.WebTemplateExtensions.SiteScriptUtility.GetSiteDesigns`, {}, {}, this.home);
+      const j = await this.client.post<unknown>(`${this.home}/_api/Microsoft.SharePoint.Utilities.WebTemplateExtensions.SiteScriptUtility.GetSiteDesigns`, {}, { keepCache: true }, this.home);
       custom = rowsOf<{ Id?: string; Title?: string; Description?: string; WebTemplate?: string }>(j)
         .filter((d) => d.Id && (d.WebTemplate === '64' || d.WebTemplate === '68' || d.WebTemplate === '1'))
         .map((d) => {
@@ -195,23 +195,33 @@ export class SiteCreator {
   }
 
   /** Is the address free? Returns a reason when it is not. */
-  public async checkAvailable(r: ICreateRequest): Promise<{ ok: boolean; message: string; suggestion?: string }> {
+  /**
+   * Is the address free? Returns a reason when it is not. For group sites SharePoint picks
+   * the managed path (/sites/ or /teams/, a tenant setting), so the URL it reports is used.
+   */
+  public async checkAvailable(r: ICreateRequest): Promise<{ ok: boolean; message: string; suggestion?: string; url?: string }> {
     if (!validAlias(r.alias)) {
       return { ok: false, message: 'Use letters, numbers, - and _ only (no spaces), starting with a letter or number.' };
     }
-    const url = `${this.origin}/${r.managedPath}/${r.alias}`;
+    let url = `${this.origin}/${r.managedPath}/${r.alias}`;
     if (r.template.route === 'group') {
       try {
         const valid = await this.groupSiteUrlFor(r.alias, r.managedPath);
-        if (valid && valid.toLowerCase() !== url.toLowerCase()) {
-          return { ok: false, message: 'That name is already used by a site or group.', suggestion: valid.split('/').pop() };
+        if (valid) {
+          const name = (valid.split('/').pop() || '').toLowerCase();
+          if (name !== r.alias.toLowerCase()) {
+            return { ok: false, message: 'That name is already used by a site or group.', suggestion: valid.split('/').pop(), url: valid };
+          }
+          url = valid;
         }
       } catch {
         /* fall through to the status check */
       }
     }
     const s = await this.status(url);
-    return s === 0 ? { ok: true, message: `${url} is available.` } : { ok: false, message: `${url} is already taken (${STATUS_TEXT[s] || 'exists'}). Deleted sites keep their address until they are removed from the site recycle bin.` };
+    return s === 0
+      ? { ok: true, message: `${url} is available.`, url }
+      : { ok: false, message: `${url} is already taken (${STATUS_TEXT[s] || 'exists'}). Deleted sites keep their address until they are removed from the site recycle bin.`, url };
   }
 
   public async create(r: ICreateRequest): Promise<ICreateResult> {
