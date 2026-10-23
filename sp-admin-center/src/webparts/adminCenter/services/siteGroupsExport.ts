@@ -52,9 +52,75 @@ export const SITE_HEADERS = [
 ];
 export const PERSON_HEADERS = ['Site URL', 'Site title', 'Membership from', 'Group', 'Role', 'Name', 'E-mail / UPN', 'User type'];
 
+/** Separator between people in one cell: a semicolon, which Outlook also accepts. */
+export const PEOPLE_SEPARATOR = ';';
+
+/** Just the e-mail address (UPN when there is none; the name for groups such as "Everyone"). */
 export function personText(p: IDirectoryObject): string {
-  const id = p.mail || p.userPrincipalName || '';
-  return id && id.toLowerCase() !== p.displayName.toLowerCase() ? `${p.displayName} <${id}>` : p.displayName;
+  return p.mail || p.userPrincipalName || p.displayName;
+}
+
+export function peopleText(people: IDirectoryObject[]): string {
+  return people.map(personText).join(PEOPLE_SEPARATOR);
+}
+
+/** Excel stops a cell at 32,767 characters and pushes the rest of a CSV cell onto the next row. */
+export const EXCEL_CELL_LIMIT = 32000;
+
+/** Splits a list text into pieces of at most `limit` characters, only at separators. */
+export function splitList(text: string, limit: number, separator = PEOPLE_SEPARATOR): string[] {
+  if (text.length <= limit) {
+    return [text];
+  }
+  const parts: string[] = [];
+  let current = '';
+  text.split(separator).forEach((item) => {
+    const piece = item.length > limit ? item.substring(0, limit) : item;
+    if (current && current.length + separator.length + piece.length > limit) {
+      parts.push(current);
+      current = piece;
+    } else {
+      current = current ? current + separator + piece : piece;
+    }
+  });
+  if (current) {
+    parts.push(current);
+  }
+  return parts;
+}
+
+/**
+ * Makes every cell fit in Excel: a column whose longest cell is too long is spread over
+ * "Name", "Name (part 2)", "Name (part 3)"... columns, split between addresses, so no row
+ * is ever broken and nothing is lost.
+ */
+export function fitForExcel(headers: string[], rows: unknown[][], limit = EXCEL_CELL_LIMIT): { headers: string[]; rows: unknown[][] } {
+  const parts = headers.map((_, c) => rows.reduce((m: number, r) => {
+    const v = r[c];
+    return typeof v === 'string' && v.length > limit ? Math.max(m, splitList(v, limit).length) : m;
+  }, 1));
+  if (parts.every((n) => n === 1)) {
+    return { headers, rows };
+  }
+  const outHeaders: string[] = [];
+  headers.forEach((h, c) => {
+    outHeaders.push(h);
+    for (let k = 2; k <= parts[c]; k++) {
+      outHeaders.push(`${h} (part ${k})`);
+    }
+  });
+  const outRows = rows.map((r) => {
+    const out: unknown[] = [];
+    headers.forEach((_, c) => {
+      const v = r[c];
+      const pieces = parts[c] > 1 && typeof v === 'string' ? splitList(v, limit) : [v];
+      for (let k = 0; k < parts[c]; k++) {
+        out.push(k < pieces.length ? pieces[k] : '');
+      }
+    });
+    return out;
+  });
+  return { headers: outHeaders, rows: outRows };
 }
 
 function userType(p: IDirectoryObject): string {
@@ -108,12 +174,12 @@ export function siteGroupRows(
         g ? g.visibility : '',
         g ? (g.isTeam ? 'Yes' : 'No') : '',
         a && !a.error ? a.owners.length : '',
-        a ? a.owners.map(personText).join('; ') : '',
+        a ? peopleText(a.owners) : '',
         a && !a.error ? a.members.length : '',
-        a ? a.members.map(personText).join('; ') : '',
+        a ? peopleText(a.members) : '',
         a && !a.error && a.source === 'sharepoint' ? a.visitors.length : '',
-        a ? a.visitors.map(personText).join('; ') : '',
-        a && a.admins ? a.admins.map(personText).join('; ') : '',
+        a ? peopleText(a.visitors) : '',
+        a && a.admins ? peopleText(a.admins) : '',
         notes.join('. ')
       ]);
       return;

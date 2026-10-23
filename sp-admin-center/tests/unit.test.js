@@ -1834,9 +1834,9 @@ test('sites & groups: group directory and export rows (per site and per person)'
   assert.strictEqual(bySite.length, 4);
   assert.strictEqual(bySite[0].length, SGX.SITE_HEADERS.length);
   const col = (row, name) => row[SGX.SITE_HEADERS.indexOf(name)];
-  assert.deepStrictEqual([col(bySite[0], 'Membership from'), col(bySite[0], 'Group name'), col(bySite[0], 'Owners (count)'), col(bySite[0], 'Members')], ['Microsoft 365 group', 'Finance', 1, 'Ann <ann@contoso.com>; Bob <bob_ext#EXT#@contoso.onmicrosoft.com>']);
+  assert.deepStrictEqual([col(bySite[0], 'Membership from'), col(bySite[0], 'Group name'), col(bySite[0], 'Owners (count)'), col(bySite[0], 'Members')], ['Microsoft 365 group', 'Finance', 1, 'ann@contoso.com;bob_ext#EXT#@contoso.onmicrosoft.com']);
   assert.deepStrictEqual([col(bySite[0], 'Visitors (count)'), col(bySite[0], 'Site admins')], ['', '']);
-  assert.deepStrictEqual([col(bySite[1], 'Membership from'), col(bySite[1], 'Microsoft 365 group'), col(bySite[1], 'Owners'), col(bySite[1], 'Members (count)'), col(bySite[1], 'Visitors'), col(bySite[1], 'Site admins')], ['SharePoint groups', 'No', 'Ann <ann@contoso.com>', 1, 'Everyone except external users', 'Ann <ann@contoso.com>']);
+  assert.deepStrictEqual([col(bySite[1], 'Membership from'), col(bySite[1], 'Microsoft 365 group'), col(bySite[1], 'Owners'), col(bySite[1], 'Members (count)'), col(bySite[1], 'Visitors'), col(bySite[1], 'Site admins')], ['SharePoint groups', 'No', 'ann@contoso.com', 1, 'Everyone except external users', 'ann@contoso.com']);
   assert.ok(/Teams channel site/.test(col(bySite[2], 'Note')));
   assert.deepStrictEqual([col(bySite[3], 'Owners (count)'), col(bySite[3], 'Note')], ['', 'Group not found (deleted?)']);
   const byPerson = SGX.siteGroupRows(sites, dir, accessOf, 'person');
@@ -1917,6 +1917,100 @@ test('sites: OneDrive personal sites are left out of every site list', async () 
   assert.deepStrictEqual(r.sites.map((x) => x.title), ['Finance', 'Intranet']);
   assert.strictEqual(r.oneDriveHidden, 1);
   assert.ok(/querytext='contentclass:STS_Site -WebTemplate:SPSPERS IndexDocId>0'/.test(queries[0]), queries[0]);
+});
+
+// ---------------------------------------------------------------- export: Excel limits & SharePoint list
+const LX = src('services/ListExport');
+const { buildBatchBody, parseBatchStatuses } = src('core/SPClient');
+
+test('export: long people cells are split between addresses into extra columns, never across rows', () => {
+  const many = Array.from({ length: 3000 }, (_, i) => `user${i}@contoso.com`).join(';');
+  assert.ok(many.length > SGX.EXCEL_CELL_LIMIT);
+  const parts = SGX.splitList(many, SGX.EXCEL_CELL_LIMIT);
+  assert.ok(parts.length >= 2 && parts.every((p) => p.length <= SGX.EXCEL_CELL_LIMIT), String(parts.length));
+  assert.strictEqual(parts.join(';'), many, 'nothing lost, split only at separators');
+  assert.ok(parts.every((p) => /^user\d+@contoso\.com/.test(p) && /@contoso\.com$/.test(p)));
+  const fitted = SGX.fitForExcel(['Site URL', 'Members', 'Note'], [['https://a', many, 'x'], ['https://b', 'one@contoso.com', '']]);
+  assert.deepStrictEqual(fitted.headers, ['Site URL', 'Members', 'Members (part 2)', 'Note']);
+  assert.deepStrictEqual(fitted.rows[1], ['https://b', 'one@contoso.com', '', '']);
+  assert.strictEqual(fitted.rows[0].slice(1, 3).join(';'), many);
+  const csv = toCsv(fitted.headers, fitted.rows);
+  assert.strictEqual(csv.split('\r\n').length, 3, 'one line per row');
+  const same = SGX.fitForExcel(['A'], [['short']]);
+  assert.deepStrictEqual(same, { headers: ['A'], rows: [['short']] });
+});
+
+test('export: SharePoint $batch body and status parsing', () => {
+  const body = buildBatchBody([{ method: 'POST', url: ORIGIN + "/sites/a/_api/web/lists(guid'x')/items", body: { Title: 'A' } }, { method: 'POST', url: ORIGIN + "/sites/a/_api/web/lists(guid'x')/items", body: { Title: 'B' } }], 'B1', 'C1');
+  assert.ok(body.startsWith('--batch_B1\r\nContent-Type: multipart/mixed; boundary="changeset_C1"\r\n\r\n--changeset_C1\r\n'));
+  assert.strictEqual((body.match(/--changeset_C1\r\n/g) || []).length, 2);
+  assert.ok(body.includes("POST " + ORIGIN + "/sites/a/_api/web/lists(guid'x')/items HTTP/1.1\r\nContent-Type: application/json;odata=nometadata\r\nAccept: application/json;odata=nometadata\r\n\r\n{\"Title\":\"A\"}"));
+  assert.ok(body.endsWith('--changeset_C1--\r\n\r\n--batch_B1--\r\n'));
+  const reply = '--batchresponse_1\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 201 Created\r\nCONTENT-TYPE: application/json\r\n\r\n{}\r\n--batchresponse_1\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 429 Too Many Requests\r\n\r\n--batchresponse_1--';
+  assert.deepStrictEqual(parseBatchStatuses(reply), [201, 429]);
+});
+
+test('export: list items carry e-mails, counts and notes; long columns are cut with a count', () => {
+  const sites = [
+    { url: ORIGIN + '/sites/fin', title: 'Finance', template: 'GROUP#0', groupConnected: true, groupId: gid(1), manageable: true },
+    { url: ORIGIN + '/sites/hr', title: 'HR', template: 'STS#3', groupConnected: false, manageable: true },
+    { url: ORIGIN + '/sites/locked', title: 'Locked', template: 'STS#3', groupConnected: false, manageable: true }
+  ];
+  const ann = { id: '1', displayName: 'Ann', mail: 'ann@contoso.com', type: 'user' };
+  const lots = Array.from({ length: 4000 }, (_, i) => ({ id: String(i), displayName: 'U' + i, mail: `user${i}@contoso.com`, type: 'user' }));
+  const acc = {
+    [sites[0].url]: SGX.fromGroupMembership({ owners: [ann], members: lots, truncated: false }),
+    [sites[1].url]: { source: 'sharepoint', owners: [ann], members: [], visitors: [ann], admins: [ann], truncated: false, ownerGroup: 'HR Owners' },
+    [sites[2].url]: { source: 'sharepoint', owners: [], members: [], visitors: [], truncated: false, error: 'No access to this site' }
+  };
+  const when = new Date('2026-10-23T10:00:00Z');
+  const items = LX.listItemsFor(sites, { [gid(1)]: { id: gid(1), displayName: 'Finance', mail: 'fin@contoso.com', visibility: 'Private', isTeam: true } }, (x) => acc[x.url], when);
+  assert.deepStrictEqual([items[0].Title, items[0].SiteUrl, items[0].GroupName, items[0].Owners, items[0].OwnersCount, items[0].MembersCount, items[0].VisitorsCount, items[0].ExportedOn], ['Finance', ORIGIN + '/sites/fin', 'Finance', 'ann@contoso.com', 1, 4000, undefined, '2026-10-23T10:00:00.000Z']);
+  assert.ok(items[0].Members.length <= LX.NOTE_LIMIT, 'fits in a list column');
+  assert.ok(/… \([\d,]+ more; too many for one list column/.test(items[0].Members));
+  assert.deepStrictEqual([items[1].MembershipFrom, items[1].VisitorsCount, items[1].Visitors, items[1].SiteAdmins, items[1].M365Group], ['SharePoint groups', 1, 'ann@contoso.com', 'ann@contoso.com', 'No']);
+  assert.deepStrictEqual([items[2].OwnersCount, items[2].ExportNote], [undefined, 'No access to this site']);
+  assert.ok(LX.LIST_COLUMNS.every((c) => /^[A-Za-z0-9]+$/.test(c.name)), 'internal names without spaces');
+  assert.strictEqual(LX.fieldXml({ name: 'Members', display: 'Members & co', type: 'Note' }), '<Field Type="Note" DisplayName="Members &amp; co" Name="Members" StaticName="Members" NumLines="6" RichText="FALSE" UnlimitedLengthInDocumentLibrary="TRUE" />');
+});
+
+test('export: the list is created with its columns, then items are added in batches with a retry for throttled ones', async () => {
+  const W = ORIGIN + '/sites/reports';
+  const env = { posts: [], batches: [], fields: ['Title', 'SiteUrl'], listExists: false, throttleOnce: true };
+  const c = make(async (m, url, cfg, o) => {
+    const u = decodeURIComponent(url);
+    if (/getbytitle\('Owners report'\)/.test(u)) return env.listExists ? json({ Id: 'L1', RootFolder: { ServerRelativeUrl: '/sites/reports/Lists/Owners report' } }) : json({ error: { message: { value: 'List does not exist' } } }, 404);
+    if (m === 'POST' && /\/_api\/web\/lists$/.test(u)) { env.listExists = true; env.posts.push(JSON.parse(o.body)); return json({ Id: 'L1' }); }
+    if (/lists\(guid'L1'\)\?/.test(u)) return json({ Id: 'L1', RootFolder: { ServerRelativeUrl: '/sites/reports/Lists/Owners report' } });
+    if (/lists\(guid'L1'\)\/fields\?/.test(u)) return json({ value: env.fields.map((f) => ({ InternalName: f })) });
+    if (/CreateFieldAsXml/.test(u)) { const b = JSON.parse(o.body); env.fields.push(/ Name="([^"]+)"/.exec(b.parameters.SchemaXml)[1]); assert.strictEqual(b.parameters.Options, 25); return json({}); }
+    if (/\/_api\/\$batch$/.test(u)) {
+      assert.ok(/^multipart\/mixed; boundary=batch_/.test(o.headers['Content-Type']));
+      const titles = (o.body.match(/\{"Title":"[^"]*"/g) || []).map((x) => x.slice(10, -1));
+      env.batches.push(titles);
+      const parts = titles.map((t) => {
+        if (t === 'S3' && env.throttleOnce) { env.throttleOnce = false; return 'HTTP/1.1 429 Too Many Requests'; }
+        return t === 'S7' ? 'HTTP/1.1 400 Bad Request' : 'HTTP/1.1 201 Created';
+      });
+      return new Response(parts.map((p) => '--batchresponse_x\r\nContent-Type: application/http\r\n\r\n' + p + '\r\n\r\n{}').join('\r\n') + '\r\n--batchresponse_x--', { status: 200 });
+    }
+    return json({ error: { message: { value: 'no route ' + u } } }, 404);
+  });
+  const ex = new LX.ListExport(c);
+  const info = await ex.ensureList(W, 'Owners report');
+  assert.deepStrictEqual([info.id, info.created, info.url], ['L1', true, ORIGIN + '/sites/reports/Lists/Owners report']);
+  assert.deepStrictEqual(env.posts[0].BaseTemplate, 100);
+  assert.deepStrictEqual(env.fields.slice(2), LX.LIST_COLUMNS.map((x) => x.name).filter((n) => n !== 'SiteUrl'), 'only missing columns added: ' + env.fields.join());
+  const again = await ex.ensureList(W, 'Owners report');
+  assert.strictEqual(again.created, false);
+  const items = Array.from({ length: 120 }, (_, i) => ({ Title: 'S' + i, SiteUrl: ORIGIN + '/sites/s' + i }));
+  const progress = [];
+  const r = await ex.addItems(W, 'L1', items, (d) => progress.push(d));
+  assert.deepStrictEqual(env.batches.map((b) => b.length), [50, 1, 50, 20], '50 per batch; the throttled one retried alone');
+  assert.deepStrictEqual(env.batches[1], ['S3']);
+  assert.strictEqual(r.added, 119);
+  assert.deepStrictEqual(r.failed, [ORIGIN + '/sites/s7 (400)']);
+  assert.deepStrictEqual(progress, [50, 100, 120]);
 });
 
 // ---------------------------------------------------------------- runner
