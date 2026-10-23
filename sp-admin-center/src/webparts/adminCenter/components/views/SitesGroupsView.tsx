@@ -16,7 +16,7 @@ type Show = 'all' | 'group' | 'nogroup' | 'channel';
 const GROUP_SCOPE = 'Group.Read.All';
 
 /** Loaded once per page visit; kept while you move between views. */
-let sessionSites: { sites: ISiteRow[]; truncated: boolean; at: Date } | undefined;
+let sessionSites: { sites: ISiteRow[]; truncated: boolean; oneDriveHidden: number; at: Date } | undefined;
 let sessionGroups: { [id: string]: IGroupSummary } | undefined;
 
 /**
@@ -54,7 +54,7 @@ export const SitesGroupsView: React.FC = () => {
     setLoading('Loading site collections…');
     try {
       const r = await ctx.search.listSites(ctx.homeWebUrl, 100000, (n) => mounted.current && setLoading(`Loading site collections… ${n.toLocaleString()}`));
-      sessionSites = { sites: r.sites, truncated: r.truncated, at: new Date() };
+      sessionSites = { sites: r.sites, truncated: r.truncated, oneDriveHidden: r.oneDriveHidden, at: new Date() };
       if (mounted.current) {
         setData(sessionSites);
       }
@@ -307,7 +307,7 @@ export const SitesGroupsView: React.FC = () => {
 
       <Card>
         <p className={styles.muted} style={{ marginTop: 0 }}>
-          Site collections come from SharePoint search (pages of 500, about 35 requests for 17,000 sites), so they are the active sites you can see; deleted and archived sites are not listed. Group names are one Microsoft Graph request per 999 groups. Nothing loads until you click.
+          Site collections come from SharePoint search (pages of 500, about 35 requests for 17,000 sites), so they are the active SharePoint sites you can see; OneDrive sites, deleted and archived sites are not listed. Group names are one Microsoft Graph request per 999 groups. Nothing loads until you click.
         </p>
         <div className={styles.actions}>
           <PrimaryButton iconProps={{ iconName: 'Globe' }} onClick={load} disabled={!!loading || !!exporting}>
@@ -316,6 +316,7 @@ export const SitesGroupsView: React.FC = () => {
           {data && (
             <span className={styles.muted} style={{ alignSelf: 'center' }}>
               Loaded {formatDate(data.at)} {data.at.toLocaleTimeString()}
+              {data.oneDriveHidden > 0 && ` · ${data.oneDriveHidden.toLocaleString()} OneDrive sites left out`}
             </span>
           )}
         </div>

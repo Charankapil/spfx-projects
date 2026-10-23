@@ -18,6 +18,7 @@ export const SitesView: React.FC = () => {
   const ctx = useAdmin();
   const [sites, setSites] = React.useState<ISiteRow[] | undefined>();
   const [truncated, setTruncated] = React.useState(false);
+  const [oneDriveHidden, setOneDriveHidden] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
   const [loaded, setLoaded] = React.useState(0);
   const [sizes, setSizes] = React.useState<{ [urlLower: string]: number } | undefined>();
@@ -36,6 +37,7 @@ export const SitesView: React.FC = () => {
       const r = await ctx.search.listSites(ctx.homeWebUrl, 100000, setLoaded);
       setSites(r.sites);
       setTruncated(r.truncated);
+      setOneDriveHidden(r.oneDriveHidden);
       // Storage per site from the latest CSV import, if there is one (one request).
       try {
         const snap = await ctx.tenant.loadLatestSnapshot();
@@ -181,7 +183,7 @@ export const SitesView: React.FC = () => {
             <MessageBar messageBarType={MessageBarType.warning}>The search index stopped returning results before the end of the list. Showing {typed.length.toLocaleString()} sites.</MessageBar>
           )}
           <div className={styles.kpiRow}>
-            <Kpi label="Sites" value={typed.length.toLocaleString()} sub="visible to you" />
+            <Kpi label="Sites" value={typed.length.toLocaleString()} sub={oneDriveHidden ? `visible to you · ${oneDriveHidden.toLocaleString()} OneDrive sites left out` : 'visible to you'} />
             <Kpi label="Inactive 180+ days" value={stale180.toLocaleString()} sub="archive candidates" />
             <Kpi label="Without an M365 group" value={noGroup.toLocaleString()} sub="harder to govern" />
           </div>

@@ -120,7 +120,7 @@ export class SearchApi {
    * 500 sites (17,000 sites = 35 requests), paced by SPClient. If DocId is not
    * returned (older farms), it falls back to startrow paging.
    */
-  public async listSites(homeWebUrl: string, maxSites = 100000, onProgress?: (loaded: number) => void): Promise<{ sites: ISiteRow[]; truncated: boolean }> {
+  public async listSites(homeWebUrl: string, maxSites = 100000, onProgress?: (loaded: number) => void): Promise<{ sites: ISiteRow[]; truncated: boolean; oneDriveHidden: number }> {
     const origin = (/^(https:\/\/[^/]+)/i.exec(homeWebUrl) || [''])[1].toLowerCase();
     const sites: ISiteRow[] = [];
     const seen: { [url: string]: boolean } = {};
@@ -128,10 +128,14 @@ export class SearchApi {
     let lastDocId = 0;
     let useDocId = true;
     let startRow = 0;
+    let oneDriveHidden = 0;
+    // OneDrive personal sites are site collections too; they are left out here (the query
+    // skips their template, and the URL check catches any the index labels differently).
+    const scope = 'contentclass:STS_Site -WebTemplate:SPSPERS';
     for (let guard = 0; guard < 400; guard++) {
       const res = await this.run(homeWebUrl, useDocId
-        ? { query: `contentclass:STS_Site IndexDocId>${lastDocId}`, select, rowLimit: 500, sort: '[DocId]:ascending' }
-        : { query: 'contentclass:STS_Site', select, rowLimit: 500, startRow, sort: 'LastModifiedTime:descending' });
+        ? { query: `${scope} IndexDocId>${lastDocId}`, select, rowLimit: 500, sort: '[DocId]:ascending' }
+        : { query: scope, select, rowLimit: 500, startRow, sort: 'LastModifiedTime:descending' });
       let maxDoc = lastDocId;
       res.rows.forEach((r) => {
         const doc = Number(r.DocId);
@@ -143,6 +147,10 @@ export class SearchApi {
           return;
         }
         seen[url.toLowerCase()] = true;
+        if (isOneDriveSite(url, r.WebTemplate)) {
+          oneDriveHidden++;
+          return;
+        }
         sites.push({
           title: r.Title || url,
           url,
@@ -159,26 +167,27 @@ export class SearchApi {
         onProgress(sites.length);
       }
       if (res.rows.length < 500) {
-        return { sites, truncated: false };
+        return { sites, truncated: false, oneDriveHidden };
       }
       if (sites.length >= maxSites) {
-        return { sites, truncated: true };
+        return { sites, truncated: true, oneDriveHidden };
       }
       if (useDocId && maxDoc === lastDocId) {
         // DocId not returned: switch to startrow paging (capped by search at 50,000 rows).
         useDocId = false;
         startRow = 0;
         sites.length = 0;
+        oneDriveHidden = 0;
         Object.keys(seen).forEach((k) => delete seen[k]);
         continue;
       }
       lastDocId = maxDoc;
       startRow += 500;
       if (!useDocId && startRow >= 50000) {
-        return { sites, truncated: true };
+        return { sites, truncated: true, oneDriveHidden };
       }
     }
-    return { sites, truncated: true };
+    return { sites, truncated: true, oneDriveHidden };
   }
 
   // ---- Storage insights -----------------------------------------------------
@@ -243,6 +252,11 @@ export class SearchApi {
     }
     return out;
   }
+}
+
+/** OneDrive (personal) site: the -my host, a /personal/ path or the SPSPERS template. */
+export function isOneDriveSite(url: string, template?: string): boolean {
+  return /^https:\/\/[^/]+-my\.sharepoint\.(com|us|de|cn)\//i.test(url + '/') || /\/personal\//i.test(url + '/') || /^SPSPERS/i.test(template || '');
 }
 
 /** A GUID other than the empty one, lower-case; search may wrap it in braces. */

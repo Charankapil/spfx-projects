@@ -248,7 +248,7 @@ test('listSites honours maxSites (truncated) and marks sites on other domains as
   const r = await new SearchApi(c).listSites(ORIGIN, 1000);
   assert.strictEqual(r.sites.length, 1000);
   assert.strictEqual(r.truncated, true);
-  const od = make(async () => json({ PrimaryQueryResult: { RelevantResults: { TotalRows: 1, Table: { Rows: [{ Cells: [{ Key: 'Title', Value: 'Bob' }, { Key: 'Path', Value: 'https://contoso-my.sharepoint.com/personal/bob' }, { Key: 'DocId', Value: '7' }, { Key: 'GroupId', Value: '00000000-0000-0000-0000-000000000000' }] }] } } } }));
+  const od = make(async () => json({ PrimaryQueryResult: { RelevantResults: { TotalRows: 1, Table: { Rows: [{ Cells: [{ Key: 'Title', Value: 'Bob' }, { Key: 'Path', Value: 'https://fabrikam.sharepoint.com/sites/bob' }, { Key: 'DocId', Value: '7' }, { Key: 'GroupId', Value: '00000000-0000-0000-0000-000000000000' }] }] } } } }));
   const r2 = await new SearchApi(od).listSites(ORIGIN);
   assert.strictEqual(r2.sites[0].manageable, false);
   assert.strictEqual(r2.sites[0].groupConnected, false);
@@ -1893,6 +1893,30 @@ test('sites & groups: a site’s SharePoint Owners / Members / Visitors and admi
   assert.strictEqual(calls.length, 4, 'combined (refused) + groups + 2 group reads');
   const locked = await api.siteAccess(ORIGIN + '/sites/locked', true);
   assert.ok(/No access to this site/.test(locked.error));
+});
+
+test('sites: OneDrive personal sites are left out of every site list', async () => {
+  const { isOneDriveSite } = src('services/SearchApi');
+  assert.ok(isOneDriveSite('https://contoso-my.sharepoint.com/personal/ann_contoso_com'));
+  assert.ok(isOneDriveSite('https://contoso-my.sharepoint.com'));
+  assert.ok(isOneDriveSite('https://contoso.sharepoint.com/personal/x'));
+  assert.ok(isOneDriveSite('https://contoso.sharepoint.com/sites/x', 'SPSPERS#10'));
+  assert.ok(!isOneDriveSite('https://contoso.sharepoint.com/sites/personal-finance'));
+  assert.ok(!isOneDriveSite('https://contoso.sharepoint.com/sites/my-team', 'STS#3'));
+  const queries = [];
+  const row = (title, path, tpl, doc) => ({ Cells: { results: [{ Key: 'Title', Value: title }, { Key: 'Path', Value: path }, { Key: 'WebTemplate', Value: tpl }, { Key: 'DocId', Value: String(doc) }] } });
+  const c = make(async (m, url) => {
+    queries.push(decodeURIComponent(url));
+    return json({ d: { query: { PrimaryQueryResult: { RelevantResults: { TotalRows: 3, Table: { Rows: { results: [
+      row('Finance', ORIGIN + '/sites/fin', 'GROUP', 1),
+      row('Ann', 'https://contoso-my.sharepoint.com/personal/ann_contoso_com', 'SPSPERS', 2),
+      row('Intranet', ORIGIN, 'SITEPAGEPUBLISHING', 3)
+    ] } } } } } } });
+  });
+  const r = await new SearchApi(c).listSites(ORIGIN + '/sites/it');
+  assert.deepStrictEqual(r.sites.map((x) => x.title), ['Finance', 'Intranet']);
+  assert.strictEqual(r.oneDriveHidden, 1);
+  assert.ok(/querytext='contentclass:STS_Site -WebTemplate:SPSPERS IndexDocId>0'/.test(queries[0]), queries[0]);
 });
 
 // ---------------------------------------------------------------- runner
