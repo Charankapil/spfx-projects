@@ -304,14 +304,8 @@ $shadow-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.05);
   }
 
   .navSection,
-  .navScope,
   .navVersion {
     display: none;
-  }
-
-  .navTabs {
-    flex: none;
-    margin: 0 8px 0 0;
   }
 
   .navItem {
@@ -993,33 +987,29 @@ $shadow-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.05);
   color: $ink-3;
 }
 
-.navTabs {
+.pageTabs {
   display: flex;
   gap: 4px;
-  padding: 4px;
-  margin-bottom: 8px;
-  background: $canvas;
-  border: 1px solid $line;
-  border-radius: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  border-bottom: 1px solid $line;
 }
 
-.navTab {
-  flex: 1 1 0;
-  display: flex;
+.pageTab {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 7px 4px;
+  gap: 6px;
+  padding: 8px 14px;
+  margin-bottom: -1px;
   border: 0;
-  border-radius: 6px;
+  border-bottom: 2px solid transparent;
   background: transparent;
   font: inherit;
-  font-size: 12.5px;
-  white-space: nowrap;
+  font-size: 14px;
   font-weight: 600;
   color: $ink-2;
   cursor: pointer;
+  white-space: nowrap;
 
   &:hover {
     color: $ink;
@@ -1027,32 +1017,11 @@ $shadow-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.05);
 
   &:focus-visible {
     outline: 2px solid $brand;
-    outline-offset: 1px;
+    outline-offset: -2px;
   }
 }
 
-.navTabActive {
-  background: $surface;
+.pageTabActive {
   color: $brand-strong;
-  box-shadow: $shadow-1;
-}
-
-.navTabBadge {
-  background: $critical;
-  color: #fff;
-  border-radius: 999px;
-  font-size: 10.5px;
-  line-height: 16px;
-  min-width: 16px;
-  padding: 0 5px;
-  text-align: center;
-}
-
-.navScope {
-  padding: 2px 12px 6px;
-  font-size: 12px;
-  color: $ink-3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-bottom-color: $brand;
 }

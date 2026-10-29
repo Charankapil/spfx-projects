@@ -8,6 +8,7 @@ import { ExportLayout, fitForExcel, fromGroupMembership, ISiteAccess, PERSON_HEA
 import { siteType } from '../../services/siteTypes';
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
+import { getInventory, setInventory } from '../shared/inventory';
 import { graphErrorText, NeedsApproval, useGraphScopes } from '../shared/graph';
 import { Card, Empty, Pill, StatTile, ViewHeader } from '../shared/ui';
 
@@ -16,7 +17,6 @@ type Show = 'all' | 'group' | 'nogroup' | 'channel';
 const GROUP_SCOPE = 'Group.Read.All';
 
 /** Loaded once per page visit; kept while you move between views. */
-let sessionSites: { sites: ISiteRow[]; truncated: boolean; oneDriveHidden: number; at: Date } | undefined;
 let sessionGroups: { [id: string]: IGroupSummary } | undefined;
 
 /**
@@ -29,7 +29,7 @@ export const SitesGroupsView: React.FC = () => {
   const access = useGraphScopes();
   // If the token could not be read, let the feature try: its own errors explain what is wrong.
   const graphOk = access.scopes ? hasScope(access.scopes, GROUP_SCOPE) : !!access.error;
-  const [data, setData] = React.useState(sessionSites);
+  const [data, setData] = React.useState(getInventory());
   const [groups, setGroups] = React.useState(sessionGroups);
   const [loading, setLoading] = React.useState<string | undefined>();
   const [error, setError] = React.useState<string | undefined>();
@@ -55,9 +55,10 @@ export const SitesGroupsView: React.FC = () => {
     setLoading('Loading site collections…');
     try {
       const r = await ctx.search.listSites(ctx.homeWebUrl, 100000, (n) => mounted.current && setLoading(`Loading site collections… ${n.toLocaleString()}`));
-      sessionSites = { sites: r.sites, truncated: r.truncated, oneDriveHidden: r.oneDriveHidden, at: new Date() };
+      const inv = { sites: r.sites, truncated: r.truncated, oneDriveHidden: r.oneDriveHidden, at: new Date() };
+      setInventory(inv);
       if (mounted.current) {
-        setData(sessionSites);
+        setData(inv);
       }
       if (graphOk) {
         setLoading('Reading Microsoft 365 group names…');
@@ -316,7 +317,7 @@ export const SitesGroupsView: React.FC = () => {
 
   return (
     <div className={styles.view}>
-      <ViewHeader title="Sites & Microsoft 365 groups" hint="Every active site collection, whether it is connected to a Microsoft 365 group, and who its owners and members are." />
+      <ViewHeader title="Site owners & members" hint="Every active site collection, whether it is connected to a Microsoft 365 group, and who its owners and members are. The site list is shared with the All sites tab." />
 
       {access.scopes && !graphOk && (
         <MessageBar messageBarType={MessageBarType.warning} isMultiline>

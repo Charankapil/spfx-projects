@@ -10,7 +10,7 @@ everything else works without that approval.
 
 ## What it does
 
-The left navigation has two tabs: **This site** (everything that works on the selected site: dashboard, health, people, Microsoft 365 group, lists, recycle bin, locks, activity, storage insights, site settings) and **Tenant** (tenant dashboard, all sites, sites & Microsoft 365 groups, create site, storage growth, grant access by URL, guest users, API access). The installed version is shown at the bottom.
+The left navigation has one entry per job; related pages share an entry and open as tabs at the top of the page: **Sites** (All sites, Owners & members, Create site; the site list is loaded once and shared), **Storage** (This site, Storage growth), **People & access** (This site, Microsoft 365 group, Grant access by URL, Guest users) and **Settings** (Site settings & log, API access). The installed version is shown at the bottom.
 
 | Section | What an admin can do there |
 | --- | --- |

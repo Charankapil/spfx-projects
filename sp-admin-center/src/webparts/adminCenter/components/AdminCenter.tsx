@@ -52,36 +52,68 @@ export interface IAdminCenterProps {
   version?: string;
 }
 
-type NavTab = 'site' | 'tenant';
-
 /**
- * Two tabs: everything that works on the selected site, and everything tenant-wide
- * (all sites, creating sites, access by URL, guests, API access).
+ * The left navigation: one entry per job. Related pages share an entry and appear as tabs
+ * at the top of the page (e.g. Storage = this site's insights + storage growth).
  */
-const NAV: Array<{ key: ViewKey; text: string; icon: string; tab: NavTab; section?: string }> = [
-  { key: 'overview', text: 'Site dashboard', icon: 'ViewDashboard', tab: 'site', section: 'Overview' },
-  { key: 'health', text: 'Health check', icon: 'HealthSolid', tab: 'site' },
-  { key: 'people', text: 'People & permissions', icon: 'Permissions', tab: 'site', section: 'Manage' },
-  { key: 'm365groups', text: 'M365 group & owners', icon: 'Group', tab: 'site' },
-  { key: 'content', text: 'Lists & libraries', icon: 'Library', tab: 'site' },
-  { key: 'recycle', text: 'Recycle bin', icon: 'RecycleBin', tab: 'site' },
-  { key: 'locks', text: 'Read-only locks', icon: 'Lock', tab: 'site' },
-  { key: 'activity', text: 'Activity', icon: 'History', tab: 'site', section: 'Monitor' },
-  { key: 'storage', text: 'Storage insights', icon: 'Database', tab: 'site' },
-  { key: 'settings', text: 'Site settings & log', icon: 'Settings', tab: 'site', section: 'Settings' },
-  { key: 'tenant', text: 'Tenant dashboard', icon: 'BIDashboard', tab: 'tenant', section: 'Overview' },
-  { key: 'sites', text: 'Sites', icon: 'Globe', tab: 'tenant', section: 'Sites' },
-  { key: 'sitegroups', text: 'Sites & M365 groups', icon: 'SharepointLogo', tab: 'tenant' },
-  { key: 'create', text: 'Create site', icon: 'CirclePlus', tab: 'tenant' },
-  { key: 'growth', text: 'Storage growth', icon: 'AreaChart', tab: 'tenant', section: 'Storage' },
-  { key: 'grant', text: 'Grant access by URL', icon: 'Link', tab: 'tenant', section: 'Access' },
-  { key: 'guests', text: 'Guest users', icon: 'UserWarning', tab: 'tenant' },
-  { key: 'apiaccess', text: 'API access', icon: 'PlugConnected', tab: 'tenant', section: 'Administration' }
+interface INavEntry {
+  text: string;
+  icon: string;
+  section?: string;
+  /** The pages under this entry; the first one opens when the entry is clicked. */
+  pages: Array<{ key: ViewKey; text: string }>;
+}
+
+const NAV: INavEntry[] = [
+  { text: 'Site dashboard', icon: 'ViewDashboard', section: 'Overview', pages: [{ key: 'overview', text: 'Site dashboard' }] },
+  { text: 'Tenant dashboard', icon: 'BIDashboard', pages: [{ key: 'tenant', text: 'Tenant dashboard' }] },
+  {
+    text: 'Sites',
+    icon: 'Globe',
+    section: 'Sites & storage',
+    pages: [
+      { key: 'sites', text: 'All sites' },
+      { key: 'sitegroups', text: 'Owners & members' },
+      { key: 'create', text: 'Create site' }
+    ]
+  },
+  {
+    text: 'Storage',
+    icon: 'Database',
+    pages: [
+      { key: 'storage', text: 'This site' },
+      { key: 'growth', text: 'Storage growth' }
+    ]
+  },
+  {
+    text: 'People & access',
+    icon: 'Permissions',
+    section: 'Manage',
+    pages: [
+      { key: 'people', text: 'This site' },
+      { key: 'm365groups', text: 'Microsoft 365 group' },
+      { key: 'grant', text: 'Grant access by URL' },
+      { key: 'guests', text: 'Guest users' }
+    ]
+  },
+  { text: 'Lists & libraries', icon: 'Library', pages: [{ key: 'content', text: 'Lists & libraries' }] },
+  { text: 'Recycle bin', icon: 'RecycleBin', pages: [{ key: 'recycle', text: 'Recycle bin' }] },
+  { text: 'Read-only locks', icon: 'Lock', pages: [{ key: 'locks', text: 'Read-only locks' }] },
+  { text: 'Activity', icon: 'History', section: 'Monitor', pages: [{ key: 'activity', text: 'Activity' }] },
+  { text: 'Health check', icon: 'HealthSolid', pages: [{ key: 'health', text: 'Health check' }] },
+  {
+    text: 'Settings',
+    icon: 'Settings',
+    section: 'Administration',
+    pages: [
+      { key: 'settings', text: 'Site settings & log' },
+      { key: 'apiaccess', text: 'API access' }
+    ]
+  }
 ];
 
-function tabOf(v: ViewKey): NavTab {
-  const n = NAV.filter((x) => x.key === v)[0];
-  return n ? n.tab : 'site';
+function entryOf(v: ViewKey): INavEntry {
+  return NAV.filter((n) => n.pages.some((p) => p.key === v))[0] || NAV[0];
 }
 
 
@@ -287,43 +319,21 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, 
 
         <div className={styles.body}>
           <nav className={styles.nav} aria-label="Administration sections">
-            <div className={styles.navTabs} role="tablist" aria-label="Scope">
-              {(['site', 'tenant'] as NavTab[]).map((t) => {
-                const active = tabOf(view) === t;
-                const count = t === 'site' ? badge : growthBadge;
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    className={`${styles.navTab} ${active ? styles.navTabActive : ''}`}
-                    onClick={() => !active && setView(NAV.filter((x) => x.tab === t)[0].key)}
-                    title={t === 'site' ? `Work on ${target.title}` : 'Tenant-wide tools'}
-                  >
-                    <Icon iconName={t === 'site' ? 'Home' : 'CityNext'} aria-hidden="true" />
-                    {t === 'site' ? 'This site' : 'Tenant'}
-                    {count > 0 && <span className={styles.navTabBadge}>{count}</span>}
+            {NAV.map((n) => {
+              const active = entryOf(view) === n;
+              const keys = n.pages.map((p) => p.key);
+              return (
+                <React.Fragment key={n.text}>
+                  {n.section && <div className={styles.navSection}>{n.section}</div>}
+                  <button type="button" className={`${styles.navItem} ${active ? styles.navItemActive : ''}`} onClick={() => !active && setView(n.pages[0].key)} aria-current={active ? 'page' : undefined}>
+                    <Icon iconName={n.icon} aria-hidden="true" />
+                    {n.text}
+                    {keys.indexOf('growth') >= 0 && growthBadge > 0 && <span className={styles.navBadge} aria-label={`${growthBadge} sites growing fast`}>{growthBadge}</span>}
+                    {keys.indexOf('health') >= 0 && badge > 0 && <span className={styles.navBadge} aria-label={`${badge} findings`}>{badge}</span>}
                   </button>
-                );
-              })}
-            </div>
-            {tabOf(view) === 'site' && (
-              <div className={styles.navScope} title={target.webUrl}>
-                {target.title}
-              </div>
-            )}
-            {NAV.filter((n) => n.tab === tabOf(view)).map((n) => (
-              <React.Fragment key={n.key}>
-              {n.section && <div className={styles.navSection}>{n.section}</div>}
-              <button type="button" className={`${styles.navItem} ${view === n.key ? styles.navItemActive : ''}`} onClick={() => setView(n.key)} aria-current={view === n.key ? 'page' : undefined}>
-                <Icon iconName={n.icon} aria-hidden="true" />
-                {n.text}
-                {n.key === 'growth' && growthBadge > 0 && <span className={styles.navBadge} aria-label={`${growthBadge} sites growing fast`}>{growthBadge}</span>}
-                {n.key === 'health' && badge > 0 && <span className={styles.navBadge} aria-label={`${badge} findings`}>{badge}</span>}
-              </button>
-              </React.Fragment>
-            ))}
+                </React.Fragment>
+              );
+            })}
             {version && (
               <div className={styles.navVersion} title="Installed package version">
                 Version {version}
@@ -332,6 +342,23 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, 
           </nav>
           <main className={styles.content}>
             {/* key forces a clean state when the administered site changes */}
+            {entryOf(view).pages.length > 1 && (
+              <div className={styles.pageTabs} role="tablist" aria-label={entryOf(view).text}>
+                {entryOf(view).pages.map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={view === p.key}
+                    className={`${styles.pageTab} ${view === p.key ? styles.pageTabActive : ''}`}
+                    onClick={() => setView(p.key)}
+                  >
+                    {p.text}
+                    {p.key === 'growth' && growthBadge > 0 && <span className={styles.navBadge}>{growthBadge}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
             <React.Fragment key={target.webUrl}>{renderView()}</React.Fragment>
           </main>
         </div>

@@ -6,6 +6,7 @@ import { siteType } from '../../services/siteTypes';
 import { daysAgo, formatBytes, formatDate, relativeTime } from '../../services/format';
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
+import { getInventory, setInventory } from '../shared/inventory';
 import { Card, Donut, Empty, ErrorBar, Kpi, Loading, Pill, ViewHeader } from '../shared/ui';
 
 
@@ -16,9 +17,10 @@ import { Card, Donut, Empty, ErrorBar, Kpi, Loading, Pill, ViewHeader } from '..
  */
 export const SitesView: React.FC = () => {
   const ctx = useAdmin();
-  const [sites, setSites] = React.useState<ISiteRow[] | undefined>();
-  const [truncated, setTruncated] = React.useState(false);
-  const [oneDriveHidden, setOneDriveHidden] = React.useState(0);
+  const shared = getInventory();
+  const [sites, setSites] = React.useState<ISiteRow[] | undefined>(shared && shared.sites);
+  const [truncated, setTruncated] = React.useState(shared ? shared.truncated : false);
+  const [oneDriveHidden, setOneDriveHidden] = React.useState(shared ? shared.oneDriveHidden : 0);
   const [busy, setBusy] = React.useState(false);
   const [loaded, setLoaded] = React.useState(0);
   const [sizes, setSizes] = React.useState<{ [urlLower: string]: number } | undefined>();
@@ -28,6 +30,29 @@ export const SitesView: React.FC = () => {
   const [type, setType] = React.useState('all');
   const [inactive, setInactive] = React.useState(0);
 
+  // Storage per site from the latest CSV import, if there is one (one request).
+  const loadSizes = async (): Promise<void> => {
+    try {
+      const snap = await ctx.tenant.loadLatestSnapshot();
+      if (snap) {
+        const origin = (/^(https:\/\/[^/]+)/i.exec(ctx.homeWebUrl) || [''])[1];
+        const m: { [k: string]: number } = {};
+        snap.u.forEach((p, i) => (m[(p.charAt(0) === '/' ? (p === '/' ? origin : origin + p) : p).toLowerCase()] = snap.b[i]));
+        setSizes(m);
+      }
+    } catch {
+      /* storage column is optional */
+    }
+  };
+
+  // The inventory may already be loaded by the "Owners & members" tab: only the sizes are missing then.
+  React.useEffect(() => {
+    if (shared) {
+      loadSizes().catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const load = async (): Promise<void> => {
     setBusy(true);
     setError(undefined);
@@ -35,21 +60,11 @@ export const SitesView: React.FC = () => {
     try {
       ctx.client.clearCache();
       const r = await ctx.search.listSites(ctx.homeWebUrl, 100000, setLoaded);
+      setInventory({ sites: r.sites, truncated: r.truncated, oneDriveHidden: r.oneDriveHidden, at: new Date() });
       setSites(r.sites);
       setTruncated(r.truncated);
       setOneDriveHidden(r.oneDriveHidden);
-      // Storage per site from the latest CSV import, if there is one (one request).
-      try {
-        const snap = await ctx.tenant.loadLatestSnapshot();
-        if (snap) {
-          const origin = (/^(https:\/\/[^/]+)/i.exec(ctx.homeWebUrl) || [''])[1];
-          const m: { [k: string]: number } = {};
-          snap.u.forEach((p, i) => (m[(p.charAt(0) === '/' ? (p === '/' ? origin : origin + p) : p).toLowerCase()] = snap.b[i]));
-          setSizes(m);
-        }
-      } catch {
-        /* storage column is optional */
-      }
+      await loadSizes();
     } catch (e) {
       setError((e as Error).message);
     } finally {
