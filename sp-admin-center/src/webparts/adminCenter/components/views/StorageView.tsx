@@ -29,7 +29,9 @@ export const StorageView: React.FC = () => {
   const overview = useLoader(async () => {
     const site = await api.getSite(target.webUrl);
     const [types, stale] = await Promise.all([search.fileTypes(target.siteUrl), search.staleCounts(target.siteUrl, [1, 2, 3])]);
-    return { site, types, stale };
+    // Top-level site only (one more request); not fatal if SPWebUrl is not queryable.
+    const topLevel = await search.topLevelFileCount(target.siteUrl).catch(() => undefined);
+    return { site, types, stale, topLevel };
   }, [target.siteUrl]);
 
   const big = useLoader(() => search.largestFiles(target.siteUrl, minSize, 50), [target.siteUrl, minSize]);
@@ -40,7 +42,8 @@ export const StorageView: React.FC = () => {
   if (overview.error || !overview.data) {
     return <ErrorBar error={overview.error || 'Nothing loaded.'} onRetry={overview.reload} />;
   }
-  const { site, types, stale } = overview.data;
+  const { site, types, stale, topLevel } = overview.data;
+  const inSubsites = topLevel !== undefined ? Math.max(0, types.total - topLevel) : undefined;
   const quota = site.storageFraction > 0 ? site.storageBytes / site.storageFraction : 0;
   const topTypes = types.types.slice(0, 7);
   const other = types.types.slice(7).reduce((s, t) => s + t.count, 0);
@@ -58,12 +61,14 @@ export const StorageView: React.FC = () => {
       </ViewHeader>
 
       <MessageBar messageBarType={MessageBarType.info}>
-        File figures come from the search index: they cover indexed files you can see, and may lag behind very recent changes. Storage used is SharePoint&rsquo;s own figure and includes version history and the recycle bin.
+        File figures are for the <strong>whole site collection, subsites included</strong>, and come from the search index (files you can see; very recent changes may lag). They are the per-type counts added up, which are far more accurate on large sites than search&rsquo;s own estimated total. Storage used is SharePoint&rsquo;s own figure and includes version history and the recycle bin. Per-subsite sizes and file counts are in Site dashboard &gt; Subsites.
       </MessageBar>
 
       <div className={styles.kpiRow}>
         <Kpi label="Storage used" value={formatBytes(site.storageBytes)} sub={quota ? `of ${formatBytes(quota)}` : undefined} />
-        <Kpi label="Indexed files" value={formatCompact(types.total)} sub="in the search index" />
+        <Kpi label="Files (whole collection)" value={formatCompact(types.total)} sub="top-level site + subsites" />
+        {topLevel !== undefined && <Kpi label="Files in top-level site" value={formatCompact(topLevel)} sub="excluding subsites" />}
+        {inSubsites !== undefined && <Kpi label="Files in subsites" value={formatCompact(inSubsites)} sub="all subsites together" />}
         <Kpi label="File types" value={String(types.types.length)} sub={types.topTenOnly ? 'top 10 only' : 'distinct extensions'} />
         {stale.map((s) => (
           <Kpi key={s.years} label={`Untouched ${s.years}+ yr`} value={formatCompact(s.count)} sub={types.total ? `${Math.round((s.count / Math.max(1, types.total)) * 100)}% of files` : undefined} />
@@ -71,7 +76,7 @@ export const StorageView: React.FC = () => {
       </div>
 
       <div className={styles.grid}>
-        <Card title="Files by type">{slices.length ? <Donut slices={slices} centre={formatCompact(types.total)} centreSub="files" /> : <Empty text="No indexed files found." />}</Card>
+        <Card title="Files by type (whole collection)">{slices.length ? <Donut slices={slices} centre={formatCompact(types.total)} centreSub="files" /> : <Empty text="No indexed files found." />}</Card>
         <Card title="Most common extensions">
           {topTypes.length ? <BarList rows={types.types.slice(0, 10).map((t) => ({ label: '.' + t.type, value: t.count }))} /> : <Empty text="Nothing to show." />}
         </Card>

@@ -6,7 +6,6 @@ import { formatBytes, formatDate, formatCompact, relativeTime } from '../../serv
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
 import { useLoader } from '../shared/hooks';
-import { GrowthAlert } from './GrowthAlert';
 import { BarList, Card, Donut, ErrorBar, FindingRow, Kpi, Loading, Pill, ScoreRing, ViewHeader } from '../shared/ui';
 
 /** Dashboard: one screen that answers "is this site OK, and what needs me?". */
@@ -68,7 +67,6 @@ export const OverviewView: React.FC = () => {
         </PrimaryButton>
       </ViewHeader>
 
-      <GrowthAlert />
 
       <div className={styles.kpiRow}>
         <Kpi label="Storage used" value={formatBytes(site.storageBytes)} sub={quota ? `of ${formatBytes(quota)} · ${Math.round(site.storageFraction * 100)}%` : 'site collection'} onClick={() => ctx.openView('storage')} />

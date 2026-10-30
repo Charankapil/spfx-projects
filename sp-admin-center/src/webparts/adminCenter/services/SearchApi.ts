@@ -196,7 +196,25 @@ export class SearchApi {
     return `IsDocument:1 Path:${kqlQuote(trimSlash(siteUrl) + '/*')}`;
   }
 
-  /** File counts by extension for a whole site collection - one request. */
+  /**
+   * Number of files for a query. Search's own TotalRows is an estimate that can be far too low on
+   * very large sites (thousands instead of millions), so the per-type refiner counts are added up
+   * instead; TotalRows is only used when no refiner comes back.
+   */
+  private async countFor(webUrl: string, query: string): Promise<number> {
+    let res: ISearchResult;
+    try {
+      res = await this.run(webUrl, { query, rowLimit: 1, select: ['Title'], refiners: 'FileType(filter=500/0/*)' });
+    } catch (e) {
+      if (!(e instanceof HttpError) || e.status === 401 || e.status === 403) {
+        throw e;
+      }
+      res = await this.run(webUrl, { query, rowLimit: 1, select: ['Title'], refiners: 'FileType' });
+    }
+    return Math.max(refinerSum(res), res.total);
+  }
+
+  /** File counts by extension for a whole site collection (subsites included) - one request. */
   public async fileTypes(siteUrl: string): Promise<{ types: IFileTypeCount[]; total: number; topTenOnly: boolean }> {
     const scope = this.docScope(siteUrl);
     let topTenOnly = false;
@@ -214,9 +232,14 @@ export class SearchApi {
     const entries = res.refiners.FileType || [];
     return {
       types: entries.map((e) => ({ type: e.name, count: e.count })).sort((a, b) => b.count - a.count),
-      total: res.total,
+      total: Math.max(refinerSum(res), res.total),
       topTenOnly
     };
+  }
+
+  /** Files that live in the top-level site itself, not in its subsites - one request. */
+  public async topLevelFileCount(siteUrl: string): Promise<number> {
+    return this.countFor(siteUrl, `IsDocument:1 SPWebUrl:${kqlQuote(trimSlash(siteUrl))}`);
   }
 
   /** Largest files in a site collection (top N by size) - one request. */
@@ -237,18 +260,14 @@ export class SearchApi {
     }));
   }
 
-  /** How many indexed files have not been modified since each cut-off date. */
+  /** How many indexed files have not been modified since each cut-off date (whole site collection). */
   public async staleCounts(siteUrl: string, years: number[]): Promise<Array<{ years: number; count: number }>> {
     const out: Array<{ years: number; count: number }> = [];
     for (const y of years) {
       const cutoff = new Date();
       cutoff.setFullYear(cutoff.getFullYear() - y);
-      const res = await this.run(siteUrl, {
-        query: `${this.docScope(siteUrl)} LastModifiedTime<${cutoff.toISOString().substring(0, 10)}`,
-        select: ['Title'],
-        rowLimit: 1
-      });
-      out.push({ years: y, count: res.total });
+      const count = await this.countFor(siteUrl, `${this.docScope(siteUrl)} LastModifiedTime<${cutoff.toISOString().substring(0, 10)}`);
+      out.push({ years: y, count });
     }
     return out;
   }
@@ -263,6 +282,11 @@ export function isOneDriveSite(url: string, template?: string): boolean {
 export function realGuid(v: string | undefined | null): string | undefined {
   const m = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(v || '');
   return m && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(m[1]) ? m[1].toLowerCase() : undefined;
+}
+
+/** Sum of the FileType refiner counts (0 when the refiner is missing). */
+export function refinerSum(res: ISearchResult): number {
+  return (res.refiners.FileType || []).reduce((n, e) => n + e.count, 0);
 }
 
 export function toDate(value: string | undefined | null): Date | undefined {

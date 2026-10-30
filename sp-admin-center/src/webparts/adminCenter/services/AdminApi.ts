@@ -6,6 +6,7 @@ import {
   IRecycleItem,
   IRoleAssignment,
   ISiteInfo,
+  ISubsiteNode,
   ISubWeb,
   IUserInfo,
   IWebInfo,
@@ -509,6 +510,75 @@ export class AdminApi {
   public async siteAdmins(siteUrl: string): Promise<IDirectoryObject[]> {
     const a = await this.client.get(this.api(trimSlash(siteUrl), 'web/siteusers?$filter=IsSiteAdmin eq true&$select=Id,Title,Email,LoginName,PrincipalType'), { cacheTtlMs: 0 });
     return principals(a);
+  }
+
+  // ---- subsites --------------------------------------------------------------------
+
+  /**
+   * Every web in the site collection, top-level site first, walked level by level: one
+   * request per web (its direct subsites). Capped so a huge tree never runs away.
+   */
+  public async subsiteTree(siteUrl: string, max = 2000, onProgress?: (n: number) => void, shouldStop?: () => boolean): Promise<{ webs: ISubsiteNode[]; truncated: boolean }> {
+    const sel = 'Id,Title,Url,ServerRelativeUrl,WebTemplate,Configuration,Created,LastItemUserModifiedDate,LastItemModifiedDate,HasUniqueRoleAssignments';
+    const top = entityOf<{ [k: string]: unknown }>(await this.client.get(this.api(siteUrl, `web?$select=${sel}`), { cacheTtlMs: 0 }));
+    const toNode = (w: { [k: string]: unknown }, depth: number, parentUrl?: string): ISubsiteNode => ({
+      id: str(w.Id),
+      title: str(w.Title),
+      url: trimSlash(str(w.Url)),
+      serverRelativeUrl: str(w.ServerRelativeUrl),
+      parentUrl,
+      depth,
+      template: str(w.WebTemplate) + (w.Configuration !== undefined && w.Configuration !== null ? '#' + str(w.Configuration) : ''),
+      created: toDate(str(w.Created)),
+      lastModified: toDate(str(w.LastItemUserModifiedDate || w.LastItemModifiedDate)),
+      hasUniquePermissions: depth === 0 ? true : !!w.HasUniqueRoleAssignments
+    });
+    const webs: ISubsiteNode[] = [toNode(top, 0)];
+    let level = [webs[0]];
+    while (level.length && webs.length < max) {
+      const next: ISubsiteNode[] = [];
+      for (const parent of level) {
+        if ((shouldStop && shouldStop()) || webs.length >= max) {
+          break;
+        }
+        const children = rowsOf<{ [k: string]: unknown }>(await this.client.get(this.api(parent.url, `web/webs?$select=${sel}&$top=5000`), { cacheTtlMs: 0 }));
+        children.forEach((c) => {
+          if (webs.length < max) {
+            const node = toNode(c, parent.depth + 1, parent.url);
+            webs.push(node);
+            next.push(node);
+          }
+        });
+        if (onProgress) {
+          onProgress(webs.length);
+        }
+      }
+      level = next;
+    }
+    // Parents first, each followed by its own subsites.
+    const ordered: ISubsiteNode[] = [];
+    const visit = (n: ISubsiteNode): void => {
+      ordered.push(n);
+      webs.filter((w) => w.parentUrl === n.url).sort((a, b) => a.title.localeCompare(b.title)).forEach(visit);
+    };
+    visit(webs[0]);
+    return { webs: ordered, truncated: webs.length >= max };
+  }
+
+  /**
+   * Storage of one web's own content (its lists and libraries, versions included; not its
+   * subsites), from SharePoint's stored storage metrics: one request, no file walking.
+   */
+  public async webStorage(webUrl: string): Promise<{ bytes: number; files: number } | undefined> {
+    try {
+      const f = entityOf<{ StorageMetrics?: { TotalSize?: unknown; TotalFileCount?: unknown } }>(
+        await this.client.get(this.api(webUrl, 'web/rootfolder?$select=StorageMetrics&$expand=StorageMetrics'), { cacheTtlMs: 0 })
+      );
+      const m = f.StorageMetrics;
+      return m ? { bytes: num(m.TotalSize), files: num(m.TotalFileCount) } : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   // ---- recycle bin ----------------------------------------------------------

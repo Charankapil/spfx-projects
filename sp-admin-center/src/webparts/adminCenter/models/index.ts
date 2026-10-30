@@ -44,6 +44,20 @@ export interface ISubWeb {
   hasUniquePermissions: boolean;
 }
 
+/** A web in a site collection's tree (the top-level site has depth 0). */
+export interface ISubsiteNode {
+  id: string;
+  title: string;
+  url: string;
+  serverRelativeUrl: string;
+  parentUrl?: string;
+  depth: number;
+  template: string;
+  created?: Date;
+  lastModified?: Date;
+  hasUniquePermissions: boolean;
+}
+
 export type ListKind = 'Library' | 'List' | 'Other';
 
 export interface IListInfo {
@@ -160,6 +174,7 @@ export interface IFinding {
 
 export type ViewKey =
   | 'overview'
+  | 'subsites'
   | 'tenant'
   | 'sites'
   | 'people'

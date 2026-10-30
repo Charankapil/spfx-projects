@@ -11,6 +11,7 @@ import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
 import { useLoader } from '../shared/hooks';
 import { Card, Empty, ErrorBar, Loading, Pill, SERIES, StatTile, ViewHeader } from '../shared/ui';
+import { GrowthAlert } from './GrowthAlert';
 import { ImportPanel } from './ImportPanel';
 import { M365Trends, SyncFromM365Button } from './M365Sync';
 
@@ -44,7 +45,8 @@ export const TenantDashboardView: React.FC = () => {
       title="Tenant dashboard"
       hint={o && last ? `All site collections from ${last.source || 'the last import'} · data as of ${formatDateTime(new Date(o.snapshotT * 1000))}` : 'Every site collection in the tenant, with storage, from the admin center site list.'}
     >
-      <DefaultButton iconProps={{ iconName: 'Refresh' }} onClick={loader.reload}>
+      {/* Reloads everything on the page, the growth alert included. */}
+      <DefaultButton iconProps={{ iconName: 'Refresh' }} onClick={ctx.reloadAll}>
         Refresh
       </DefaultButton>
       <SyncFromM365Button settings={loader.data.settings} onSynced={loader.reload} />
@@ -61,6 +63,7 @@ export const TenantDashboardView: React.FC = () => {
     return (
       <div className={styles.view}>
         {header}
+        <GrowthAlert />
         <Card>
           <Empty text={index.snapshots.length ? 'Recalculate or import again to build the tenant overview.' : 'No site list imported yet.'} />
           <p className={styles.muted} style={{ textAlign: 'center', maxWidth: 640, margin: '0 auto' }}>
@@ -81,6 +84,7 @@ export const TenantDashboardView: React.FC = () => {
   return (
     <div className={styles.view}>
       {header}
+      <GrowthAlert />
 
       <div className={styles.statGrid}>
         <StatTile icon="Globe" label="Site collections" value={nonDeleted.toLocaleString()} sub={`${o.deletedSites.toLocaleString()} more in the recycle bin`} />

@@ -43,6 +43,7 @@ import { PeopleView } from './views/PeopleView';
 import { RecycleView } from './views/RecycleView';
 import { SettingsView } from './views/SettingsView';
 import { SitesView } from './views/SitesView';
+import { SubsitesView } from './views/SubsitesView';
 import { SitesGroupsView } from './views/SitesGroupsView';
 import { TenantDashboardView } from './views/TenantDashboardView';
 import { StorageView } from './views/StorageView';
@@ -71,7 +72,15 @@ interface INavEntry {
 }
 
 const NAV: INavEntry[] = [
-  { text: 'Site dashboard', icon: 'ViewDashboard', section: 'Overview', pages: [{ key: 'overview', text: 'Site dashboard' }] },
+  {
+    text: 'Site dashboard',
+    icon: 'ViewDashboard',
+    section: 'Overview',
+    pages: [
+      { key: 'overview', text: 'Overview' },
+      { key: 'subsites', text: 'Subsites' }
+    ]
+  },
   { text: 'Tenant dashboard', icon: 'BIDashboard', pages: [{ key: 'tenant', text: 'Tenant dashboard' }] },
   {
     text: 'Sites',
@@ -270,6 +279,8 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, 
         return <ActivityView />;
       case 'health':
         return <HealthView />;
+      case 'subsites':
+        return <SubsitesView />;
       case 'orphaned':
         return <OrphanedSitesView />;
       case 'm365review':

@@ -2077,6 +2077,69 @@ test('m365: Graph calls for lifecycle, people and status lookups', async () => {
   assert.ok(calls.some((c) => /startswith\(displayName,'O''Br'\)/.test(c)), 'quote escaped');
 });
 
+// ---------------------------------------------------------------- file counts & subsites
+test('storage: file counts add up the per-type counts instead of trusting search\'s estimated total', async () => {
+  const queries = [];
+  const refined = (total, entries) => json({ d: { query: { PrimaryQueryResult: { RelevantResults: { TotalRows: total, Table: { Rows: { results: [] } } }, RefinementResults: { Refiners: { results: [{ Name: 'FileType', Entries: { results: entries.map(([n, c]) => ({ RefinementName: n, RefinementCount: String(c) })) } }] } } } } } });
+  const c = make(async (m, url) => {
+    const q = decodeURIComponent(url);
+    queries.push(q);
+    if (/SPWebUrl/.test(q)) return refined(120, [['pdf', 900], ['docx', 100]]);
+    if (/LastModifiedTime</.test(q)) return refined(5111, [['pdf', 1500000], ['xlsx', 400000]]);
+    return refined(5120, [['pdf', 1564045], ['xlsx', 439218], ['msg', 186260]]);
+  });
+  const sa = new SearchApi(c);
+  const t = await sa.fileTypes(ORIGIN + '/sites/Nigeria');
+  assert.strictEqual(t.total, 1564045 + 439218 + 186260, 'not the 5,120 estimate');
+  const stale = await sa.staleCounts(ORIGIN + '/sites/Nigeria', [1]);
+  assert.strictEqual(stale[0].count, 1900000);
+  const top = await sa.topLevelFileCount(ORIGIN + '/sites/Nigeria');
+  assert.strictEqual(top, 1000);
+  assert.ok(queries.some((q) => /querytext='IsDocument:1 SPWebUrl:"https:\/\/contoso\.sharepoint\.com\/sites\/Nigeria"'/.test(q)), 'top-level only uses SPWebUrl');
+});
+
+test('subsites: tree walked level by level, parents before children; storage from metrics', async () => {
+  const calls = [];
+  const W = (path, title, unique, extra) => Object.assign({ Id: path, Title: title, Url: ORIGIN + path, ServerRelativeUrl: path, WebTemplate: 'STS', Configuration: 3, Created: '2020-01-01T00:00:00Z', LastItemUserModifiedDate: '2026-10-01T00:00:00Z', HasUniqueRoleAssignments: unique }, extra || {});
+  const tree = {
+    '/sites/n': [W('/sites/n/b', 'Bravo', true), W('/sites/n/a', 'Alpha', false)],
+    '/sites/n/a': [W('/sites/n/a/x', 'X-ray', true)],
+    '/sites/n/b': [],
+    '/sites/n/a/x': []
+  };
+  const c = make(async (m, url) => {
+    const u = decodeURIComponent(url);
+    calls.push(u.replace(ORIGIN, ''));
+    const web = u.replace(ORIGIN, '').split('/_api/')[0];
+    if (/\/_api\/web\/webs\?/.test(u)) return json({ value: tree[web] || [] });
+    if (/\/_api\/web\/rootfolder\?\$select=StorageMetrics/.test(u)) return web === '/sites/n/b' ? json({ error: { message: { value: 'denied' } } }, 403) : json({ StorageMetrics: { TotalSize: '2147483648', TotalFileCount: '42' } });
+    if (/\/_api\/web\?\$select=/.test(u)) return json(W('/sites/n', 'Nigeria', false));
+    return json({ error: { message: { value: 'no route ' + u } } }, 404);
+  });
+  const api = new AdminApi(c);
+  const r = await api.subsiteTree(ORIGIN + '/sites/n');
+  assert.deepStrictEqual(r.webs.map((w) => [w.depth, w.title, w.hasUniquePermissions]), [[0, 'Nigeria', true], [1, 'Alpha', false], [2, 'X-ray', true], [1, 'Bravo', true]]);
+  assert.strictEqual(r.webs[2].parentUrl, ORIGIN + '/sites/n/a');
+  assert.strictEqual(r.webs[0].template, 'STS#3');
+  assert.strictEqual(calls.filter((x) => /web\/webs/.test(x)).length, 4, 'one request per web');
+  const capped = await new AdminApi(c).subsiteTree(ORIGIN + '/sites/n', 2);
+  assert.deepStrictEqual([capped.webs.length, capped.truncated], [2, true]);
+  assert.deepStrictEqual(await api.webStorage(ORIGIN + '/sites/n/a'), { bytes: 2147483648, files: 42 });
+  assert.strictEqual(await api.webStorage(ORIGIN + '/sites/n/b'), undefined, 'no access: no size, no error');
+
+  const SX = src('services/subsitesExport');
+  const rows = SX.subsiteRows([
+    { web: r.webs[0], size: { bytes: 1073741824, files: 10 } },
+    { web: r.webs[1], size: { bytes: 2147483648, files: 42 } },
+    { web: r.webs[2], size: undefined, access: { source: 'sharepoint', owners: [{ id: '1', displayName: 'Ann', mail: 'ann@x.com', type: 'user' }], members: [], visitors: [], ownerGroup: 'X Owners', truncated: false } }
+  ]);
+  const col = (row, h) => row[SX.SUBSITE_HEADERS.indexOf(h)];
+  assert.strictEqual(rows[0].length, SX.SUBSITE_HEADERS.length);
+  assert.deepStrictEqual([col(rows[0], 'Permissions'), col(rows[0], 'Size (GB)'), col(rows[0], 'Note')], ['Top-level site', 1, 'Top-level site (size excludes subsites)']);
+  assert.deepStrictEqual([col(rows[1], 'Permissions'), col(rows[1], 'Owners'), col(rows[1], 'Files')], ['Inherits from parent', '', 42]);
+  assert.deepStrictEqual([col(rows[2], 'Permissions'), col(rows[2], 'Owners group'), col(rows[2], 'Owners'), col(rows[2], 'Note'), col(rows[2], 'Last modified')], ['Unique', 'X Owners', 'ann@x.com', 'Size not available', '2026-10-01']);
+});
+
 // ---------------------------------------------------------------- runner
 (async () => {
   let failed = 0;
