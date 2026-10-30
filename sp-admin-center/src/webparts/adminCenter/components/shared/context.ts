@@ -1,0 +1,53 @@
+import * as React from 'react';
+import { SPClient } from '../../core/SPClient';
+import { IActionLogEntry, ITarget, ViewKey } from '../../models';
+import { AdminApi } from '../../services/AdminApi';
+import { GraphApi } from '../../services/GraphApi';
+import { GrowthStore } from '../../services/GrowthStore';
+import { SearchApi } from '../../services/SearchApi';
+import { TenantStore } from '../../services/TenantStore';
+
+export interface IConfirmOptions {
+  title: string;
+  message: string;
+  confirmText: string;
+  danger?: boolean;
+}
+
+export interface IAdminContext {
+  client: SPClient;
+  api: AdminApi;
+  search: SearchApi;
+  growth: GrowthStore;
+  tenant: TenantStore;
+  /** Microsoft Graph features (only work once the API access is approved). */
+  graph: GraphApi;
+  /** Web the page lives on (used for tenant-wide search). */
+  homeWebUrl: string;
+  /** Signed-in user's e-mail / UPN (lower-case), so bulk actions never remove you. */
+  currentUser: string;
+  target: ITarget;
+  setTarget: (t: ITarget) => void;
+  openView: (v: ViewKey) => void;
+  confirm: (o: IConfirmOptions) => Promise<boolean>;
+  log: (action: string, target: string, ok: boolean, message?: string) => void;
+  actionLog: IActionLogEntry[];
+  /** Bumped by "Refresh"; views reload when it changes. */
+  reloadToken: number;
+  reloadAll: () => void;
+  notify: (message: string, kind?: 'success' | 'error' | 'info') => void;
+  /** Findings count for the Health badge in the nav. */
+  setHealthBadge: (n: number) => void;
+  /** Number of sites flagged for unusual storage growth (nav badge). */
+  setGrowthBadge: (n: number) => void;
+}
+
+export const AdminContext = React.createContext<IAdminContext | undefined>(undefined);
+
+export function useAdmin(): IAdminContext {
+  const ctx = React.useContext(AdminContext);
+  if (!ctx) {
+    throw new Error('AdminContext missing');
+  }
+  return ctx;
+}

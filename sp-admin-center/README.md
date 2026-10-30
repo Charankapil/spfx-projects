@@ -1,0 +1,248 @@
+<p align="center"><img src="assets/logo-wordmark.svg" alt="SharePoint Admin Center" width="640"></p>
+
+# SharePoint Admin Center
+
+**One dashboard for everyday SharePoint administration, running as you.**
+No Azure app registration, no client ID or secret. One `.sppkg`, and whatever
+permissions you already have. Optional Microsoft 365 features use Microsoft
+Graph once a Global Administrator approves the API access (see below);
+everything else works without that approval.
+
+## What it does
+
+The left navigation has one entry per job; related pages share an entry and open as tabs at the top of the page: **Site dashboard** (Overview, Subsites), **Sites** (All sites, Owners & members, Orphaned sites, Create site; the site list is loaded once and shared), **Storage** (This site, Storage growth), **People & access** (This site, Microsoft 365 group, Grant access by URL, Guest users), **Microsoft 365** (Group review, Inactive groups, Teams usage, Deleted groups, Offboarding, Copy / compare members) and **Settings** (Site settings & log, API access). The installed version is shown at the bottom.
+
+| Section | What an admin can do there |
+| --- | --- |
+| **Tenant dashboard** | Every site collection in the tenant from the imported admin-center site list (built for 17,000+): site count, Teams-connected vs other sites, storage used / left / allocated in TB and percent used (capacity entered once, shared), consumption meter, sites by state, type, size and last activity, the top 50 sites by storage, and a searchable, filterable, exportable table of all site collections. **Sync from Microsoft 365** *(Graph)* fills it live from the usage report, and a 180-day storage / active-sites trend |
+| **Subsites** | Every subsite of the selected site collection (whole tree, parents first) with size and file count from SharePoint's storage metrics (one request each, nothing walks files), last change, unique / inherited permissions, and for subsites with their own permissions the people in their Owners, Members and Visitors groups. Export to CSV |
+| **Site dashboard** | Storage vs quota, libraries / items / people / guests / subsites, health score, what needs attention, quick actions |
+| **Sites** | Inventory of **every** SharePoint site collection you can see from search (OneDrive personal sites left out) (no cap: pages of 500 walked in DocId order, about 35 requests for 17,000 sites), with type, created, last activity, inactivity filters, storage per site from the latest CSV import, CSV export, and **Manage** any site from the same screen |
+| **Create site** | Create a site collection from any template: communication site (Topic, Showcase, Blank), team site with a Microsoft 365 group (public / private), team site without a group, and your organisation's own site templates. Language, primary owner, hub to join; checks the address first (and suggests a free one), then follows provisioning. Classic templates (STS#0, project, blog, document center, wiki, publishing, community, records, search, developer) come with the exact `New-SPOSite` command, because only the tenant admin API can create them |
+| **Grant access by URL** | Paste any address (file, folder, library, list, list item, page, site or subsite, an **Access denied** page, an Office `Doc.aspx` / `/:x:/r/` link, a library view with `?id=`, or a sharing link) and it finds the exact object, even if the file was moved (nearest folder that exists). Shows the chain from site collection down with **Unique permissions / Inherits** on each level and which level the permissions come from. Grant on the object itself (stop inheriting first, copying current permissions) or on the parent it inherits from; to specific people, by adding people to a group that already has the chosen permission level there, or by giving an existing group that level. Lists who has access now |
+| **People & permissions** | SharePoint groups and their members (add / remove), all users and guests, make or remove site collection admin, remove a user from the site, who has direct access, "what can this person do here?" checker, **bulk add** from pasted e-mail addresses, **bulk remove** a pasted list of people from the site collection (preview first; never removes you; site admins only when you allow it), and an **Everyone groups** tab that shows where *Everyone* / *Everyone except external users* have access (SharePoint groups, direct site permission) and removes them from each place or from the whole site collection |
+| **Lists & libraries** | Item counts, view-threshold warnings, version history and search visibility toggles (single or bulk), unique-permission flags, CSV export |
+| **Storage insights** | Files by type, files untouched for 1 / 2 / 3+ years, largest files (top 50 above 10 MB to 1 GB), all from the search index |
+| **Storage growth** | Snapshots the storage of a watchlist of site collections over time, draws a trend per site, and **flags sites growing unusually fast** (also shown as a pop-up on the Dashboard and a badge in the nav). Thresholds are adjustable and shared |
+| **Read-only locks** | Make the whole site, one library or list, or one folder read-only, with a custom message in a banner at the top of the locked pages. Preview shows exactly whose permissions change; Unlock restores them exactly |
+| **Recycle bin** | Newest 300 items of the site collection, search, bulk restore, bulk delete permanently |
+| **Activity** | Permission and structure changes (members added or removed, role changes, lists / webs / groups created or deleted) for 24 h to 60 days |
+| **Health check** | Rule-based findings: storage nearly full, single or too many admins, guests, organisation-wide groups, lists near the 5,000-item threshold, libraries without version history, hidden-from-search lists, inactive site |
+| **Sites & M365 groups** | Every active SharePoint site collection (from search, no cap; OneDrive personal sites are left out) and whether it is connected to a Microsoft 365 group, with the group name, Teams flag and Teams channel sites called out. **Owners & members** next to each site opens its owners and members: the Microsoft 365 group's *(Graph)* for group-connected sites, and the site's SharePoint Owners / Members / Visitors groups plus site collection admins for all other sites (no Graph needed). Export the site list, or export every site with its owners and members (e-mail addresses separated by semicolons) as a CSV, one row per site or one row per person, optionally with site collection admins; a cell longer than Excel's 32,767-character limit continues in "(part 2)" columns so rows never break. Groups are read 10 per Graph request; other sites with one SharePoint request each (two with admins), at most 2 at a time, with progress and Stop |
+| **Groups & owners** *(Graph)* | Owners and members of the site's Microsoft 365 group (add from pasted addresses, remove, last owner protected); tenant-wide scan for **ownerless and single-owner groups**, add an owner to many at once, jump to the group's site |
+| **Guest users** *(Graph)* | Every guest in the tenant with invitation state, last sign-in (when available), stale / never signed in / not accepted / disabled filters, CSV export |
+| **Orphaned sites** *(Graph)* | Sites whose owners have all left (accounts deleted or disabled) or that have no owners: group-connected sites by their Microsoft 365 group's owners (20 groups per request), optionally other sites by their SharePoint Owners group; owner accounts checked 20 per request. Export, and Fix opens the site's owners |
+| **Microsoft 365** *(Graph, no extra approval)* | **Group review**: no owner, one owner, guest owner, public with guests, no description; add an owner to many groups. **Inactive groups**: last activity per group from the usage report; delete selected (restorable 30 days). **Teams usage**: active users, messages, meetings per team. **Deleted groups**: restore with site, mailbox and team. **Offboarding**: every group a leaving person owns or is in, sole-owner groups first; hand ownership to a new owner and remove them. **Copy / compare members**: who is only in A, only in B or in both; copy across. **Guest users** also gains *Remove from all groups* for selected guests |
+| **Settings & log** | Edit site title and description, session audit log of every change made with the tool (CSV export) |
+| **API access** | Which optional Microsoft Graph permissions are approved and how to approve them |
+
+**Switch site** (or **Manage** in Sites) points every section at another site or
+subsite on the same tenant, so one page administers many sites.
+
+## Read-only locks
+
+SharePoint's own site lock (*LockState*) can only be set through the tenant admin API on the
+`-admin` domain, which a web part cannot call. This tool locks with **permissions** instead,
+as you (site owner or site collection admin), with no extra approvals:
+
+- **Lock.** Every principal with an edit-capable level on the object (Contribute, Edit, Full
+  Control, custom levels) is switched to **Read**. Limited Access and hidden system levels are
+  never touched. Site collection admins always keep full control (on a group-connected site
+  that includes the Microsoft 365 group owners). Site owners keep their rights unless a site
+  collection admin chooses otherwise, so nobody can lock themselves out. An object that
+  inherited permissions gets its own copy first.
+- **Saved first.** The exact original permissions are written to
+  `Site Assets/admin-center-locks.json` on that site *before* anything changes, so an
+  interrupted lock can still be undone. Read is added before anything is removed.
+- **Unlock** restores the original levels (or makes the object inherit again), removes only
+  the Read the lock added, and leaves grants that someone else made while it was locked.
+- **Banner.** A small application customizer in the same package is registered on the site
+  (a user custom action, no tenant setting) and shows the message on every page, list or
+  library view inside the locked area, including library folder views. The lock list lives
+  in its own settings, so it makes no extra requests. The message is shown as plain text.
+- **Limits.** Folders and files inside that already have their own permissions keep them;
+  subsites with their own permissions are not changed when a site is locked. The package
+  must be available on the site (deployed to all sites, or added to it) for the banner.
+
+## Logo
+
+`assets/logo.svg` (app tile), `assets/logo-wordmark.svg` (README / banner), `assets/logo-512.png`,
+and `sharepoint/images/AppIcon.png` (App Catalog icon). The web part's toolbox icon is the
+same mark, embedded in the manifest.
+
+## Throttling: designed in, not bolted on
+
+Everything goes through one client (`core/SPClient.ts`):
+
+- At most **2 requests in flight**, request starts spaced **150 ms** apart.
+- A `429` / `503` pauses the **whole queue**, honours `Retry-After` (with capped
+  exponential back-off and jitter if absent), and retries at most 4 times.
+  `RateLimit-*` headers, when SharePoint sends them, slow the queue down early.
+  The header shows a live "SharePoint asked us to slow down" notice.
+- **Nothing runs in the background.** No polling, no timers that call SharePoint;
+  every request starts from a click or from opening a view.
+- Counts and top-N lists (file types, stale files, largest files, site inventory)
+  are **single search-index queries**. The tool never enumerates items or files.
+- Paged reads have hard caps (5,000 users, 5,000 sites, 300 recycle-bin items,
+  500 changes). Bulk actions are capped (200 people, 100 recycle-bin items) and
+  run one item at a time.
+- GET responses are cached for 5 minutes and identical in-flight requests are
+  shared, so switching views never repeats a call. A write clears the cache.
+- Requests to any origin other than the tenant the page is on are refused.
+
+## Storage growth tracking
+
+Two sources feed the same alert rules, the Dashboard pop-up and the nav badge.
+
+### All sites: import the CSV your flow writes (built for 17,000+ sites)
+
+Storage is shown **by site state**: active, archived (Microsoft 365 Archive) and deleted
+(still in the site recycle bin), with sites, storage, share and weekly growth for each.
+Choose the archive status and deleted columns in the mapping (detected automatically when
+named like `ArchiveStatus` / `TimeDeleted`). Deleted sites are counted but never raise
+growth alerts.
+
+If a flow (Power Automate, PowerShell, anything) saves the SharePoint admin center
+site list to a CSV in a library on this site, **Storage growth > All sites > Import CSV**
+lets you pick that file (browse a library and folder, or upload from your computer).
+
+- **Column detection.** The site address and storage-used columns are found by name
+  (`SiteUrl`, `Url`, `StorageUsed`, `StorageUsageCurrent`, `Storage used (GB)`, and similar),
+  with optional quota, title and deleted-marker columns. The unit comes from the header or,
+  if the header does not say, from the size of the values. You always see the mapping, a
+  total, the largest site and sample rows before importing, and can change any of it.
+  The mapping is remembered, so the next import needs no review.
+- **Snapshot date** is the file's modified date (or one you choose). Growth is calculated
+  between snapshot dates, so import after each flow run. A snapshot within 6 hours of an
+  earlier one replaces it; the newest 60 are kept.
+- **Skipped rows:** no address, no valid number, deleted sites, OneDrive sites (switchable),
+  duplicates.
+- **One click next time:** *Import newest from last folder* picks the newest CSV in the
+  folder of the last import, skips it if it has not changed since, and otherwise imports it.
+- **Cost, however many sites:** an import takes about a dozen requests in total (list, read
+  the CSV, write the snapshot, read up to 7 earlier snapshots, write the index). Each
+  snapshot is one small file in Site Assets (about half a megabyte for 17,000 sites). The
+  analysis runs once, at import time, and its result (flagged sites, top 25 largest and
+  fastest growing, totals) is stored in a small index file. The Dashboard and this tab read
+  only that index; they never load the snapshots. *Recalculate* re-runs the analysis over
+  the stored snapshots after you change thresholds.
+- **Files:** `Site Assets/admin-center-storage-index.json` and
+  `admin-center-snap-<epoch>.json`.
+
+### Watchlist: live per-site snapshots (up to 500 sites)
+
+One JSON file, `Site Assets/admin-center-storage-history.json`. A capture is one small
+request per tracked site, paced by the throttle-safe client; the list is capped at 500,
+captures over 100 sites ask for confirmation, can be cancelled, skip snapshots newer than
+6 hours, and stop after 10 consecutive failures. Every save re-reads and merges, so two
+admins capturing at once do not overwrite each other. Use it for fresh numbers on the sites
+you care most about; use the CSV import for the whole tenant.
+
+### What counts as unusual (all thresholds editable, shared)
+
+Projected weekly growth of at least 25% *and* 5 GB; or at least 50 GB a week whatever the
+percentage; or a latest daily growth far above the site's own pattern (3 standard
+deviations, needs 5+ snapshots); or the quota projected to fill within 30 days (critical
+within 14). Rates are scaled to a week from the snapshots available, so uneven gaps are
+fine. A site needs two snapshots at least 20 hours apart before it can be judged.
+
+Nothing here runs on a schedule by itself (a web part cannot): the flow produces the CSV,
+and an admin imports it.
+
+## Microsoft 365 features (optional, need API access approval)
+
+Since v1.6.0 the package requests four **delegated** Microsoft Graph permissions.
+They are granted to Microsoft's built-in "SharePoint Online Client
+Extensibility" app, so there is still no app registration or client ID, and
+every call runs as the signed-in admin, limited by that person's own role.
+
+| Permission | Unlocks | Your role must also allow it |
+| --- | --- | --- |
+| `Reports.Read.All` | **Sync from Microsoft 365** on the Tenant dashboard: every site collection with storage used/allocated, last activity, template and deleted state, without a CSV or flow. 180-day tenant storage and active-site trends. | SharePoint Administrator (or Reports Reader / Global Reader) |
+| `Group.ReadWrite.All` | **Groups & owners**: owners and members of the site's Microsoft 365 group (add / remove, last owner protected); tenant-wide scan for ownerless and single-owner groups, add an owner in bulk | SharePoint Administrator, Groups Administrator, or group owner |
+| `User.Read.All` | **Guest users**: every guest with invitation state, stale-guest filters, export; people lookup for group changes | any member |
+| `AuditLog.Read.All` | Last sign-in dates for guests (optional) | Reports Reader / Security Reader / Global Reader, plus Entra ID P1 |
+
+**Approval needs a Global Administrator** (a SharePoint Administrator cannot
+approve Microsoft Graph permissions): SharePoint admin center > Advanced >
+**API access** > approve the pending requests. Approving only some is fine;
+each feature says which permission it is missing, and **Administration > API
+access** shows exactly what is approved (read from the token, no Graph call).
+
+For the live sync, site addresses must not be concealed in reports: Microsoft
+365 admin center > Settings > Org settings > Reports > clear "Display concealed
+user, group, and site names in all reports". The usage report has no archive
+status, so keep using the CSV import if you need archived-site figures.
+
+Graph calls use the same throttle rules as SharePoint (2 in flight, paced,
+Retry-After honoured, cached), and no token is requested until you open a
+Microsoft 365 feature.
+
+## How it runs without app registration
+
+All calls use SPFx's `SPHttpClient` against `_api/*` of the SharePoint tenant
+the page is on, with the signed-in user's own session. Search uses OData 3.0
+(`SPHttpClient` defaults to 4.0, which the search endpoint rejects with HTTP 500
+once it has rows). The only `webApiPermissionRequests` are the optional
+Microsoft Graph ones above; nothing in this section depends on them.
+
+Consequences, by design:
+
+- You can do what your permissions allow. A refused change shows a clear
+  "Access denied" message; nothing is bypassed.
+- The Sites inventory and Storage insights are security-trimmed by search, so
+  they cover what *you* can see. Being a SharePoint admin does not by itself
+  make every site visible to search; pick a site by URL with **Switch site**.
+- Tenant-level settings (sharing policy, storage quotas, site creation) live on
+  the SharePoint admin center API and need a separate sign-in; they are out of
+  scope on purpose.
+
+## Deploy
+
+1. Download [`releases/sharepoint-admin-center.sppkg`](releases/sharepoint-admin-center.sppkg).
+2. Upload it to the tenant (or site collection) **App Catalog** and click **Deploy**.
+   The core features need no API approval; approve the Graph requests in
+   **API access** only if you want the Microsoft 365 features.
+3. Add **SharePoint Admin Center** to a page (a full-width / single-part app page
+   works best) on the site you want as the home base.
+4. Sign-in is automatic. Use **Switch site** to administer other sites.
+
+To upgrade, upload the new file with the **same name** and choose Replace.
+
+## Build
+
+SPFx 1.18 needs Node 16.13 to 18.x.
+
+```bash
+npm install
+npx gulp bundle --ship
+npx gulp package-solution --ship   # sharepoint/solution/sharepoint-admin-center.sppkg
+```
+
+## Tests
+
+```bash
+npm run test:unit
+```
+
+Runs the real service code (throttling queue, retry / pause behaviour,
+concurrency and spacing, caching, origin guard, search parsing for OData v3 and
+v4, REST call shapes, health rules, CSV-injection escaping, growth anomaly rules,
+the watchlist store, CSV parsing and column detection, and the 17,000-site import) under Node, once at
+a modern target and once compiled to ES5 (the shipped target, where subclassing
+`Error` behaves differently).
+
+## Layout
+
+```
+src/webparts/adminCenter/
+  core/SPClient.ts            Throttle-safe request queue, cache, retry, origin guard
+  services/                   AdminApi (REST), SearchApi (search index), HealthEngine,
+                              GrowthEngine (anomaly rules), GrowthStore (watchlist file),
+                              csv, StorageImport, TenantGrowth, TenantStore (CSV import),
+                              exportCsv, addresses, format
+  components/AdminCenter.tsx  Shell: nav, site switcher, request meter, confirm dialog
+  components/views/           One file per section
+  components/shared/          Context, loader hook, charts (plain SVG) and cards
+tests/                        Unit tests and a stand-in for @microsoft/sp-http
+```
