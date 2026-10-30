@@ -1,14 +1,17 @@
 import * as React from 'react';
-import { DefaultButton, DetailsList, DetailsListLayoutMode, Dropdown, IColumn, MessageBar, MessageBarType, PrimaryButton, SearchBox, SelectionMode } from '@fluentui/react';
+import { DefaultButton, DetailsList, DetailsListLayoutMode, Dropdown, IColumn, MessageBar, MessageBarType, PrimaryButton, SearchBox, Selection, SelectionMode } from '@fluentui/react';
+import { hasScope } from '../../services/GraphApi';
 import { downloadCsv } from '../../services/exportCsv';
 import { daysAgo, formatDate } from '../../services/format';
 import { IGuest, isStaleGuest, STALE_DAYS } from '../../services/GraphApi';
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
-import { GraphGate, graphErrorText } from '../shared/graph';
+import { GraphGate, graphErrorText, useGraphScopes } from '../shared/graph';
 import { Card, Empty, Pill, StatTile, ViewHeader } from '../shared/ui';
 
 type GuestFilter = 'all' | 'stale' | 'never' | 'pending' | 'disabled';
+
+const MAX_GUESTS = 100;
 
 /**
  * Tenant-wide guest review (Microsoft Graph, User.Read.All; last sign-in needs AuditLog.Read.All).
@@ -20,6 +23,62 @@ export const GuestsView: React.FC = () => {
   const [state, setState] = React.useState<{ guests?: IGuest[]; signInKnown?: boolean; truncated?: boolean; loading: boolean; progress: number; error?: string }>({ loading: false, progress: 0 });
   const [show, setShow] = React.useState<GuestFilter>('all');
   const [query, setQuery] = React.useState('');
+  const access = useGraphScopes();
+  const canRemove = !!access.scopes && hasScope(access.scopes, 'Group.ReadWrite.All');
+  const [busy, setBusy] = React.useState<string | undefined>();
+  const [selectedCount, setSelectedCount] = React.useState(0);
+  const selection = React.useMemo(() => new Selection({ getKey: (g) => (g as IGuest).id, onSelectionChanged: () => setSelectedCount(selection.getSelectedCount()) }), []);
+
+  /**
+   * Removes the selected guests from every Microsoft 365 group (and team) they are in, as member
+   * and as owner. Their guest account stays (deleting accounts needs a directory role).
+   */
+  const removeFromGroups = async (): Promise<void> => {
+    const picked = (selection.getSelection() as IGuest[]).slice(0, MAX_GUESTS);
+    if (!picked.length) {
+      return;
+    }
+    const ok = await ctx.confirm({
+      title: 'Remove guests from groups',
+      message: `Remove ${picked.length} guest${picked.length === 1 ? '' : 's'} from every Microsoft 365 group and team they belong to? They lose access to those sites, teams and mailboxes. Their guest accounts are kept, and direct access to SharePoint-only sites is not changed.`,
+      confirmText: 'Remove',
+      danger: true
+    });
+    if (!ok) {
+      return;
+    }
+    let groupsDone = 0;
+    const failed: string[] = [];
+    for (let i = 0; i < picked.length; i++) {
+      const g = picked[i];
+      setBusy(`Removing… guest ${i + 1} of ${picked.length}`);
+      try {
+        const [memberOf, owned] = await Promise.all([ctx.graph.userGroups(g.id, 'memberOf'), ctx.graph.userGroups(g.id, 'ownedObjects')]);
+        for (const grp of owned) {
+          try {
+            await ctx.graph.removeFromGroup(grp.id, 'owners', g.id);
+          } catch (e) {
+            failed.push(`${g.displayName} as owner of ${grp.displayName}`);
+          }
+        }
+        for (const grp of memberOf) {
+          try {
+            await ctx.graph.removeFromGroup(grp.id, 'members', g.id);
+            groupsDone++;
+          } catch (e) {
+            failed.push(`${g.displayName} from ${grp.displayName}`);
+          }
+        }
+        ctx.log('Remove guest from groups', `${g.displayName}: ${memberOf.length} groups`, true);
+      } catch (e) {
+        failed.push(`${g.displayName} (${graphErrorText(e).substring(0, 80)})`);
+        ctx.log('Remove guest from groups', g.displayName, false, graphErrorText(e));
+      }
+    }
+    setBusy(undefined);
+    selection.setAllSelected(false);
+    ctx.notify(failed.length ? `${groupsDone} removals done; ${failed.length} failed: ${failed.slice(0, 4).join('; ')}${failed.length > 4 ? '…' : ''}` : `Removed ${picked.length} guest${picked.length === 1 ? '' : 's'} from ${groupsDone} group membership${groupsDone === 1 ? '' : 's'}.`, failed.length ? 'error' : 'success');
+  };
 
   const load = async (): Promise<void> => {
     setState({ loading: true, progress: 0 });
@@ -84,7 +143,7 @@ export const GuestsView: React.FC = () => {
             )}
           </div>
           <p className={styles.muted} style={{ marginBottom: 0 }}>
-            Read in pages of 100 to 500, paced; only when you click Load. Remove a guest from a site in People &amp; permissions (Bulk remove accepts this exported list).
+            Read in pages of 100 to 500, paced; only when you click Load. Select guests (for example the stale ones) to remove them from every Microsoft 365 group and team at once; direct access to SharePoint-only sites is removed in People &amp; access (Bulk remove accepts this exported list).
           </p>
           {state.error && <MessageBar messageBarType={MessageBarType.error} isMultiline>{state.error}</MessageBar>}
           {state.guests && !signInKnown && (
@@ -120,8 +179,19 @@ export const GuestsView: React.FC = () => {
                 />
               }
             >
-              <SearchBox placeholder="Filter by name or e-mail" value={query} onChange={(_, v) => setQuery(v || '')} styles={{ root: { maxWidth: 320, marginBottom: 8 } }} />
-              {rows.length === 0 ? <Empty text="No guests match." /> : <DetailsList items={rows} columns={columns} selectionMode={SelectionMode.none} layoutMode={DetailsListLayoutMode.justified} />}
+              <div className={styles.actions} style={{ marginBottom: 8 }}>
+                <SearchBox placeholder="Filter by name or e-mail" value={query} onChange={(_, v) => setQuery(v || '')} styles={{ root: { width: 300 } }} />
+                {canRemove && (
+                  <DefaultButton iconProps={{ iconName: 'UserRemove' }} onClick={removeFromGroups} disabled={!!busy || selectedCount === 0} styles={{ root: { borderColor: '#c4314b', color: '#a4262c' } }}>
+                    {busy || `Remove ${selectedCount ? Math.min(selectedCount, MAX_GUESTS) : ''} selected from all groups`}
+                  </DefaultButton>
+                )}
+              </div>
+              {rows.length === 0 ? (
+                <Empty text="No guests match." />
+              ) : (
+                <DetailsList items={rows} columns={columns} selection={selection} selectionMode={canRemove ? SelectionMode.multiple : SelectionMode.none} layoutMode={DetailsListLayoutMode.justified} />
+              )}
               {state.truncated && <p className={styles.muted}>Stopped at 100,000 guests.</p>}
             </Card>
           </>

@@ -174,6 +174,13 @@ export type ViewKey =
   | 'health'
   | 'm365groups'
   | 'sitegroups'
+  | 'orphaned'
+  | 'm365review'
+  | 'm365activity'
+  | 'teamsusage'
+  | 'm365deleted'
+  | 'offboarding'
+  | 'groupcompare'
   | 'guests'
   | 'apiaccess'
   | 'settings';

@@ -20,19 +20,19 @@ export const GRAPH_PERMISSIONS: IGraphPermission[] = [
   {
     scope: 'Reports.Read.All',
     why: 'Usage reports: every site collection with storage used and allocated, last activity, files and page views.',
-    features: ['Sync the tenant dashboard live from Microsoft 365 (no CSV or flow needed)', 'Tenant storage trend (180 days)', 'Total vs active sites trend'],
+    features: ['Sync the tenant dashboard live from Microsoft 365 (no CSV or flow needed)', 'Tenant storage trend (180 days)', 'Total vs active sites trend', 'Inactive groups & Teams', 'Teams usage per team', 'Guest counts in Group review'],
     role: 'SharePoint Administrator (or Reports Reader / Global Reader).'
   },
   {
     scope: 'Group.ReadWrite.All',
-    why: 'Microsoft 365 groups behind team sites: owners, members and ownerless groups.',
-    features: ['See and change owners and members of the site’s Microsoft 365 group', 'Find ownerless and single-owner groups tenant-wide', 'Add an owner to an ownerless group'],
+    why: 'Microsoft 365 groups and teams: owners, members, review, delete and restore.',
+    features: ['See and change owners and members of the site’s Microsoft 365 group', 'Group review: no owner, one owner, guest owners, public groups with guests', 'Delete inactive groups; restore deleted groups', 'Offboarding: hand over and remove', 'Copy / compare members', 'Remove guests from all groups', 'Orphaned sites (group owners)'],
     role: 'SharePoint Administrator, Groups Administrator, or owner of the group.'
   },
   {
     scope: 'User.Read.All',
     why: 'Look up people in the directory and list guest accounts.',
-    features: ['Guest users review (tenant-wide)', 'Find people when adding group owners / members'],
+    features: ['Guest users review (tenant-wide)', 'Find people when adding group owners / members', 'Offboarding: find the person leaving', 'Orphaned sites: are the owners\u2019 accounts still active?'],
     role: 'Any member user (directory read).'
   },
   {
@@ -265,7 +265,8 @@ function dirObject(o: IRawDirObject): IDirectoryObject {
     mail: o.mail,
     userPrincipalName: o.userPrincipalName,
     userType: o.userType,
-    type: t.indexOf('user') >= 0 ? 'user' : t.indexOf('group') >= 0 ? 'group' : t.indexOf('serviceprincipal') >= 0 ? 'servicePrincipal' : 'other'
+    // No @odata.type (some $expand responses omit it): a user, as toGroup's owner count assumes.
+    type: !t || t.indexOf('user') >= 0 ? 'user' : t.indexOf('group') >= 0 ? 'group' : t.indexOf('serviceprincipal') >= 0 ? 'servicePrincipal' : 'other'
   };
 }
 
@@ -333,6 +334,100 @@ export interface IGroupSummary {
   mail: string;
   visibility: string;
   isTeam: boolean;
+}
+
+export interface IGroupRef {
+  id: string;
+  displayName: string;
+  mail: string;
+}
+
+export interface IDeletedGroup extends IGroupRef {
+  visibility: string;
+  deleted?: Date;
+}
+
+export interface IUserStatus {
+  exists: boolean;
+  enabled: boolean;
+  guest: boolean;
+  id?: string;
+  displayName?: string;
+  /** Could not be checked (throttled or another error): treated as still active. */
+  unknown?: boolean;
+}
+
+export interface IGroupActivity {
+  id: string;
+  name: string;
+  isDeleted: boolean;
+  owner: string;
+  type: string;
+  lastActivity?: Date;
+  members: number;
+  guests: number;
+  emailsReceived: number;
+  activeFiles: number;
+  files: number;
+  siteBytes: number;
+}
+
+export interface ITeamActivity {
+  id: string;
+  name: string;
+  type: string;
+  lastActivity?: Date;
+  activeUsers: number;
+  activeChannels: number;
+  messages: number;
+  meetings: number;
+  guests: number;
+}
+
+function num(v: string): number {
+  const n = Number(v);
+  return isFinite(n) ? n : 0;
+}
+
+function day(v: string): Date | undefined {
+  if (!v) {
+    return undefined;
+  }
+  const d = new Date(v.substring(0, 10) + 'T00:00:00Z');
+  return isNaN(d.getTime()) ? undefined : d;
+}
+
+/** Rows of the Microsoft 365 groups activity report (JSON or CSV field names). */
+export function groupActivityRows(records: Array<{ [key: string]: string }>): IGroupActivity[] {
+  return records.map((r) => ({
+    id: field(r, ['groupid']).toLowerCase(),
+    name: field(r, ['groupdisplayname']),
+    isDeleted: /^true$/i.test(field(r, ['isdeleted'])),
+    owner: field(r, ['ownerprincipalname']),
+    type: field(r, ['grouptype']),
+    lastActivity: day(field(r, ['lastactivitydate'])),
+    members: num(field(r, ['membercount'])),
+    guests: num(field(r, ['externalmembercount', 'guestcount'])),
+    emailsReceived: num(field(r, ['exchangereceivedemailcount'])),
+    activeFiles: num(field(r, ['sharepointactivefilecount'])),
+    files: num(field(r, ['sharepointtotalfilecount'])),
+    siteBytes: num(field(r, ['sharepointsitestorageusedbyte', 'sharepointsitestorageusedinbytes']))
+  }));
+}
+
+/** Rows of the Teams team activity report (JSON or CSV field names). */
+export function teamActivityRows(records: Array<{ [key: string]: string }>): ITeamActivity[] {
+  return records.map((r) => ({
+    id: field(r, ['teamid']).toLowerCase(),
+    name: field(r, ['teamname']),
+    type: field(r, ['teamtype']),
+    lastActivity: day(field(r, ['lastactivitydate'])),
+    activeUsers: num(field(r, ['activeusers'])),
+    activeChannels: num(field(r, ['activechannels'])),
+    messages: num(field(r, ['channelmessages'])) || num(field(r, ['postmessages'])) + num(field(r, ['replymessages'])),
+    meetings: num(field(r, ['meetingsorganized'])),
+    guests: num(field(r, ['guests']))
+  }));
 }
 
 export interface IBatchPart {
@@ -407,7 +502,7 @@ export class GraphApi {
   public async listGroupsWithOwners(onProgress?: (n: number) => void, max = 50000): Promise<{ groups: IM365Group[]; truncated: boolean }> {
     const filter = encodeURIComponent("groupTypes/any(c:c eq 'Unified')");
     const res = await this.client.getAll<IRawGroup>(
-      `/v1.0/groups?$filter=${filter}&$select=id,displayName,mail,visibility,createdDateTime,resourceProvisioningOptions&$expand=owners($select=id,displayName,userPrincipalName)&$top=100`,
+      `/v1.0/groups?$filter=${filter}&$select=id,displayName,mail,visibility,createdDateTime,description,resourceProvisioningOptions&$expand=owners($select=id,displayName,userPrincipalName,mail,userType)&$top=100`,
       max,
       onProgress
     );
@@ -534,6 +629,120 @@ export class GraphApi {
       }
     }
     return out;
+  }
+
+  // ---- usage reports for groups and Teams
+
+  /** Last activity, members, guests and storage for every Microsoft 365 group (one report). */
+  public async groupActivity(period: 'D7' | 'D30' | 'D90' | 'D180' = 'D180', onProgress?: (n: number) => void): Promise<IGroupActivity[]> {
+    return groupActivityRows(await this.report('getOffice365GroupsActivityDetail', period, onProgress));
+  }
+
+  /** Active users, messages and meetings for every team (one report). */
+  public async teamsActivity(period: 'D7' | 'D30' | 'D90' | 'D180' = 'D30', onProgress?: (n: number) => void): Promise<ITeamActivity[]> {
+    return teamActivityRows(await this.report('getTeamsTeamActivityDetail', period, onProgress));
+  }
+
+  // ---- group lifecycle
+
+  /** Deletes a Microsoft 365 group (it stays restorable for 30 days, with its site and team). */
+  public async deleteGroup(groupId: string): Promise<void> {
+    await this.client.send('DELETE', `/v1.0/groups/${assertGuid(groupId)}`);
+  }
+
+  /** Microsoft 365 groups deleted in the last 30 days. */
+  public async deletedGroups(): Promise<IDeletedGroup[]> {
+    const res = await this.client.getAll<IRawGroup & { deletedDateTime?: string; groupTypes?: string[] }>(
+      '/v1.0/directory/deletedItems/microsoft.graph.group?$select=id,displayName,mail,visibility,description,deletedDateTime,groupTypes&$top=999',
+      20000
+    );
+    return res.items
+      .filter((g) => (g.groupTypes || ['Unified']).indexOf('Unified') >= 0)
+      .map((g) => ({ id: g.id, displayName: g.displayName || g.mail || g.id, mail: g.mail || '', visibility: g.visibility || '', deleted: g.deletedDateTime ? new Date(g.deletedDateTime) : undefined }));
+  }
+
+  public async restoreGroup(groupId: string): Promise<void> {
+    await this.client.send('POST', `/v1.0/directory/deletedItems/${assertGuid(groupId)}/restore`);
+  }
+
+  // ---- a person's groups (offboarding, guest clean-up)
+
+  /** Microsoft 365 groups a user belongs to (direct membership). */
+  public async userGroups(userId: string, kind: 'memberOf' | 'ownedObjects'): Promise<IGroupRef[]> {
+    const res = await this.client.getAll<IRawGroup & { groupTypes?: string[] }>(
+      `/v1.0/users/${assertGuid(userId)}/${kind}/microsoft.graph.group?$select=id,displayName,mail,groupTypes,visibility&$top=999`,
+      5000,
+      undefined,
+      { cacheTtlMs: 0 }
+    );
+    return res.items
+      .filter((g) => (g.groupTypes || []).indexOf('Unified') >= 0)
+      .map((g) => ({ id: g.id.toLowerCase(), displayName: g.displayName || g.mail || g.id, mail: g.mail || '' }));
+  }
+
+  /** Owners of many groups: 20 groups per batch request. */
+  public async ownersMany(groupIds: string[], onProgress?: (done: number, total: number) => void, shouldStop?: () => boolean): Promise<{ [id: string]: IDirectoryObject[] | undefined }> {
+    const ids = groupIds.map((g) => assertGuid(g).toLowerCase()).filter((g, i, a) => a.indexOf(g) === i);
+    const out: { [id: string]: IDirectoryObject[] | undefined } = {};
+    for (let start = 0; start < ids.length; start += BATCH_SIZE) {
+      if (shouldStop && shouldStop()) {
+        break;
+      }
+      const chunk = ids.slice(start, start + BATCH_SIZE);
+      const parts = await this.batchGet(chunk.map((id) => `/groups/${id}/owners?${MEMBER_SELECT}&$top=999`));
+      chunk.forEach((id, k) => {
+        const part = parts[k];
+        out[id] = part.status >= 200 && part.status < 300 ? (((part.body || {}) as { value?: IRawDirObject[] }).value || []).map(dirObject) : undefined;
+      });
+      if (onProgress) {
+        onProgress(Math.min(start + chunk.length, ids.length), ids.length);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Whether people still have a working account: looked up by object id, UPN or e-mail,
+   * 20 per batch request. Missing (deleted) accounts come back as { exists: false }.
+   */
+  public async userStatus(keys: string[], onProgress?: (done: number, total: number) => void, shouldStop?: () => boolean): Promise<{ [key: string]: IUserStatus }> {
+    const unique = keys.map((k) => k.trim().toLowerCase()).filter((k, i, a) => !!k && a.indexOf(k) === i);
+    const out: { [key: string]: IUserStatus } = {};
+    for (let start = 0; start < unique.length; start += BATCH_SIZE) {
+      if (shouldStop && shouldStop()) {
+        break;
+      }
+      const chunk = unique.slice(start, start + BATCH_SIZE);
+      const parts = await this.batchGet(chunk.map((k) => `/users/${encodeURIComponent(k)}?$select=id,displayName,mail,userPrincipalName,accountEnabled,userType`));
+      chunk.forEach((k, i) => {
+        const part = parts[i];
+        if (part.status >= 200 && part.status < 300) {
+          const u = (part.body || {}) as { id?: string; displayName?: string; accountEnabled?: boolean; userType?: string };
+          out[k] = { exists: true, enabled: u.accountEnabled !== false, guest: (u.userType || '').toLowerCase() === 'guest', id: u.id, displayName: u.displayName };
+        } else if (part.status === 404) {
+          out[k] = { exists: false, enabled: false, guest: false };
+        } else {
+          out[k] = { exists: true, enabled: true, guest: false, unknown: true };
+        }
+      });
+      if (onProgress) {
+        onProgress(Math.min(start + chunk.length, unique.length), unique.length);
+      }
+    }
+    return out;
+  }
+
+  /** Microsoft 365 groups whose name starts with the text (for pickers). */
+  public async searchGroups(text: string): Promise<IGroupRef[]> {
+    const t = text.trim().replace(/'/g, "''");
+    if (!t) {
+      return [];
+    }
+    const filter = encodeURIComponent(`groupTypes/any(c:c eq 'Unified') and startswith(displayName,'${t}')`);
+    const res = await this.client.get<{ value?: Array<IRawGroup> }>(`/v1.0/groups?$filter=${filter}&$select=id,displayName,mail&$top=25&$count=true&$orderby=displayName`, {
+      headers: { ConsistencyLevel: 'eventual' }
+    });
+    return (res.value || []).map((g) => ({ id: g.id.toLowerCase(), displayName: g.displayName || g.mail || g.id, mail: g.mail || '' }));
   }
 
   // ---- people

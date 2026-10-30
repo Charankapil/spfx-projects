@@ -1,9 +1,7 @@
 import * as React from 'react';
-import { DefaultButton, DetailsList, DetailsListLayoutMode, Dropdown, IColumn, MessageBar, MessageBarType, Pivot, PivotItem, PrimaryButton, SearchBox, Selection, SelectionMode, TextField } from '@fluentui/react';
+import { MessageBar, MessageBarType, PrimaryButton, SearchBox, TextField } from '@fluentui/react';
 import { parseAddresses } from '../../services/addresses';
-import { downloadCsv } from '../../services/exportCsv';
-import { formatDate } from '../../services/format';
-import { IDirectoryObject, IM365Group } from '../../services/GraphApi';
+import { IDirectoryObject } from '../../services/GraphApi';
 import styles from '../AdminCenter.module.scss';
 import { useAdmin } from '../shared/context';
 import { GraphGate, graphErrorText } from '../shared/graph';
@@ -20,20 +18,9 @@ const MAX_BULK = 100;
 export const GroupsView: React.FC = () => {
   return (
     <div className={styles.view}>
-      <ViewHeader title="Microsoft 365 groups & owners" hint="Owners and members of the Microsoft 365 group behind a team site, and groups across the tenant that have nobody in charge." />
+      <ViewHeader title="Microsoft 365 group" hint="Owners and members of the Microsoft 365 group behind the selected site. Tenant-wide group tools are under Microsoft 365 in the menu." />
       <GraphGate scopes={['Group.ReadWrite.All', 'User.Read.All']} feature="Microsoft 365 group management">
-        <Pivot aria-label="Group views">
-          <PivotItem headerText="This site's group">
-            <div style={{ paddingTop: 12 }}>
-              <SiteGroupTab />
-            </div>
-          </PivotItem>
-          <PivotItem headerText="Ownerless groups (tenant)">
-            <div style={{ paddingTop: 12 }}>
-              <OwnerlessTab />
-            </div>
-          </PivotItem>
-        </Pivot>
+        <SiteGroupTab />
       </GraphGate>
     </div>
   );
@@ -199,178 +186,5 @@ const PeopleCard: React.FC<{ groupId: string; kind: 'owners' | 'members'; people
         </ul>
       )}
     </Card>
-  );
-};
-
-// ---- tenant-wide ownerless groups -----------------------------------------------
-
-type OwnerFilter = 'none' | 'one' | 'all';
-
-const OwnerlessTab: React.FC = () => {
-  const ctx = useAdmin();
-  const [state, setState] = React.useState<{ groups?: IM365Group[]; truncated?: boolean; loading: boolean; progress: number; error?: string; at?: Date }>({ loading: false, progress: 0 });
-  const [show, setShow] = React.useState<OwnerFilter>('none');
-  const [query, setQuery] = React.useState('');
-  const [owner, setOwner] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-  const [selectedCount, setSelectedCount] = React.useState(0);
-  const selection = React.useMemo(() => new Selection({ getKey: (g) => (g as IM365Group).id, onSelectionChanged: () => setSelectedCount(selection.getSelectedCount()) }), []);
-
-  const scan = async (): Promise<void> => {
-    setState({ loading: true, progress: 0 });
-    try {
-      const res = await ctx.graph.listGroupsWithOwners((n) => setState((s) => ({ ...s, progress: n })));
-      setState({ loading: false, progress: res.groups.length, groups: res.groups, truncated: res.truncated, at: new Date() });
-    } catch (e) {
-      setState({ loading: false, progress: 0, error: graphErrorText(e) });
-    }
-  };
-
-  const groups = state.groups || [];
-  const counts = React.useMemo(() => ({ none: groups.filter((g) => g.ownerCount === 0).length, one: groups.filter((g) => g.ownerCount === 1).length }), [groups]);
-  const rows = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return groups
-      .filter((g) => (show === 'none' ? g.ownerCount === 0 : show === 'one' ? g.ownerCount === 1 : true))
-      .filter((g) => !q || (g.displayName + ' ' + (g.mail || '')).toLowerCase().indexOf(q) >= 0);
-  }, [groups, show, query]);
-  // A stable array keeps the selection while typing in the owner box.
-  const visible = React.useMemo(() => rows.slice(0, 2000), [rows]);
-
-  const openSite = async (g: IM365Group): Promise<void> => {
-    try {
-      const res = await ctx.search.run(ctx.homeWebUrl, { query: `contentclass:STS_Site GroupId:${g.id}`, select: ['Path', 'Title'], rowLimit: 1 });
-      const url = res.rows[0] && res.rows[0].Path;
-      if (!url) {
-        ctx.notify('The site for this group was not found in search (it may not be indexed yet or you have no access to it).', 'info');
-        return;
-      }
-      const [web, site] = await Promise.all([ctx.api.getWeb(url), ctx.api.getSite(url)]);
-      ctx.setTarget({ webUrl: web.url, siteUrl: site.url, title: web.title });
-      ctx.notify(`Now managing ${web.title}.`, 'success');
-    } catch (e) {
-      ctx.notify(graphErrorText(e), 'error');
-    }
-  };
-
-  const addOwner = async (): Promise<void> => {
-    const picked = selection.getSelection() as IM365Group[];
-    if (!picked.length || !owner.trim()) {
-      return;
-    }
-    setBusy(true);
-    try {
-      const user = await ctx.graph.findUser(owner.trim());
-      if (!user) {
-        ctx.notify(`${owner} was not found in the directory.`, 'error');
-        return;
-      }
-      const ok = await ctx.confirm({ title: 'Add owner', message: `Add ${user.displayName} as an owner of ${picked.length} group${picked.length === 1 ? '' : 's'}?`, confirmText: 'Add owner' });
-      if (!ok) {
-        return;
-      }
-      let done = 0;
-      const failed: string[] = [];
-      for (const g of picked.slice(0, MAX_BULK)) {
-        try {
-          await ctx.graph.addToGroup(g.id, 'owners', user.id);
-          ctx.log('Add group owner', `${user.displayName} → ${g.displayName}`, true);
-          done++;
-          g.ownerCount = (g.ownerCount || 0) + 1;
-        } catch (e) {
-          failed.push(g.displayName);
-          ctx.log('Add group owner', g.displayName, false, graphErrorText(e));
-        }
-      }
-      setState((s) => ({ ...s, groups: (s.groups || []).slice() }));
-      selection.setAllSelected(false);
-      ctx.notify(failed.length ? `${done} updated; failed: ${failed.slice(0, 5).join(', ')}${failed.length > 5 ? '…' : ''}` : `${user.displayName} is now an owner of ${done} group${done === 1 ? '' : 's'}.`, failed.length ? 'error' : 'success');
-    } catch (e) {
-      ctx.notify(graphErrorText(e), 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const columns: IColumn[] = [
-    { key: 'n', name: 'Group', minWidth: 200, isResizable: true, onRender: (g: IM365Group) => <span title={g.mail}>{g.displayName}</span> },
-    { key: 'o', name: 'Owners', minWidth: 70, onRender: (g: IM365Group) => (g.ownerCount === 0 ? <Pill kind="critical">None</Pill> : g.ownerCount === 1 ? <Pill kind="warning">1</Pill> : String(g.ownerCount)) },
-    { key: 't', name: 'Team', minWidth: 60, onRender: (g: IM365Group) => (g.isTeam ? 'Yes' : '') },
-    { key: 'v', name: 'Privacy', minWidth: 70, onRender: (g: IM365Group) => g.visibility || '' },
-    { key: 'c', name: 'Created', minWidth: 90, onRender: (g: IM365Group) => formatDate(g.createdDateTime ? new Date(g.createdDateTime) : undefined) },
-    {
-      key: 'a',
-      name: '',
-      minWidth: 90,
-      onRender: (g: IM365Group) => (
-        <button type="button" className={styles.link} onClick={() => openSite(g)}>
-          Manage site
-        </button>
-      )
-    }
-  ];
-
-  return (
-    <>
-      <Card>
-        <p className={styles.muted} style={{ marginTop: 0 }}>
-          Reads every Microsoft 365 group with its owners, 100 groups per request, paced like everything else (about 2 minutes for 17,000 groups). It only runs when you click Scan.
-        </p>
-        <div className={styles.actions}>
-          <PrimaryButton iconProps={{ iconName: 'Search' }} onClick={scan} disabled={state.loading}>
-            {state.loading ? `Scanning… ${state.progress.toLocaleString()} groups` : state.groups ? 'Scan again' : 'Scan all groups'}
-          </PrimaryButton>
-          {state.groups && (
-            <DefaultButton
-              iconProps={{ iconName: 'Download' }}
-              onClick={() => downloadCsv('m365-group-owners.csv', ['Group', 'Mail', 'Owners', 'Owner names', 'Team', 'Privacy', 'Created', 'Group id'], groups.map((g) => [g.displayName, g.mail, g.ownerCount, (g.owners || []).map((o) => o.userPrincipalName || o.displayName).join('; '), g.isTeam ? 'Yes' : 'No', g.visibility, g.createdDateTime, g.id]))}
-            >
-              Export all
-            </DefaultButton>
-          )}
-        </div>
-        {state.error && <MessageBar messageBarType={MessageBarType.error} isMultiline>{state.error}</MessageBar>}
-        {state.truncated && <MessageBar messageBarType={MessageBarType.warning}>Stopped at 50,000 groups.</MessageBar>}
-      </Card>
-      {state.groups && (
-        <>
-          <div className={styles.kpiRow}>
-            <Kpi label="Microsoft 365 groups" value={groups.length.toLocaleString()} sub={`${groups.filter((g) => g.isTeam).length.toLocaleString()} with a team`} onClick={() => setShow('all')} />
-            <Kpi label="No owner" value={counts.none.toLocaleString()} sub="nobody manages access" onClick={() => setShow('none')} />
-            <Kpi label="Single owner" value={counts.one.toLocaleString()} sub="at risk when they leave" onClick={() => setShow('one')} />
-          </div>
-          <Card
-            title={`${rows.length.toLocaleString()} groups`}
-            right={
-              <Dropdown
-                ariaLabel="Show"
-                selectedKey={show}
-                onChange={(_, o) => o && setShow(o.key as OwnerFilter)}
-                options={[
-                  { key: 'none', text: 'No owner' },
-                  { key: 'one', text: 'Single owner' },
-                  { key: 'all', text: 'All groups' }
-                ]}
-                styles={{ root: { width: 160 } }}
-              />
-            }
-          >
-            <div className={styles.actions} style={{ marginBottom: 8 }}>
-              <SearchBox placeholder="Filter by name or e-mail" value={query} onChange={(_, v) => setQuery(v || '')} styles={{ root: { width: 260 } }} />
-              <TextField ariaLabel="Owner e-mail" placeholder="Owner e-mail to add" value={owner} onChange={(_, v) => setOwner(v || '')} styles={{ root: { width: 260 } }} />
-              <PrimaryButton onClick={addOwner} disabled={busy || !owner.trim() || selectedCount === 0}>
-                Add as owner to {selectedCount || ''} selected
-              </PrimaryButton>
-            </div>
-            {rows.length === 0 ? (
-              <Empty text="No groups match." />
-            ) : (
-              <DetailsList items={visible} columns={columns} selection={selection} selectionMode={SelectionMode.multiple} layoutMode={DetailsListLayoutMode.justified} />
-            )}
-            {rows.length > 2000 && <p className={styles.muted}>Showing the first 2,000; use the filter or Export all.</p>}
-          </Card>
-        </>
-      )}
-    </>
   );
 };

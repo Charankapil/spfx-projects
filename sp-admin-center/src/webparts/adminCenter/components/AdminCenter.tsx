@@ -24,6 +24,12 @@ import { Logo } from './shared/ui';
 import { AdminContext, IAdminContext, IConfirmOptions } from './shared/context';
 import { ActivityView } from './views/ActivityView';
 import { ApiAccessView } from './views/ApiAccessView';
+import { InactiveGroupsView, TeamsUsageView } from './views/ActivityReportsView';
+import { CompareGroupsView } from './views/CompareGroupsView';
+import { DeletedGroupsView } from './views/DeletedGroupsView';
+import { GroupReviewView } from './views/GroupReviewView';
+import { OffboardingView } from './views/OffboardingView';
+import { OrphanedSitesView } from './views/OrphanedSitesView';
 import { CreateSiteView } from './views/CreateSiteView';
 import { GrantAccessView } from './views/GrantAccessView';
 import { GroupsView } from './views/GroupsView';
@@ -74,6 +80,7 @@ const NAV: INavEntry[] = [
     pages: [
       { key: 'sites', text: 'All sites' },
       { key: 'sitegroups', text: 'Owners & members' },
+      { key: 'orphaned', text: 'Orphaned sites' },
       { key: 'create', text: 'Create site' }
     ]
   },
@@ -94,6 +101,18 @@ const NAV: INavEntry[] = [
       { key: 'm365groups', text: 'Microsoft 365 group' },
       { key: 'grant', text: 'Grant access by URL' },
       { key: 'guests', text: 'Guest users' }
+    ]
+  },
+  {
+    text: 'Microsoft 365',
+    icon: 'OfficeLogo',
+    pages: [
+      { key: 'm365review', text: 'Group review' },
+      { key: 'm365activity', text: 'Inactive groups' },
+      { key: 'teamsusage', text: 'Teams usage' },
+      { key: 'm365deleted', text: 'Deleted groups' },
+      { key: 'offboarding', text: 'Offboarding' },
+      { key: 'groupcompare', text: 'Copy / compare members' }
     ]
   },
   { text: 'Lists & libraries', icon: 'Library', pages: [{ key: 'content', text: 'Lists & libraries' }] },
@@ -251,6 +270,20 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, 
         return <ActivityView />;
       case 'health':
         return <HealthView />;
+      case 'orphaned':
+        return <OrphanedSitesView />;
+      case 'm365review':
+        return <GroupReviewView />;
+      case 'm365activity':
+        return <InactiveGroupsView />;
+      case 'teamsusage':
+        return <TeamsUsageView />;
+      case 'm365deleted':
+        return <DeletedGroupsView />;
+      case 'offboarding':
+        return <OffboardingView />;
+      case 'groupcompare':
+        return <CompareGroupsView />;
       case 'grant':
         return <GrantAccessView />;
       case 'create':

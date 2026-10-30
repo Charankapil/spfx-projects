@@ -1979,6 +1979,104 @@ test('release fixes: a failed admin read keeps the owners and members of the sit
   assert.ok(/Site admins: no access/.test(row[SGX.SITE_HEADERS.indexOf('Note')]));
 });
 
+// ---------------------------------------------------------------- Microsoft 365 tools
+const MR = src('services/m365Review');
+
+test('m365: group review flags', () => {
+  const u = (id, extra) => Object.assign({ id, displayName: 'U' + id, type: 'user', userType: 'Member' }, extra || {});
+  const g = (owners, extra) => Object.assign({ id: 'g', displayName: 'G', visibility: 'Private', description: 'About', isTeam: false, owners }, extra || {});
+  assert.deepStrictEqual(MR.reviewFlags(g([])), ['No owner']);
+  assert.deepStrictEqual(MR.reviewFlags(g([u('1')])), ['One owner']);
+  assert.deepStrictEqual(MR.reviewFlags(g([u('1'), u('2', { userPrincipalName: 'x_y.com#EXT#@contoso.onmicrosoft.com', userType: undefined })])), ['Guest owner']);
+  assert.deepStrictEqual(MR.reviewFlags(g([u('1'), u('2')], { visibility: 'Public', description: ' ' }), { guests: 3 }), ['Public with guests', 'No description']);
+  assert.deepStrictEqual(MR.reviewFlags(g([u('1'), u('2')], { visibility: 'Public' }), { guests: 0 }), []);
+  assert.deepStrictEqual(MR.reviewFlags(g([u('1'), { id: 'app', displayName: 'App', type: 'servicePrincipal' }])), ['One owner'], 'apps are not owners');
+});
+
+test('m365: offboarding plan puts sole-owner groups first and counts other owners', () => {
+  const ref = (id, name) => ({ id, displayName: name, mail: name.toLowerCase() + '@x.com' });
+  const owners = {
+    a: [{ id: 'LEAVER', displayName: 'Leaver', type: 'user' }],
+    b: [{ id: 'leaver', displayName: 'Leaver', type: 'user' }, { id: 'p2', displayName: 'P2', type: 'user' }],
+    c: undefined
+  };
+  const rows = MR.planOffboarding([ref('b', 'Beta'), ref('a', 'Alpha'), ref('c', 'Gamma')], [ref('a', 'Alpha'), ref('d', 'Delta')], owners, 'Leaver');
+  assert.deepStrictEqual(rows.map((r) => [r.group.displayName, r.isOwner, r.isMember, r.otherOwners]), [
+    ['Alpha', true, true, 0],
+    ['Beta', true, false, 1],
+    ['Gamma', true, false, undefined],
+    ['Delta', false, true, undefined]
+  ]);
+});
+
+test('m365: compare members and orphaned-site owner states', () => {
+  const p = (id) => ({ id, displayName: 'P' + id, type: 'user' });
+  const c = MR.compareMembers([p('1'), p('2'), p('3')], [p('3'), p('4')]);
+  assert.deepStrictEqual([c.onlyA.map((x) => x.id), c.onlyB.map((x) => x.id), c.both.map((x) => x.id)], [['1', '2'], ['4'], ['3']]);
+  const st = { a: { exists: true, enabled: true }, b: { exists: false, enabled: false }, c: { exists: true, enabled: false }, d: { exists: true, enabled: true, unknown: true } };
+  const look = (x) => st[x.id];
+  assert.strictEqual(MR.ownerState([], look).state, 'No owners');
+  assert.strictEqual(MR.ownerState([{ id: 'everyone', type: 'group', displayName: 'Everyone' }], look).state, 'No owners', 'groups are not people');
+  assert.strictEqual(MR.ownerState([p('b'), p('c')], look).state, 'All owners have left');
+  assert.deepStrictEqual(MR.ownerState([p('b'), p('a')], look).state, 'One active owner');
+  assert.strictEqual(MR.ownerState([p('a'), p('d')], look).state, 'OK', 'unknown status counts as active');
+  assert.strictEqual(MR.personKey({ id: 'ID1', userPrincipalName: 'A@X.COM', mail: 'm@x.com' }, true), 'id1');
+  assert.strictEqual(MR.personKey({ id: '5', userPrincipalName: 'A@X.COM', mail: 'm@x.com' }, false), 'a@x.com');
+  assert.strictEqual(MR.daysSince(new Date(Date.now() - 3.5 * 86400000)), 3);
+  assert.strictEqual(MR.daysSince(undefined), undefined);
+});
+
+test('m365: usage report rows for groups and teams (JSON and CSV names)', () => {
+  const gj = G.groupActivityRows(G.reportRecords(JSON.stringify({ value: [{ groupDisplayName: 'Fin', groupId: 'AB-1', isDeleted: false, ownerPrincipalName: 'o@x', lastActivityDate: '2026-01-02', groupType: 'Private', memberCount: 5, externalMemberCount: 2, exchangeReceivedEmailCount: 7, sharePointActiveFileCount: 1, sharePointTotalFileCount: 9, sharePointSiteStorageUsedInBytes: 100 }] })));
+  assert.deepStrictEqual(gj[0], { id: 'ab-1', name: 'Fin', isDeleted: false, owner: 'o@x', type: 'Private', lastActivity: new Date('2026-01-02T00:00:00Z'), members: 5, guests: 2, emailsReceived: 7, activeFiles: 1, files: 9, siteBytes: 100 });
+  const gc = G.groupActivityRows(G.reportRecords('Report Refresh Date,Group Display Name,Is Deleted,Owner Principal Name,Last Activity Date,Group Type,Member Count,External Member Count,Exchange Received Email Count,SharePoint Active File Count,SharePoint Total File Count,SharePoint Site Storage Used (Byte),Group Id,Report Period\n2026-10-28,Fin,False,o@x,,Public,5,0,0,0,0,0,ab-2,180\n'));
+  assert.deepStrictEqual([gc[0].id, gc[0].lastActivity, gc[0].isDeleted, gc[0].type], ['ab-2', undefined, false, 'Public']);
+  const t = G.teamActivityRows(G.reportRecords(JSON.stringify({ value: [{ teamName: 'T', teamId: 'TID', teamType: 'Private', lastActivityDate: '', activeUsers: 0, activeChannels: 1, postMessages: 2, replyMessages: 3, meetingsOrganized: 4, guests: 1 }] })));
+  assert.deepStrictEqual(t[0], { id: 'tid', name: 'T', type: 'Private', lastActivity: undefined, activeUsers: 0, activeChannels: 1, messages: 5, meetings: 4, guests: 1 });
+});
+
+test('m365: Graph calls for lifecycle, people and status lookups', async () => {
+  const calls = [];
+  const g = graphWith(async (url, method, h, body) => {
+    calls.push(method + ' ' + decodeURIComponent(url).replace('https://graph.microsoft.com', ''));
+    if (/\$batch$/.test(url)) {
+      const reqs = JSON.parse(body).requests;
+      return gres({ responses: reqs.map((r) => {
+        if (/\/users\//.test(r.url)) {
+          const key = decodeURIComponent(r.url.split('/users/')[1].split('?')[0]);
+          if (key === 'gone@x.com') return { id: r.id, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
+          if (key === 'busy@x.com') return { id: r.id, status: 500, body: {} };
+          return { id: r.id, status: 200, body: { id: 'u-' + key, accountEnabled: key !== 'off@x.com', userType: 'Member' } };
+        }
+        return { id: r.id, status: 200, body: { value: [{ '@odata.type': '#microsoft.graph.user', id: 'o1', displayName: 'Owner' }] } };
+      }) });
+    }
+    if (/deletedItems\/microsoft\.graph\.group/.test(url)) return gres({ value: [{ id: gid(1), displayName: 'Old', groupTypes: ['Unified'], deletedDateTime: '2026-10-20T00:00:00Z' }, { id: gid(2), displayName: 'Sec', groupTypes: [] }] });
+    if (/\/memberOf\/microsoft\.graph\.group/.test(url)) return gres({ value: [{ id: gid(3).toUpperCase(), displayName: 'M365', groupTypes: ['Unified'] }, { id: gid(4), displayName: 'Security', groupTypes: [] }] });
+    if (/\/groups\?\$filter/.test(url)) return gres({ value: [{ id: gid(5), displayName: "O'Brien team", mail: 'ob@x.com' }] });
+    return gres('', 204);
+  });
+  const api = new G.GraphApi(g.c);
+  const del = await api.deletedGroups();
+  assert.deepStrictEqual(del.map((x) => x.displayName), ['Old'], 'security groups are left out');
+  await api.restoreGroup(gid(1));
+  await api.deleteGroup(gid(1));
+  assert.ok(calls.indexOf('POST /v1.0/directory/deletedItems/' + gid(1) + '/restore') >= 0);
+  assert.ok(calls.indexOf('DELETE /v1.0/groups/' + gid(1)) >= 0);
+  await assert.rejects(() => api.deleteGroup('../me'), /Not a valid id/);
+  const mine = await api.userGroups(gid(9), 'memberOf');
+  assert.deepStrictEqual(mine, [{ id: gid(3), displayName: 'M365', mail: '' }]);
+  const st = await api.userStatus(['A@x.com', 'gone@x.com', 'off@x.com', 'busy@x.com', 'a@x.com', '']);
+  assert.deepStrictEqual(Object.keys(st).sort(), ['a@x.com', 'busy@x.com', 'gone@x.com', 'off@x.com']);
+  assert.deepStrictEqual([st['a@x.com'].enabled, st['gone@x.com'].exists, st['off@x.com'].enabled, st['busy@x.com'].unknown], [true, false, false, true]);
+  const owners = await api.ownersMany(Array.from({ length: 25 }, (_, i) => gid(i + 1)));
+  assert.strictEqual(Object.keys(owners).length, 25);
+  assert.strictEqual(calls.filter((c) => /\$batch/.test(c)).length, 1 + 2, '4 users in 1 batch; 25 groups in 2 batches');
+  const found = await api.searchGroups("O'Br");
+  assert.strictEqual(found[0].displayName, "O'Brien team");
+  assert.ok(calls.some((c) => /startswith\(displayName,'O''Br'\)/.test(c)), 'quote escaped');
+});
+
 // ---------------------------------------------------------------- runner
 (async () => {
   let failed = 0;
