@@ -65,7 +65,7 @@ export const ExportCentrePage: React.FC = () => {
     }
   };
 
-  const groups = ['Overview', 'Power Platform', 'Microsoft 365'];
+  const groups = ['Overview', 'Power Platform', 'Power BI', 'Microsoft 365'];
   return (
     <PageFrame id="export">
       <PageGrid>

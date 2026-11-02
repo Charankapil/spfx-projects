@@ -1,5 +1,5 @@
 import {
-  IAdoptionData, IAppCredential, IDlpPolicy, IFlow, IApp, IIdentityData, IInventory, IMaker, IProgress, IServiceHealth, ISitesData,
+  IAdoptionData, IAppCredential, IPbiActivity, IPowerBiData, IDlpPolicy, IFlow, IApp, IIdentityData, IInventory, IMaker, IProgress, IServiceHealth, ISitesData,
   ISku, ISourceStatus, ITeamsData, IUserInfo, SourceState
 } from '../models';
 import { ApiError, describeError, isApiError } from '../http/ApiClient';
@@ -36,6 +36,10 @@ export interface IDataProvider {
   getTeams(): Promise<ITeamsData>;
   getAdoption(): Promise<IAdoptionData>;
   getIdentity(): Promise<IIdentityData>;
+  /** Power BI workspaces, content, apps, capacities and refresh health. */
+  getPowerBi(): Promise<IPowerBiData>;
+  /** Power BI activity log aggregated over the last `days` days (1–30). */
+  getPowerBiActivity(days: number): Promise<IPbiActivity>;
   /** App registration secrets and certificates (cheaper than the full identity load). */
   getAppCredentials(): Promise<IAppCredential[]>;
   getReportsConcealed(): Promise<boolean>;
@@ -64,6 +68,9 @@ export const SOURCES: ISourceDefinition[] = [
   { id: 'pp-flows', label: 'Cloud flow inventory', endpoint: 'api.flow.microsoft.com', permission: 'Microsoft Flow Service · Flows.Read.All' },
   { id: 'pp-dlp', label: 'DLP policies', endpoint: 'api.bap.microsoft.com', permission: 'PowerApps Service · User' },
   { id: 'dv', label: 'Dataverse (agents, model-driven apps)', endpoint: '<org>.crm.dynamics.com', permission: 'Dynamics CRM · user_impersonation, plus a Dataverse role in each environment' },
+  { id: 'pbi', label: 'Power BI workspaces and content', endpoint: 'api.powerbi.com /admin/groups', permission: 'Power BI Service · Tenant.Read.All, plus the Fabric administrator role' },
+  { id: 'pbi-refresh', label: 'Power BI refresh history', endpoint: 'api.powerbi.com /admin/capacities/refreshables', permission: 'Power BI Service · Tenant.Read.All (Premium/Fabric capacities only)' },
+  { id: 'pbi-activity', label: 'Power BI activity log', endpoint: 'api.powerbi.com /admin/activityevents', permission: 'Power BI Service · Tenant.Read.All, plus the Fabric administrator role' },
   { id: 'g-users', label: 'Maker and owner lookup', endpoint: 'graph.microsoft.com /users', permission: 'Microsoft Graph · User.Read.All' },
   { id: 'g-signin', label: 'Sign-in activity', endpoint: 'graph.microsoft.com signInActivity', permission: 'Microsoft Graph · AuditLog.Read.All (Entra ID P1)' },
   { id: 'g-skus', label: 'Licences', endpoint: 'graph.microsoft.com /subscribedSkus', permission: 'Microsoft Graph · Organization.Read.All' },

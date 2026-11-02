@@ -1,11 +1,14 @@
 import {
+  IPbiActivity, IPowerBiData, IPbiCapacity,
   AgentAuth, IAdoptionData, IAgent, IApp, IAppCredential, IConnectorRef, IDirectoryRole, IDlpPolicy, IEnvironment, IFlow,
   IGroup, IIdentityData, IInventory, IMfaRegistration, IProgress, IServiceHealth, ISite, ISitesData, ISku, ITeamActivity,
   ITeamsData, IUserAccount, IUserActivity, IUserInfo, FlowState
 } from '../models';
 import { makeConnector } from '../logic/connectors';
 import { BaseProvider, IAppSharing, IDataProvider, IFlowRun, IMakersData, SOURCES } from './IDataProvider';
-import { buildMakers } from './LiveDataProvider';
+import { buildMakers, mergePowerBi } from './LiveDataProvider';
+import { IPbiContent, IRefreshable, mapWorkspace } from '../services/PowerBiService';
+import { PbiActivityAggregator, activityWindows } from '../logic/pbiActivity';
 import { regionLabel } from '../services/PowerPlatformService';
 
 /** Small deterministic PRNG (mulberry32) so sample data is stable between renders. */
@@ -438,6 +441,126 @@ export class SampleDataProvider extends BaseProvider implements IDataProvider {
         credentials.push({ appId: `app-reg-${i}`, appDisplayName: a, type: i % 3 === 0 ? 'Certificate' : 'Secret', displayName: i % 3 === 0 ? 'CN=' + a : 'prod', endDateTime: this._iso(-days), daysLeft: days });
       });
       return this._delay<IIdentityData>({ roles, users, signInUnavailable: false, mfa, mfaUnavailable: false, credentials });
+    });
+  }
+
+  private _pbiContent: IPowerBiData | undefined;
+
+  private _buildPowerBi(): IPowerBiData {
+    if (this._pbiContent) return this._pbiContent;
+    const r = rng(23);
+    const pick = <T>(arr: T[]): T => arr[Math.floor(r() * arr.length)];
+    const person = (): { name: string; email: string } => {
+      const f = pick(FIRST);
+      const l = pick(LAST);
+      return { name: `${f} ${l}`, email: `${f}.${l}@contoso.com`.toLowerCase() };
+    };
+    const topics = ['Sales', 'Finance', 'HR', 'Operations', 'Marketing', 'Supply Chain', 'Customer Service', 'IT', 'Executive', 'Procurement', 'Legal', 'Risk'];
+    const reportWords = ['Pipeline', 'Revenue', 'Headcount', 'Attrition', 'Budget vs Actual', 'Inventory', 'Ticket SLA', 'Campaign ROI', 'Cash Flow', 'Forecast', 'Spend Analysis', 'Utilisation', 'NPS', 'Margin', 'Orders'];
+    const capacities: IPbiCapacity[] = [
+      { id: 'CAP-F64-0001', name: 'Fabric F64 (Production)', sku: 'F64', state: 'Active', region: 'West Europe', admins: ['grace.hughes@contoso.com'] },
+      { id: 'CAP-P1-0002', name: 'Premium P1 (Finance)', sku: 'P1', state: 'Active', region: 'UK South', admins: ['victor.rossi@contoso.com'] }
+    ];
+    const raw: unknown[] = [];
+    let n = 0;
+    const content = (count: number, prefix: string): { reports: unknown[]; datasets: unknown[] } => {
+      const datasets: unknown[] = [];
+      const reports: unknown[] = [];
+      for (let i = 0; i < count; i++) {
+        const name = `${prefix} ${pick(reportWords)}`;
+        const ds = `ds-${n++}`;
+        const created = Math.floor(Math.pow(r(), 1.4) * 900);
+        datasets.push({
+          id: ds, name, configuredBy: person().email, createdDate: this._iso(created), isRefreshable: r() > 0.1,
+          isOnPremGatewayRequired: r() < 0.25, targetStorageMode: r() < 0.08 ? 'PremiumFiles' : 'Abf',
+          endorsementDetails: r() < 0.08 ? { endorsement: 'Certified' } : r() < 0.15 ? { endorsement: 'Promoted' } : undefined
+        });
+        const reportCount = 1 + Math.floor(r() * 2.2);
+        for (let k = 0; k < reportCount; k++) {
+          const who = person().email;
+          reports.push({
+            id: `rep-${n++}`, name: k ? `${name} (detail)` : name, datasetId: ds, reportType: r() < 0.06 ? 'PaginatedReport' : 'PowerBIReport',
+            createdBy: who, modifiedBy: who, createdDateTime: this._iso(created), modifiedDateTime: this._iso(Math.floor(r() * created)),
+            endorsementDetails: r() < 0.1 ? { endorsement: 'Certified' } : undefined
+          });
+        }
+      }
+      return { reports, datasets };
+    };
+    for (let i = 0; i < 64; i++) {
+      const topic = topics[i % topics.length];
+      const name = i < topics.length ? `${topic}` : `${topic} ${pick(['Analytics', 'Reporting', 'Self-service', 'Projects', 'Sandbox', 'Board'])} ${Math.floor(i / topics.length)}`;
+      const c = content(Math.floor(Math.pow(r(), 1.6) * 9), topic);
+      const users = [];
+      const orphan = r() < 0.06;
+      if (!orphan) users.push({ ...person(), groupUserAccessRight: 'Admin', principalType: 'User' });
+      if (!orphan && r() < 0.6) users.push({ ...person(), groupUserAccessRight: 'Admin', principalType: 'User' });
+      for (let k = 0; k < Math.floor(r() * 8); k++) users.push({ ...person(), groupUserAccessRight: pick(['Member', 'Contributor', 'Viewer', 'Viewer']), principalType: r() < 0.15 ? 'Group' : 'User' });
+      const dedicated = r() < 0.45;
+      raw.push({
+        id: `ws-${i}`, name, type: r() < 0.05 ? 'Group' : 'Workspace', state: orphan && r() < 0.5 ? 'Orphaned' : 'Active',
+        isOnDedicatedCapacity: dedicated, capacityId: dedicated ? capacities[i % 2].id : undefined,
+        users: users.map((u) => ({ displayName: u.name, emailAddress: u.email, groupUserAccessRight: u.groupUserAccessRight, principalType: u.principalType })),
+        reports: c.reports, datasets: c.datasets,
+        dashboards: Array.from({ length: Math.floor(r() * 3) }, (_, k) => ({ id: `db-${i}-${k}`, displayName: `${topic} dashboard ${k + 1}`, isReadOnly: false })),
+        dataflows: r() < 0.25 ? [{ objectId: `df-${i}`, name: `${topic} staging`, configuredBy: person().email, modifiedDateTime: this._iso(Math.floor(r() * 120)) }] : []
+      });
+    }
+    for (let i = 0; i < 48; i++) {
+      const p = person();
+      const c = content(Math.floor(r() * 4), 'My');
+      raw.push({ id: `pers-${i}`, name: `PersonalWorkspace ${p.name}`, type: 'PersonalGroup', state: 'Active', isOnDedicatedCapacity: false,
+        users: [{ displayName: p.name, emailAddress: p.email, groupUserAccessRight: 'Admin', principalType: 'User' }], reports: c.reports, datasets: c.datasets, dashboards: [], dataflows: [] });
+    }
+    const into: IPbiContent = { workspaces: [], reports: [], datasets: [], dashboards: [], dataflows: [] };
+    raw.forEach((g) => mapWorkspace(g, into));
+    const refresh: IRefreshable[] = into.datasets
+      .filter((d) => into.workspaces.some((w) => w.id === d.workspaceId && w.isOnDedicatedCapacity) && d.isRefreshable)
+      .map((d) => {
+        const count = 20 + Math.floor(r() * 200);
+        const failed = r() < 0.12;
+        return { id: d.id, status: failed ? 'Failed' : r() < 0.03 ? 'Disabled' : 'Completed', time: this._iso(r() * 2), refreshCount: count, refreshFailures: failed ? 1 + Math.floor(r() * 10) : Math.floor(r() * 2), scheduleEnabled: r() > 0.1 };
+      });
+    const apps = ['Sales Command Centre', 'Finance Monthly Pack', 'HR Insights', 'Operations KPIs', 'Executive Scorecard', 'Customer 360', 'IT Service Metrics', 'Supply Chain Tower']
+      .map((name, i) => ({ id: `app-${i}`, name, workspaceId: `ws-${i}`, publishedBy: person().name, lastUpdate: this._iso(Math.floor(r() * 90)) }));
+    this._pbiContent = mergePowerBi(into, capacities, apps, false, refresh, false);
+    this._pbiContent.loadedAt = new Date(this._now).toISOString();
+    return this._pbiContent;
+  }
+
+  public getPowerBi(): Promise<IPowerBiData> {
+    return this._cached('pbi', () => this._delay(this._buildPowerBi()));
+  }
+
+  public getPowerBiActivity(days: number): Promise<IPbiActivity> {
+    return this._cached(`pbi-activity-${days}`, () => {
+      const data = this._buildPowerBi();
+      const r = rng(31 + days);
+      const agg = new PbiActivityAggregator();
+      const users = Array.from({ length: 420 }, (_, i) => `${FIRST[i % FIRST.length]}.${LAST[(i * 3) % LAST.length]}${i}@contoso.com`.toLowerCase());
+      const reports = data.reports.filter((x) => !/^PersonalWorkspace/.test(x.workspaceName));
+      const others = ['ViewDashboard', 'ViewTile', 'ExportReport', 'ExportArtifact', 'AnalyzeInExcel', 'ShareReport', 'CreateReport', 'EditReport', 'RefreshDataset', 'GetDatasources', 'GenerateEmbedToken', 'CreateArtifactShareLink'];
+      const windows = activityWindows(days, this._now);
+      windows.forEach((w) => {
+        const weekday = new Date(w.start).getUTCDay();
+        const volume = Math.floor((weekday === 0 || weekday === 6 ? 220 : 900) * (0.85 + r() * 0.3));
+        for (let i = 0; i < volume; i++) {
+          // A few popular reports get most views; many reports get none.
+          const rep = reports[Math.floor(Math.pow(r(), 3.2) * reports.length)];
+          const user = users[Math.floor(Math.pow(r(), 1.6) * users.length)];
+          const time = new Date(Date.parse(w.start) + Math.floor(r() * 86400000)).toISOString();
+          const view = r() < 0.72;
+          const activity = view ? 'ViewReport' : others[Math.floor(Math.pow(r(), 1.5) * others.length)];
+          agg.add({
+            CreationTime: time, UserId: user, Activity: activity, ItemName: rep.name, WorkSpaceName: rep.workspaceName,
+            ReportId: view ? rep.id : undefined, ReportName: rep.name,
+            ConsumptionMethod: view ? (r() < 0.62 ? 'Power BI Web' : r() < 0.6 ? 'Microsoft Teams' : r() < 0.7 ? 'Power BI Mobile' : 'Embedded') : undefined,
+            ClientIP: `10.20.${Math.floor(r() * 255)}.${Math.floor(r() * 255)}`
+          });
+        }
+        if (r() < 0.25) agg.add({ CreationTime: w.start.replace('00:00:00', '14:12:00'), UserId: users[7], Activity: 'PublishToWebReport', ItemName: reports[3].name, WorkSpaceName: reports[3].workspaceName });
+      });
+      return this._delay(agg.result(windows.length, windows[0].start, windows[windows.length - 1].end, []));
     });
   }
 

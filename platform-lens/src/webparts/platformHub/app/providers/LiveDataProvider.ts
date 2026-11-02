@@ -1,9 +1,10 @@
 import { ApiClient, describeError, IHttpTransport, mapWithConcurrency } from '../http/ApiClient';
 import {
-  IAdoptionData, IAppCredential, IAgent, IApp, IDlpPolicy, IEnvLoadError, IFlow, IIdentityData, IInventory, IMaker, IProgress,
+  IAdoptionData, IAppCredential, IPbiActivity, IPbiApp, IPbiCapacity, IPowerBiData, IAgent, IApp, IDlpPolicy, IEnvLoadError, IFlow, IIdentityData, IInventory, IMaker, IProgress,
   IServiceHealth, ISitesData, ISku, ITeamsData, IUserInfo
 } from '../models';
 import { GraphService } from '../services/GraphService';
+import { IPbiContent, IRefreshable, PowerBiService } from '../services/PowerBiService';
 import { DataverseService, PowerPlatformService } from '../services/PowerPlatformService';
 import { BaseProvider, IAppSharing, IDataProvider, IFlowRun, IMakersData } from './IDataProvider';
 
@@ -21,6 +22,7 @@ export class LiveDataProvider extends BaseProvider implements IDataProvider {
   private readonly _graph: GraphService;
   private readonly _pp: PowerPlatformService;
   private readonly _dv: DataverseService;
+  private readonly _pbi: PowerBiService;
   private readonly _options: ILiveProviderOptions;
 
   constructor(transport: IHttpTransport, options: ILiveProviderOptions) {
@@ -29,6 +31,7 @@ export class LiveDataProvider extends BaseProvider implements IDataProvider {
     this._graph = new GraphService(api);
     this._pp = new PowerPlatformService(api);
     this._dv = new DataverseService(api);
+    this._pbi = new PowerBiService(api);
     this._options = options;
     this.tenantLabel = options.tenantLabel;
   }
@@ -193,6 +196,33 @@ export class LiveDataProvider extends BaseProvider implements IDataProvider {
     });
   }
 
+  public getPowerBi(): Promise<IPowerBiData> {
+    return this._cached('pbi', async () => {
+      const content = await this._track('pbi', () => this._pbi.getContent(this._options.maxRows));
+      const [capacities, apps, refresh] = await Promise.all([
+        this._pbi.getCapacities().then((c) => c, () => []),
+        this._pbi.getApps().then((a) => ({ a, ok: true }), () => ({ a: [], ok: false })),
+        this._optional('pbi-refresh', () => this._pbi.getRefreshables().then((r) => ({ r, ok: true })), { r: [], ok: false })
+      ]);
+      return mergePowerBi(content, capacities, apps.a, !apps.ok, refresh.r, !refresh.ok);
+    });
+  }
+
+  public getPowerBiActivity(days: number): Promise<IPbiActivity> {
+    return this._cached(`pbi-activity-${days}`, () =>
+      this._track('pbi-activity', async () => {
+        this._setProgress({ label: 'Reading Power BI activity', done: 0, total: days });
+        try {
+          return await this._pbi.getActivity(days, this._options.maxRows * 10, (done, total) =>
+            this._setProgress({ label: 'Reading Power BI activity', done, total })
+          );
+        } finally {
+          this._setProgress(undefined);
+        }
+      })
+    );
+  }
+
   public getAppCredentials(): Promise<IAppCredential[]> {
     return this._cached('credentials', () => this._track('g-apps', () => this._graph.getAppCredentials()));
   }
@@ -265,4 +295,31 @@ export function buildMakers(inv: IInventory, users: Record<string, IUserInfo>): 
     const { envs, ...rest } = m;
     return { ...rest, environments: Object.keys(envs).length };
   });
+}
+
+/** Joins capacity names and capacity refresh history onto the workspace content. */
+export function mergePowerBi(
+  content: IPbiContent, capacities: IPbiCapacity[], apps: IPbiApp[], appsUnavailable: boolean, refresh: IRefreshable[], refreshUnavailable: boolean
+): IPowerBiData {
+  const capName: Record<string, string> = {};
+  capacities.forEach((c) => {
+    capName[c.id.toLowerCase()] = c.name;
+  });
+  content.workspaces.forEach((w) => {
+    if (w.capacityId) w.capacityName = capName[w.capacityId.toLowerCase()] || w.capacityId;
+  });
+  const byId: Record<string, IRefreshable> = {};
+  refresh.forEach((r) => {
+    byId[r.id] = r;
+  });
+  content.datasets.forEach((d) => {
+    const r = byId[d.id];
+    if (!r) return;
+    d.lastRefreshStatus = r.status;
+    d.lastRefreshTime = r.time;
+    d.refreshCount = r.refreshCount;
+    d.refreshFailures = r.refreshFailures;
+    d.scheduleEnabled = r.scheduleEnabled;
+  });
+  return { ...content, apps, capacities, refreshUnavailable, appsUnavailable, loadedAt: new Date().toISOString() };
 }

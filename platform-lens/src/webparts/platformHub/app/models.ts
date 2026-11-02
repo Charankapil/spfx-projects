@@ -388,3 +388,173 @@ export interface IProgress {
   done: number;
   total: number;
 }
+
+/* ---------- Power BI (Fabric) administration ---------- */
+
+export interface IPbiAccess {
+  name: string;
+  email: string;
+  /** Admin | Member | Contributor | Viewer */
+  right: string;
+  /** User | Group | App */
+  principalType: string;
+}
+
+export interface IPbiWorkspace {
+  id: string;
+  name: string;
+  /** Workspace | Personal | Classic */
+  type: string;
+  /** Active | Orphaned | Deleted | Removing */
+  state: string;
+  isOnDedicatedCapacity: boolean;
+  capacityId?: string;
+  capacityName?: string;
+  users: IPbiAccess[];
+  admins: number;
+  reports: number;
+  datasets: number;
+  dashboards: number;
+  dataflows: number;
+}
+
+export interface IPbiReport {
+  id: string;
+  name: string;
+  workspaceId: string;
+  workspaceName: string;
+  datasetId?: string;
+  /** Power BI | Paginated */
+  reportType: string;
+  createdBy?: string;
+  modifiedBy?: string;
+  createdTime?: string;
+  modifiedTime?: string;
+  endorsement?: string;
+}
+
+export interface IPbiDataset {
+  id: string;
+  name: string;
+  workspaceId: string;
+  workspaceName: string;
+  configuredBy: string;
+  createdTime?: string;
+  isRefreshable: boolean;
+  gatewayRequired: boolean;
+  storageMode: string;
+  endorsement?: string;
+  /** From capacity refresh history (Premium/Fabric capacities only). */
+  lastRefreshStatus?: string;
+  lastRefreshTime?: string;
+  refreshCount?: number;
+  refreshFailures?: number;
+  scheduleEnabled?: boolean;
+}
+
+export interface IPbiDashboard {
+  id: string;
+  name: string;
+  workspaceId: string;
+  workspaceName: string;
+  isReadOnly: boolean;
+}
+
+export interface IPbiDataflow {
+  id: string;
+  name: string;
+  workspaceId: string;
+  workspaceName: string;
+  configuredBy: string;
+  modifiedTime?: string;
+}
+
+export interface IPbiApp {
+  id: string;
+  name: string;
+  workspaceId?: string;
+  publishedBy: string;
+  lastUpdate?: string;
+}
+
+export interface IPbiCapacity {
+  id: string;
+  name: string;
+  sku: string;
+  state: string;
+  region: string;
+  admins: string[];
+}
+
+export interface IPowerBiData {
+  workspaces: IPbiWorkspace[];
+  reports: IPbiReport[];
+  datasets: IPbiDataset[];
+  dashboards: IPbiDashboard[];
+  dataflows: IPbiDataflow[];
+  apps: IPbiApp[];
+  capacities: IPbiCapacity[];
+  /** Refresh history comes only from Premium/Fabric capacities. */
+  refreshUnavailable: boolean;
+  appsUnavailable: boolean;
+  loadedAt: string;
+}
+
+export interface IPbiEvent {
+  time: string;
+  user: string;
+  activity: string;
+  item: string;
+  workspace: string;
+  consumption?: string;
+  clientIp?: string;
+}
+
+export interface IPbiDailyActivity {
+  date: string;
+  activeUsers: number;
+  views: number;
+  events: number;
+}
+
+export interface IPbiItemUsage {
+  id: string;
+  name: string;
+  workspace: string;
+  views: number;
+  viewers: number;
+  lastViewed?: string;
+}
+
+export interface IPbiUserUsage {
+  user: string;
+  views: number;
+  events: number;
+  exports: number;
+  lastActive?: string;
+}
+
+export interface IPbiActivity {
+  days: number;
+  from: string;
+  to: string;
+  totalEvents: number;
+  activeUsers: number;
+  views: number;
+  exports: number;
+  shares: number;
+  publishToWeb: number;
+  daily: IPbiDailyActivity[];
+  byActivity: { label: string; value: number }[];
+  byConsumption: { label: string; value: number }[];
+  reports: IPbiItemUsage[];
+  users: IPbiUserUsage[];
+  /** Exports, shares and publish-to-web events (capped). */
+  sensitive: IPbiEvent[];
+  /** Most recent events (capped). */
+  recent: IPbiEvent[];
+  /** Days that could not be read (throttling or errors). */
+  failedDays: string[];
+  /** True when the event cap was reached, so totals cover only part of the period. */
+  truncated?: boolean;
+}

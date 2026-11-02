@@ -1,4 +1,5 @@
 import {
+  IPbiActivity, IPowerBiData,
   IAdoptionData, IAppCredential, IAgent, IApp, IDlpPolicy, IEnvironment, IFinding, IFlow, IIdentityData, IInventory, ISitesData, ISku, ITeamsData
 } from '../models';
 import { IMakersData } from '../providers/IDataProvider';
@@ -250,7 +251,7 @@ export function identitySummary(data: IIdentityData): ISummaryItem[] {
 
 /* ---------- Governance ---------- */
 
-export function findings(pp: IPPData, dlp: IDlpPolicy[] | undefined, teams: ITeamsData | undefined, credentials: IAppCredential[] | undefined): IFinding[] {
+export function findings(pp: IPPData, dlp: IDlpPolicy[] | undefined, teams: ITeamsData | undefined, credentials: IAppCredential[] | undefined, pbi?: IPowerBiData): IFinding[] {
   return evaluateGovernance({
     environments: pp.inv.environments,
     apps: pp.inv.apps,
@@ -259,7 +260,8 @@ export function findings(pp: IPPData, dlp: IDlpPolicy[] | undefined, teams: ITea
     users: pp.makers.users,
     dlp,
     groups: teams ? teams.groups : undefined,
-    credentials
+    credentials,
+    pbi
   });
 }
 
@@ -280,4 +282,32 @@ export function envNameMap(envs: IEnvironment[]): Record<string, string> {
     m[e.id] = e.displayName;
   });
   return m;
+}
+
+/* ---------- Power BI ---------- */
+
+export function pbiContentSummary(data: IPowerBiData): ISummaryItem[] {
+  const shared = data.workspaces.filter((w) => w.type !== 'Personal');
+  const noAdmin = shared.filter((w) => w.state === 'Orphaned' || w.admins === 0).length;
+  const failed = data.datasets.filter((d) => d.lastRefreshStatus === 'Failed').length;
+  return [
+    { label: 'Workspaces', value: fmtNumber(shared.length), sub: `+ ${fmtNumber(data.workspaces.length - shared.length)} personal` },
+    { label: 'Reports', value: fmtNumber(data.reports.length), sub: `${fmtNumber(data.reports.filter((r) => r.reportType === 'Paginated').length)} paginated` },
+    { label: 'Semantic models', value: fmtNumber(data.datasets.length), sub: `${fmtNumber(data.datasets.filter((x) => x.gatewayRequired).length)} need a gateway` },
+    { label: 'Dashboards', value: fmtNumber(data.dashboards.length), sub: `${fmtNumber(data.dataflows.length)} dataflows` },
+    { label: 'Apps', value: data.appsUnavailable ? '—' : fmtNumber(data.apps.length), sub: `${fmtNumber(data.capacities.length)} capacities` },
+    { label: 'Workspaces without admin', value: fmtNumber(noAdmin), tone: noAdmin ? 'critical' : 'good', sub: noAdmin ? 'Orphaned' : 'All have an admin' },
+    { label: 'Failed refreshes', value: data.refreshUnavailable ? '—' : fmtNumber(failed), tone: data.refreshUnavailable ? undefined : failed ? 'warning' : 'good', sub: data.refreshUnavailable ? 'Capacity data unavailable' : 'Premium/Fabric capacities' }
+  ];
+}
+
+export function pbiActivitySummary(a: IPbiActivity): ISummaryItem[] {
+  const avg = a.daily.length ? Math.round(a.daily.reduce((s, d) => s + d.activeUsers, 0) / a.daily.length) : 0;
+  return [
+    { label: `Active users (${a.days}d)`, value: fmtNumber(a.activeUsers), sub: `${fmtNumber(avg)} per day on average` },
+    { label: 'Report & dashboard views', value: fmtNumber(a.views) },
+    { label: 'Exports', value: fmtNumber(a.exports), tone: a.exports ? 'warning' : undefined, sub: 'Export, Analyze in Excel, downloads' },
+    { label: 'Shares', value: fmtNumber(a.shares) },
+    { label: 'Publish to web', value: fmtNumber(a.publishToWeb), tone: a.publishToWeb ? 'critical' : 'good', sub: a.publishToWeb ? 'Public, unauthenticated' : 'None' }
+  ];
 }

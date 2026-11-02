@@ -744,13 +744,13 @@ export const GovernancePage: React.FC = () => {
   const { openDetail, version, theme } = useApp();
   const pp = usePP();
   const extras = useData((p) =>
-    Promise.all([safeDlp(p), p.getTeams().then((t) => t, () => undefined), p.getAppCredentials().then((t) => t, () => undefined)])
+    Promise.all([safeDlp(p), p.getTeams().then((t) => t, () => undefined), p.getAppCredentials().then((t) => t, () => undefined), p.getPowerBi().then((t) => t, () => undefined)])
   );
   const [severity, setSeverity] = React.useState('');
   const [category, setCategory] = React.useState('');
   const [rule, setRule] = React.useState('');
   const list = React.useMemo(
-    () => (pp.data && extras.data ? findings(pp.data, extras.data[0], extras.data[1], extras.data[2]) : []),
+    () => (pp.data && extras.data ? findings(pp.data, extras.data[0], extras.data[1], extras.data[2], extras.data[3]) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pp.data, extras.data, version]
   );

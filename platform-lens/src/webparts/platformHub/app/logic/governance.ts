@@ -1,3 +1,4 @@
+import { IPowerBiData } from '../models';
 import { IAgent, IApp, IAppCredential, IDlpPolicy, IEnvironment, IFinding, IFlow, IGroup, IUserInfo, Severity } from '../models';
 import { daysSince } from './format';
 
@@ -11,6 +12,9 @@ export const links = {
   agent: (envId: string, botId: string): string => `https://copilotstudio.microsoft.com/environments/${envId}/bots/${botId}/overview`,
   dlp: (): string => 'https://admin.powerplatform.microsoft.com/security/dataprotection',
   group: (id: string): string => `https://entra.microsoft.com/#view/Microsoft_AAD_IAM/GroupDetailsMenuBlade/~/Overview/groupId/${id}`,
+  pbiWorkspace: (id: string): string => `https://app.powerbi.com/groups/${id}/list`,
+  pbiDataset: (ws: string, id: string): string => `https://app.powerbi.com/groups/${ws}/datasets/${id}/details`,
+  pbiReport: (ws: string, id: string): string => `https://app.powerbi.com/groups/${ws}/reports/${id}`,
   appRegistration: (appId: string): string =>
     `https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/${appId}`
 };
@@ -24,6 +28,7 @@ export interface IGovernanceInput {
   dlp?: IDlpPolicy[];
   groups?: IGroup[];
   credentials?: IAppCredential[];
+  pbi?: IPowerBiData;
   staleDays?: number;
 }
 
@@ -43,11 +48,15 @@ export const RULES: IRuleInfo[] = [
   { id: 'app-everyone', severity: 'High', category: 'Sharing', title: 'App shared with everyone', action: 'Confirm the app is meant for the whole organisation, or restrict it to a group.' },
   { id: 'agent-noauth', severity: 'High', category: 'Security', title: 'Published agent without authentication', action: 'Turn on Microsoft authentication unless the agent is intentionally public.' },
   { id: 'env-nodlp', severity: 'High', category: 'Data loss prevention', title: 'Environment not covered by any DLP policy', action: 'Add the environment to a tenant DLP policy.' },
+  { id: 'pbi-orphan', severity: 'High', category: 'Power BI', title: 'Power BI workspace without an admin', action: 'Assign at least two admins in the Fabric admin portal (Workspaces).' },
   { id: 'env-nosg', severity: 'Medium', category: 'Environments', title: 'Production environment without a security group', action: 'Restrict access with an Entra security group.' },
   { id: 'flow-suspended', severity: 'Medium', category: 'Reliability', title: 'Flow suspended', action: 'Check the suspension reason (licence, DLP or throttling) and fix it.' },
   { id: 'default-premium', severity: 'Medium', category: 'Environments', title: 'Premium or custom connectors in the default environment', action: 'Move business-critical solutions to a dedicated environment.' },
   { id: 'group-ownerless', severity: 'Medium', category: 'Microsoft 365', title: 'Microsoft 365 group or team without an owner', action: 'Assign at least two owners.' },
   { id: 'cred-expiring', severity: 'Medium', category: 'Security', title: 'App registration secret or certificate expiring', action: 'Rotate the credential before it expires and update connectors that use it.' },
+  { id: 'pbi-refresh-failed', severity: 'Medium', category: 'Power BI', title: 'Semantic model refresh failing', action: 'Check credentials, gateway and source availability; fix or turn off the schedule.' },
+  { id: 'pbi-single-admin', severity: 'Low', category: 'Power BI', title: 'Power BI workspace with a single admin', action: 'Add a second admin (ideally a group) so access survives staff changes.' },
+  { id: 'pbi-classic', severity: 'Low', category: 'Power BI', title: 'Classic Power BI workspace', action: 'Upgrade to the new workspace experience.' },
   { id: 'env-unmanaged', severity: 'Low', category: 'Environments', title: 'Production environment is not a Managed Environment', action: 'Enable Managed Environments for sharing limits, usage insights and solution checker.' },
   { id: 'app-stale', severity: 'Low', category: 'Lifecycle', title: 'App not modified for a long time', action: 'Confirm the app is still used; archive or delete it if not.' },
   { id: 'env-empty', severity: 'Low', category: 'Lifecycle', title: 'Developer or trial environment with no resources', action: 'Delete unused environments to free capacity.' }
@@ -151,6 +160,20 @@ export function evaluateGovernance(input: IGovernanceInput): IFinding[] {
   (input.credentials || []).forEach((c) => {
     if (c.daysLeft <= 30 && c.daysLeft >= -90) add('cred-expiring', 'App registration', c.appDisplayName, '—', '', c.daysLeft < 0 ? `${c.type} "${c.displayName}" expired ${-c.daysLeft} days ago.` : `${c.type} "${c.displayName}" expires in ${c.daysLeft} days.`, links.appRegistration(c.appId));
   });
+
+  if (input.pbi) {
+    const pbi = input.pbi;
+    pbi.workspaces.forEach((w) => {
+      if (w.type === 'Personal' || w.state === 'Deleted' || w.state === 'Removing') return;
+      const admins = w.users.filter((u) => u.right === 'Admin');
+      if (w.state === 'Orphaned' || admins.length === 0) add('pbi-orphan', 'Power BI workspace', w.name, '—', '', w.state === 'Orphaned' ? 'Workspace is orphaned.' : 'No admin is assigned.', links.pbiWorkspace(w.id));
+      else if (admins.length === 1 && admins[0].principalType === 'User') add('pbi-single-admin', 'Power BI workspace', w.name, '—', admins[0].email || admins[0].name, 'Only one person can manage this workspace.', links.pbiWorkspace(w.id));
+      if (w.type === 'Classic') add('pbi-classic', 'Power BI workspace', w.name, '—', '', 'Classic workspaces are retired.', links.pbiWorkspace(w.id));
+    });
+    pbi.datasets.forEach((d) => {
+      if (d.lastRefreshStatus === 'Failed') add('pbi-refresh-failed', 'Semantic model', d.name, d.workspaceName, d.configuredBy, `Last refresh failed${d.refreshFailures ? `; ${d.refreshFailures} failures in the history window` : ''}.`, links.pbiDataset(d.workspaceId, d.id));
+    });
+  }
 
   const order: Record<Severity, number> = { High: 0, Medium: 1, Low: 2 };
   return out.sort((a, b) => order[a.severity] - order[b.severity] || (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));

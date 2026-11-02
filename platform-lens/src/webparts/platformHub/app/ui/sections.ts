@@ -4,20 +4,23 @@ import { toExportTable } from './components/DataGrid';
 import {
   accountColumns, agentColumns, appColumns, connectorColumns, credentialColumns, dlpColumns, envColumns, findingColumns, flattenRoles,
   flowColumns, groupColumns, inactiveUserColumns, issueColumns, makerColumns, messageColumns, mfaColumns, roleColumns, siteColumns,
-  skuColumns, teamActivityColumns
+  skuColumns, teamActivityColumns, pbiAppColumns, pbiCapacityColumns, pbiDashboardColumns, pbiDataflowColumns, pbiDatasetColumns,
+  pbiEventColumns, pbiReportColumns, pbiUsageColumns, pbiUserColumns, pbiWorkspaceColumns
 } from './columns';
 import {
   adoptionSummary, agentSummary, appSummary, connectorUsage, envNameMap, envRows, envSummary, filterInventory, findingSummary, findings,
-  flowSummary, identitySummary, inactiveLicensed, IPPData, makerSummary, siteSummary, skuRows, teamsSummary, unusedCost
+  flowSummary, identitySummary, pbiActivitySummary, pbiContentSummary, inactiveLicensed, IPPData, makerSummary, siteSummary, skuRows, teamsSummary, unusedCost
 } from './derive';
 import { PageId } from './AppContext';
 import { daysSince, fmtNumber } from '../logic/format';
+import { loadPbiDays } from './prefs';
+import { pbiReportRows, unusedReports } from './pbiDerive';
 import { buildMakers } from '../providers/LiveDataProvider';
 
 export interface IPageDef {
   id: PageId;
   title: string;
-  group: 'Overview' | 'Power Platform' | 'Microsoft 365' | 'Reports';
+  group: 'Overview' | 'Power Platform' | 'Power BI' | 'Microsoft 365' | 'Reports';
   icon: string;
   description: string;
   /** Builds the export for this page; undefined for pages without data. */
@@ -157,12 +160,74 @@ export const PAGES: IPageDef[] = [
   },
   {
     id: 'governance', title: 'Governance actions', group: 'Power Platform', icon: 'Shield',
-    description: 'One worklist of risks found by the governance rules, each with a recommended action and a link to fix it.',
+    description: 'One worklist of risks across Power Platform, Power BI and Microsoft 365, each with a recommended action and a link to fix it.',
     build: async (p, env) => {
       const pp = await loadPP(p, env);
-      const [dlp, teams, credentials] = await Promise.all([optional(p.getDlpPolicies()), optional(p.getTeams()), optional(p.getAppCredentials())]);
-      const list = findings(pp, dlp, teams, credentials);
+      const [dlp, teams, credentials, pbi] = await Promise.all([optional(p.getDlpPolicies()), optional(p.getTeams()), optional(p.getAppCredentials()), optional(p.getPowerBi())]);
+      const list = findings(pp, dlp, teams, credentials, pbi);
       return { title: 'Governance actions', summary: short(findingSummary(list)), tables: [toExportTable('Findings', findingColumns, list)] };
+    }
+  },
+  {
+    id: 'pbi', title: 'Power BI overview', group: 'Power BI', icon: 'PowerBILogo',
+    description: 'Workspaces, reports, semantic models, apps and capacities across the tenant, with recent usage and refresh health.',
+    build: async (p) => {
+      const data = await p.getPowerBi();
+      const activity = await optional(p.getPowerBiActivity(loadPbiDays()));
+      return {
+        title: 'Power BI overview',
+        summary: short(pbiContentSummary(data)).concat(activity ? short(pbiActivitySummary(activity)) : []),
+        tables: [
+          toExportTable('Capacities', pbiCapacityColumns, data.capacities),
+          ...(activity ? [toExportTable('Most viewed', pbiUsageColumns, activity.reports.slice(0, 200))] : [])
+        ]
+      };
+    }
+  },
+  {
+    id: 'pbiContent', title: 'Workspaces & content', group: 'Power BI', icon: 'FabricFolder',
+    description: 'Every workspace with its admins and members, plus all reports, semantic models (with refresh status), dashboards, dataflows and apps.',
+    build: async (p) => {
+      const data = await p.getPowerBi();
+      const activity = await optional(p.getPowerBiActivity(loadPbiDays()));
+      return {
+        title: 'Power BI workspaces & content',
+        summary: short(pbiContentSummary(data)),
+        tables: [
+          toExportTable('Workspaces', pbiWorkspaceColumns, data.workspaces),
+          toExportTable('Reports', pbiReportColumns, pbiReportRows(data, activity)),
+          toExportTable('Semantic models', pbiDatasetColumns, data.datasets),
+          toExportTable('Dashboards', pbiDashboardColumns, data.dashboards),
+          toExportTable('Dataflows', pbiDataflowColumns, data.dataflows),
+          toExportTable('Power BI apps', pbiAppColumns, data.apps),
+          toExportTable('Capacities', pbiCapacityColumns, data.capacities)
+        ]
+      };
+    }
+  },
+  {
+    id: 'pbiActivity', title: 'Power BI activity', group: 'Power BI', icon: 'BarChartVertical',
+    description: 'Who uses Power BI and how, from the tenant activity log (up to 30 days): views, active users, exports, sharing, publish to web and unused reports.',
+    build: async (p) => {
+      const days = loadPbiDays();
+      const [activity, data] = await Promise.all([p.getPowerBiActivity(days), optional(p.getPowerBi())]);
+      const rows = data ? pbiReportRows(data, activity) : [];
+      return {
+        title: `Power BI activity (${days} days)`,
+        summary: short(pbiActivitySummary(activity)),
+        tables: [
+          {
+            name: 'Daily activity',
+            columns: [{ header: 'Date', isDate: true }, { header: 'Active users' }, { header: 'Views' }, { header: 'Activities' }],
+            rows: activity.daily.map((d) => [d.date, d.activeUsers, d.views, d.events])
+          },
+          { name: 'Activity types', columns: [{ header: 'Activity', width: 40 }, { header: 'Count' }], rows: activity.byActivity.map((a) => [a.label, a.value]) },
+          toExportTable('Most viewed', pbiUsageColumns, activity.reports),
+          toExportTable('Users', pbiUserColumns, activity.users),
+          toExportTable('Exports and sharing', pbiEventColumns, activity.sensitive),
+          ...(data ? [toExportTable('Unused reports', pbiReportColumns, unusedReports(rows, data))] : [])
+        ]
+      };
     }
   },
   {

@@ -31,7 +31,9 @@ export const DataSourcesPanel: React.FC<{ isOpen: boolean; onDismiss: () => void
       swallow(provider.getSites()),
       swallow(provider.getTeams()),
       swallow(provider.getAdoption()),
-      swallow(provider.getIdentity())
+      swallow(provider.getIdentity()),
+      swallow(provider.getPowerBi()),
+      swallow(provider.getPowerBiActivity(1))
     ]);
     setChecking(false);
   };

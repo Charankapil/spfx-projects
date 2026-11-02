@@ -282,7 +282,15 @@ export const LineChart: React.FC<ILineChartProps> = (props) => {
   const colors = props.series.map((_, i) => seriesColor(i, isDark));
   const labelCount = Math.max(2, Math.floor(plotW / 80));
   const labelIdx: number[] = [];
-  for (let k = 0; k < labelCount; k++) labelIdx.push(Math.round((k / (labelCount - 1)) * (n - 1)));
+  if (n <= labelCount) {
+    for (let k = 0; k < n; k++) labelIdx.push(k);
+  } else {
+    const step = Math.ceil((n - 1) / (labelCount - 1));
+    for (let k = 0; k < n - 1; k += step) labelIdx.push(k);
+    // Always label the last point, dropping a neighbour that would collide with it.
+    if (labelIdx.length && n - 1 - labelIdx[labelIdx.length - 1] < step / 2) labelIdx.pop();
+    labelIdx.push(n - 1);
+  }
 
   const onMove = (e: React.MouseEvent<SVGRectElement>): void => {
     const rect = (e.currentTarget as SVGRectElement).getBoundingClientRect();

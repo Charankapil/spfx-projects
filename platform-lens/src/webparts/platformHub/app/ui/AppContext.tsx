@@ -4,6 +4,7 @@ import { IDataProvider } from '../providers/IDataProvider';
 
 export type PageId =
   | 'overview' | 'environments' | 'apps' | 'flows' | 'agents' | 'makers' | 'connectors' | 'capacity' | 'governance'
+  | 'pbi' | 'pbiContent' | 'pbiActivity'
   | 'sites' | 'teams' | 'adoption' | 'identity' | 'export';
 
 export interface IDetail {

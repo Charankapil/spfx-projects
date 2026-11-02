@@ -1,13 +1,14 @@
 import * as React from 'react';
 import { Link } from '@fluentui/react';
 import {
+  IPbiApp, IPbiCapacity, IPbiDashboard, IPbiDataflow, IPbiDataset, IPbiEvent, IPbiItemUsage, IPbiReport, IPbiUserUsage, IPbiWorkspace,
   IAgent, IApp, IAppCredential, IConnectorRef, IDirectoryRole, IDlpPolicy, IEnvironment, IFinding, IFlow, IGroup, IHealthIssue,
   IMaker, IMessage, IMfaRegistration, IPrincipalRef, ISite, ISku, ITeamActivity, IUserAccount, IUserActivity, IUserInfo
 } from '../models';
 import { IColumnSpec } from './components/DataGrid';
 import { Pill, severityTone } from './components/Layout';
 import { daysSince, fmtAge, fmtBytes, fmtMb, fmtNumber, safeUrl } from '../logic/format';
-import { ruleAction } from '../logic/governance';
+import { links, ruleAction } from '../logic/governance';
 
 export function ownerLabel(ref: IPrincipalRef, users: Record<string, IUserInfo>): string {
   const u = ref.id ? users[ref.id] : undefined;
@@ -353,4 +354,126 @@ export const messageColumns: IColumnSpec<IMessage>[] = [
   { key: 'action', header: 'Act by', value: (m) => m.actionRequiredBy, isDate: true },
   { key: 'updated', header: 'Updated', value: (m) => m.lastModified, isDate: true },
   { key: 'id', header: 'ID', value: (m) => m.id, maxWidth: 80 }
+];
+
+/* ---------- Power BI ---------- */
+
+export const pbiWorkspaceColumns: IColumnSpec<IPbiWorkspace>[] = [
+  { key: 'name', header: 'Workspace', value: (w) => w.name, render: (w) => <Link href={links.pbiWorkspace(w.id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{w.name}</Link>, minWidth: 180, width: 36 },
+  { key: 'type', header: 'Type', value: (w) => w.type, maxWidth: 90 },
+  { key: 'state', header: 'State', value: (w) => w.state, render: (w) => (w.state === 'Active' ? 'Active' : <Pill tone="critical" text={w.state} />), maxWidth: 90 },
+  { key: 'capacity', header: 'Capacity', value: (w) => (w.isOnDedicatedCapacity ? w.capacityName || 'Dedicated' : 'Shared'), minWidth: 120 },
+  {
+    key: 'admins', header: 'Admins', value: (w) => w.admins, isNumeric: true,
+    render: (w) => (w.type === 'Personal' ? '—' : w.admins === 0 ? <Pill tone="critical" text="None" /> : w.admins === 1 ? <Pill tone="warning" text="1" /> : fmtNumber(w.admins))
+  },
+  { key: 'users', header: 'Members', value: (w) => w.users.length, isNumeric: true },
+  { key: 'reports', header: 'Reports', value: (w) => w.reports, isNumeric: true },
+  { key: 'datasets', header: 'Models', value: (w) => w.datasets, isNumeric: true },
+  { key: 'dashboards', header: 'Dashboards', value: (w) => w.dashboards, isNumeric: true },
+  { key: 'dataflows', header: 'Dataflows', value: (w) => w.dataflows, isNumeric: true },
+  { key: 'adminList', header: 'Admin accounts', value: (w) => w.users.filter((u) => u.right === 'Admin').map((u) => u.email || u.name).join(', '), exportOnly: true, width: 50 },
+  { key: 'id', header: 'Workspace ID', value: (w) => w.id, exportOnly: true, width: 40 }
+];
+
+export interface IPbiReportRow extends IPbiReport {
+  datasetName?: string;
+  views?: number;
+  viewers?: number;
+  lastViewed?: string;
+}
+
+export const pbiReportColumns: IColumnSpec<IPbiReportRow>[] = [
+  { key: 'name', header: 'Report', value: (r) => r.name, render: (r) => <Link href={links.pbiReport(r.workspaceId, r.id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{r.name}</Link>, minWidth: 180, width: 36 },
+  { key: 'ws', header: 'Workspace', value: (r) => r.workspaceName, minWidth: 140 },
+  { key: 'type', header: 'Type', value: (r) => r.reportType, maxWidth: 90 },
+  { key: 'model', header: 'Semantic model', value: (r) => r.datasetName, minWidth: 140 },
+  { key: 'views', header: 'Views', value: (r) => r.views, isNumeric: true },
+  { key: 'viewers', header: 'Viewers', value: (r) => r.viewers, isNumeric: true },
+  { key: 'lastViewed', header: 'Last viewed', value: (r) => r.lastViewed, isDate: true },
+  { key: 'endorsement', header: 'Endorsement', value: (r) => r.endorsement, maxWidth: 100 },
+  { key: 'modified', header: 'Modified', value: (r) => r.modifiedTime, isDate: true },
+  { key: 'modifiedBy', header: 'Modified by', value: (r) => r.modifiedBy, exportOnly: true },
+  { key: 'createdBy', header: 'Created by', value: (r) => r.createdBy, exportOnly: true },
+  { key: 'id', header: 'Report ID', value: (r) => r.id, exportOnly: true, width: 40 }
+];
+
+export const pbiDatasetColumns: IColumnSpec<IPbiDataset>[] = [
+  { key: 'name', header: 'Semantic model', value: (d) => d.name, render: (d) => <Link href={links.pbiDataset(d.workspaceId, d.id)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{d.name}</Link>, minWidth: 180, width: 36 },
+  { key: 'ws', header: 'Workspace', value: (d) => d.workspaceName, minWidth: 140 },
+  { key: 'owner', header: 'Configured by', value: (d) => d.configuredBy, minWidth: 150 },
+  { key: 'storage', header: 'Storage', value: (d) => d.storageMode, maxWidth: 100 },
+  { key: 'gateway', header: 'Gateway', value: (d) => d.gatewayRequired, maxWidth: 80 },
+  {
+    key: 'refresh', header: 'Last refresh', value: (d) => d.lastRefreshStatus,
+    render: (d) => (!d.lastRefreshStatus ? '—' : d.lastRefreshStatus === 'Failed' ? <Pill tone="critical" text="Failed" /> : d.lastRefreshStatus === 'Completed' ? <Pill tone="good" text="Completed" /> : d.lastRefreshStatus), maxWidth: 110
+  },
+  { key: 'refreshTime', header: 'Refreshed', value: (d) => d.lastRefreshTime, isDate: true },
+  { key: 'failures', header: 'Failures', value: (d) => d.refreshFailures, isNumeric: true },
+  { key: 'endorsement', header: 'Endorsement', value: (d) => d.endorsement, maxWidth: 100 },
+  { key: 'refreshable', header: 'Refreshable', value: (d) => d.isRefreshable, exportOnly: true },
+  { key: 'count', header: 'Refreshes in history', value: (d) => d.refreshCount, exportOnly: true },
+  { key: 'created', header: 'Created', value: (d) => d.createdTime, isDate: true, exportOnly: true },
+  { key: 'id', header: 'Model ID', value: (d) => d.id, exportOnly: true, width: 40 }
+];
+
+export const pbiDashboardColumns: IColumnSpec<IPbiDashboard>[] = [
+  { key: 'name', header: 'Dashboard', value: (d) => d.name, minWidth: 200, width: 36 },
+  { key: 'ws', header: 'Workspace', value: (d) => d.workspaceName, minWidth: 160 },
+  { key: 'ro', header: 'Read-only', value: (d) => d.isReadOnly, maxWidth: 90 },
+  { key: 'id', header: 'Dashboard ID', value: (d) => d.id, exportOnly: true, width: 40 }
+];
+
+export const pbiDataflowColumns: IColumnSpec<IPbiDataflow>[] = [
+  { key: 'name', header: 'Dataflow', value: (d) => d.name, minWidth: 200, width: 36 },
+  { key: 'ws', header: 'Workspace', value: (d) => d.workspaceName, minWidth: 160 },
+  { key: 'owner', header: 'Configured by', value: (d) => d.configuredBy, minWidth: 160 },
+  { key: 'modified', header: 'Modified', value: (d) => d.modifiedTime, isDate: true },
+  { key: 'id', header: 'Dataflow ID', value: (d) => d.id, exportOnly: true, width: 40 }
+];
+
+export const pbiAppColumns: IColumnSpec<IPbiApp>[] = [
+  { key: 'name', header: 'App', value: (a) => a.name, minWidth: 200, width: 36 },
+  { key: 'by', header: 'Published by', value: (a) => a.publishedBy, minWidth: 160 },
+  { key: 'updated', header: 'Last updated', value: (a) => a.lastUpdate, isDate: true },
+  { key: 'id', header: 'App ID', value: (a) => a.id, exportOnly: true, width: 40 }
+];
+
+export const pbiCapacityColumns: IColumnSpec<IPbiCapacity>[] = [
+  { key: 'name', header: 'Capacity', value: (c) => c.name, minWidth: 200, width: 36 },
+  { key: 'sku', header: 'SKU', value: (c) => c.sku, maxWidth: 80 },
+  { key: 'state', header: 'State', value: (c) => c.state, render: (c) => (c.state === 'Active' ? <Pill tone="good" text="Active" /> : <Pill tone="warning" text={c.state} />), maxWidth: 100 },
+  { key: 'region', header: 'Region', value: (c) => c.region, minWidth: 110 },
+  { key: 'admins', header: 'Capacity admins', value: (c) => c.admins.join(', '), minWidth: 200, width: 50 },
+  { key: 'id', header: 'Capacity ID', value: (c) => c.id, exportOnly: true, width: 40 }
+];
+
+export const pbiUsageColumns: IColumnSpec<IPbiItemUsage>[] = [
+  { key: 'name', header: 'Report or dashboard', value: (r) => r.name, minWidth: 200, width: 40 },
+  { key: 'ws', header: 'Workspace', value: (r) => r.workspace, minWidth: 140 },
+  { key: 'views', header: 'Views', value: (r) => r.views, isNumeric: true },
+  { key: 'viewers', header: 'Viewers', value: (r) => r.viewers, isNumeric: true },
+  { key: 'last', header: 'Last viewed', value: (r) => r.lastViewed, isDate: true },
+  { key: 'id', header: 'ID', value: (r) => r.id, exportOnly: true, width: 40 }
+];
+
+export const pbiUserColumns: IColumnSpec<IPbiUserUsage>[] = [
+  { key: 'user', header: 'User', value: (u) => u.user, minWidth: 240, width: 44 },
+  { key: 'events', header: 'Activities', value: (u) => u.events, isNumeric: true },
+  { key: 'views', header: 'Views', value: (u) => u.views, isNumeric: true },
+  { key: 'exports', header: 'Exports', value: (u) => u.exports, isNumeric: true, render: (u) => (u.exports >= 50 ? <Pill tone="warning" text={fmtNumber(u.exports)} /> : fmtNumber(u.exports)) },
+  { key: 'last', header: 'Last active', value: (u) => u.lastActive, isDate: true }
+];
+
+export const pbiEventColumns: IColumnSpec<IPbiEvent>[] = [
+  { key: 'time', header: 'Time (UTC)', value: (e) => e.time, render: (e) => e.time.replace('T', ' ').slice(0, 16), minWidth: 130 },
+  { key: 'user', header: 'User', value: (e) => e.user, minWidth: 200, width: 40 },
+  {
+    key: 'activity', header: 'Activity', value: (e) => e.activity,
+    render: (e) => (/PublishToWeb|CreateEmbedCode/i.test(e.activity) ? <Pill tone="critical" text={e.activity} /> : e.activity), minWidth: 130
+  },
+  { key: 'item', header: 'Item', value: (e) => e.item, minWidth: 180, width: 40 },
+  { key: 'ws', header: 'Workspace', value: (e) => e.workspace, minWidth: 130 },
+  { key: 'method', header: 'Via', value: (e) => e.consumption, maxWidth: 120 },
+  { key: 'ip', header: 'Client IP', value: (e) => e.clientIp, exportOnly: true }
 ];

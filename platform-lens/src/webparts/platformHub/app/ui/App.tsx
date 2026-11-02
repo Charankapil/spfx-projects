@@ -14,6 +14,7 @@ import {
 } from './pages/PowerPlatformPages';
 import { AdoptionPage, HealthTables, IdentityPage, SitesPage, TeamsPage } from './pages/M365Pages';
 import { ExportCentrePage } from './pages/ExportCentre';
+import { PowerBiActivityPage, PowerBiContentPage, PowerBiOverviewPage } from './pages/PowerBiPages';
 import { fmtDateTime } from '../logic/format';
 
 export interface IAppProps {
@@ -41,6 +42,9 @@ const PAGE_COMPONENTS: Record<PageId, React.FC> = {
   connectors: ConnectorsPage,
   capacity: CapacityPage,
   governance: GovernancePage,
+  pbi: PowerBiOverviewPage,
+  pbiContent: PowerBiContentPage,
+  pbiActivity: PowerBiActivityPage,
   sites: SitesPage,
   teams: TeamsPage,
   adoption: AdoptionPage,
@@ -142,7 +146,7 @@ export const App: React.FC<IAppProps> = (props) => {
   };
 
   const failing = provider.getSources().filter((s) => s.state === 'forbidden' || s.state === 'blocked' || s.state === 'error').length;
-  const groups = ['Overview', 'Power Platform', 'Microsoft 365', 'Reports'];
+  const groups = ['Overview', 'Power Platform', 'Power BI', 'Microsoft 365', 'Reports'];
   const navGroups: INavLinkGroup[] = groups.map((g) => ({
     name: g === 'Overview' ? undefined : g,
     links: PAGES.filter((p) => p.group === g).map((p) => ({ key: p.id, name: p.title, url: '', icon: p.icon, onClick: () => ctx.navigate(p.id) }))
