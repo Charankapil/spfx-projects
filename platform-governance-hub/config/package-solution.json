@@ -1,0 +1,56 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "platform-governance-hub-client-side-solution",
+    "id": "6f2d8a51-93c4-4e7b-b0a2-5d1c7e94a3f6",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.21.1"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Platform Governance Hub - Power Platform admin center and Microsoft 365 governance dashboards"
+      },
+      "longDescription": {
+        "default": "A CoE-style Power Platform admin center inside SharePoint: environments, apps, cloud flows, Copilot Studio agents, makers, connectors and DLP, licensing and Dataverse capacity, and a governance worklist, plus Microsoft 365 dashboards for SharePoint sites, Teams and groups, licensing and adoption, and identity. Every page exports to Excel, PDF and CSV. Data is read live with the signed-in administrator's delegated permissions."
+      },
+      "screenshotPaths": []
+    },
+    "webApiPermissionRequests": [
+      { "resource": "Microsoft Graph", "scope": "User.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "Group.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "Organization.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "Reports.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "ReportSettings.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "Sites.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "SharePointTenantSettings.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "AuditLog.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "RoleManagement.Read.Directory" },
+      { "resource": "Microsoft Graph", "scope": "Application.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "ServiceHealth.Read.All" },
+      { "resource": "Microsoft Graph", "scope": "ServiceMessage.Read.All" },
+      { "resource": "PowerApps Service", "scope": "User" },
+      { "resource": "Microsoft Flow Service", "scope": "Flows.Read.All" },
+      { "resource": "Microsoft Flow Service", "scope": "User" },
+      { "resource": "Dynamics CRM", "scope": "user_impersonation" }
+    ],
+    "features": [
+      {
+        "title": "Platform Governance Hub Feature",
+        "description": "Deploys the Platform Governance Hub web part.",
+        "id": "a4b7c1d2-8e3f-4a5b-9c6d-7e8f9a0b1c2d",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/platform-governance-hub.sppkg"
+  }
+}
