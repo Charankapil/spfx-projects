@@ -14,7 +14,8 @@ A collection of SharePoint Framework (SPFx) web part solutions.
 - [`platform-lens`](./platform-lens) — A Power Platform admin
   center inside SharePoint: environments, apps, cloud flows, Copilot Studio agents,
   makers, connectors and DLP, licensing and Dataverse capacity, and a governance
-  worklist, plus Microsoft 365 dashboards (SharePoint sites, Teams and groups,
+  worklist, Power BI administration (workspaces, content, refresh health,
+  activity and usage), plus Microsoft 365 dashboards (SharePoint sites, Teams and groups,
   licensing and adoption, identity). Every page exports to Excel, PDF and CSV.
   Reads live data with the admin's delegated Graph, Power Platform and Dataverse
   permissions (approved in SharePoint API access); also has a sample-data mode.

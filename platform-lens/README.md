@@ -12,6 +12,8 @@ backend, no Dataverse install and no scheduled sync.
 
 ![Overview page (sample data)](docs/images/overview-sample.png)
 
+![Power BI overview (sample data)](docs/images/powerbi-overview-sample.png)
+
 | | |
 |---|---|
 | Package | [`releases/platform-lens.sppkg`](releases/platform-lens.sppkg) |
@@ -31,7 +33,10 @@ backend, no Dataverse install and no scheduled sync.
 | | Makers | Everyone who owns a resource: department, country, status (active, disabled, left), last sign-in, new makers per month |
 | | Connectors & DLP | Connector usage by tier (standard, premium, custom), DLP policies, connectors blocked or business-classified, environments with no DLP policy |
 | | Licensing & capacity | Power Platform licences (assigned against purchased), unassigned-licence cost from unit prices you enter, Dataverse database, file and log capacity |
-| | Governance actions | A worklist from 14 rules (orphaned resources, apps shared with everyone, public agents, environments without DLP or a security group, suspended flows, ownerless groups, expiring app secrets…), each with a recommended action and a deep link |
+| | Governance actions | A worklist from 18 rules (orphaned resources, Power BI workspaces without an admin, failing semantic model refreshes, apps shared with everyone, public agents, environments without DLP or a security group, suspended flows, ownerless groups, expiring app secrets…), each with a recommended action and a deep link |
+| Power BI | Power BI overview | Workspaces, reports, semantic models, dashboards, dataflows, apps and capacities; active users, views, exports, shares and publish-to-web for the chosen period; daily active users; most viewed reports; views by app (web, Teams, mobile, embedded); largest workspaces; Power BI licence use |
+| | Workspaces & content | Every workspace (type, state, capacity, admins, members, content counts, access list in the detail panel), reports with views, viewers and last viewed, semantic models with storage mode, gateway and **refresh status** (Premium/Fabric), dashboards, dataflows, apps, capacities |
+| | Power BI activity | From the tenant activity log (1, 7, 14 or 30 days): daily active users, activities per day, activity types, most viewed content, per-user activity and exports, every export/share/publish-to-web event, **unused reports** (no views in the period) and recent events |
 | Microsoft 365 | SharePoint sites | Site inventory from the usage report: storage, files, page views, external sharing, Anyone links, inactive sites, 90-day storage trend |
 | | Teams & groups | Microsoft 365 groups and teams, owner count (flags ownerless and single-owner), privacy, team activity, guests |
 | | Licensing & adoption | All SKUs, daily active users per workload (90 days), Microsoft 365 Copilot activity, licensed users inactive for 30 days |
@@ -64,11 +69,12 @@ Advanced > API access** after you upload the package. Approve each one.
 | PowerApps Service | `User` | Environments, capacity, apps, app sharing, DLP policies (`api.bap.microsoft.com`, `api.powerapps.com`) |
 | Microsoft Flow Service | `Flows.Read.All`, `User` | Cloud flow inventory and run history (`api.flow.microsoft.com`) |
 | Dynamics CRM | `user_impersonation` | Copilot Studio agents and model-driven apps from each environment's Dataverse |
+| Power BI Service | `Tenant.Read.All` | Power BI admin APIs: workspaces and content, apps, capacities, refresh history, activity log (`api.powerbi.com/v1.0/myorg/admin`) |
 
 **Roles the viewer needs.** Delegated permissions never exceed the signed-in user's rights. The
 Power Platform pages need the **Power Platform Administrator** (or Dynamics 365 Administrator)
 role. The Microsoft 365 pages need **Global Reader**, or a mix of Reports Reader, SharePoint
-Administrator and Teams Administrator. The Agents page also needs a Dataverse role in each
+Administrator and Teams Administrator. The Power BI pages need the **Fabric Administrator** (formerly Power BI Administrator) role. The Agents page also needs a Dataverse role in each
 environment, which Power Platform administrators can assign to themselves. Put the web part on a
 page that only administrators can open.
 
@@ -122,7 +128,8 @@ SharePoint page
      │    ├─ Microsoft Graph v1.0 / beta (reports as JSON)
      │    ├─ api.bap.microsoft.com / api.powerapps.com   (Power Platform admin)
      │    ├─ api.flow.microsoft.com                       (Power Automate admin)
-     │    └─ <org>.crm.dynamics.com/api/data/v9.2         (Dataverse per environment)
+     │    ├─ <org>.crm.dynamics.com/api/data/v9.2         (Dataverse per environment)
+     │    └─ api.powerbi.com/v1.0/myorg/admin             (Power BI / Fabric admin)
      └─ SampleDataProvider (deterministic demo tenant)
 ```
 
@@ -152,6 +159,12 @@ SharePoint page
   **Scan sharing** (six requests at a time).
 - **Concealed report names.** If *Display concealed user, group, and site names in all reports*
   is on, usage reports show hashes; the dashboard warns you on the affected pages.
+- **Power BI admin API limits.** Admin calls are rate limited (roughly 50–200 per hour), so all
+  workspace content comes from one `admin/groups?$expand=…` call per 5,000 workspaces, and results
+  are cached until **Refresh**. The activity log keeps **30 days** and is read one UTC day at a
+  time; it's aggregated as it streams, and capped at 10 × *Maximum rows* events (a notice says
+  when the cap is reached). **Refresh status** is available only for models on Premium or Fabric
+  capacities.
 - **Managed model-driven apps** installed by Microsoft or ISV solutions are not counted.
 
 ## Develop
@@ -169,10 +182,10 @@ and set **Data source** to *Sample* to work without permissions.
 
 ### Quality gate used for this release
 
-- `tsc` and ESLint clean (0 errors, 0 warnings); 16 unit tests pass.
+- `tsc` and ESLint clean (0 errors, 0 warnings); 23 unit tests pass.
 - `gulp bundle --ship` and `gulp package-solution --ship` succeed; the package was unzipped and
-  checked for the manifest, the feature and all 16 permission requests.
-- All 14 pages rendered in headless Chromium with sample data, in light and dark themes and at
+  checked for the manifest, the feature and all 17 permission requests.
+- All 17 pages rendered in headless Chromium with sample data, in light and dark themes and at
   phone width, with no runtime errors or horizontal overflow. The detail panels, filters,
   environment filter, sharing scan, flow run history, Data sources panel, page exports (Excel,
   PDF, CSV) and Export centre (Excel, PDF) were exercised and the output files validated.
