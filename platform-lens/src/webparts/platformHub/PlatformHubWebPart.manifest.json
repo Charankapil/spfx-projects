@@ -1,0 +1,30 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "3c8e4b2a-7f15-4d6b-9a0e-1b2c3d4e5f61",
+  "alias": "PlatformHubWebPart",
+  "componentType": "WebPart",
+
+  // The "*" signifies that the version should be taken from the package.json
+  "version": "*",
+  "manifestVersion": 2,
+
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage", "TeamsPersonalApp", "TeamsTab"],
+  "supportsThemeVariants": true,
+  "supportsFullBleed": true,
+
+  "preconfiguredEntries": [{
+    "groupId": "5c03119e-3074-46fd-976b-c60198311f70", // Advanced
+    "group": { "default": "Advanced" },
+    "title": { "default": "Platform Lens" },
+    "description": { "default": "Power Platform admin center and Microsoft 365 governance dashboards with Excel, PDF and CSV export." },
+    "iconImageUrl": "data:image/png;base64,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",
+    "properties": {
+      "title": "Platform Lens",
+      "dataSource": "live",
+      "includeDataverse": true,
+      "maxRows": 50000,
+      "defaultPage": "overview"
+    }
+  }]
+}

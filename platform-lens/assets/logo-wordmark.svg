@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 96" width="480" height="96" role="img" aria-label="Platform Lens">
+  <defs>
+    <linearGradient id="plw-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14857f"/>
+      <stop offset="1" stop-color="#1b4fa8"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="22" fill="url(#plw-bg)"/>
+  <circle cx="42" cy="42" r="22" fill="#ffffff" fill-opacity="0.14" stroke="#ffffff" stroke-width="7"/>
+  <rect x="30.5" y="43" width="6" height="10" rx="1.5" fill="#ffffff"/>
+  <rect x="39" y="37" width="6" height="16" rx="1.5" fill="#ffffff"/>
+  <rect x="47.5" y="30" width="6" height="23" rx="1.5" fill="#7ff0d6"/>
+  <line x1="59" y1="59" x2="75" y2="75" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
+  <text x="118" y="54" font-family="Segoe UI, -apple-system, Helvetica Neue, Arial, sans-serif" font-size="40" font-weight="600" fill="#1b4fa8">Platform <tspan fill="#14857f">Lens</tspan></text>
+  <text x="120" y="80" font-family="Segoe UI, -apple-system, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#5b6575" letter-spacing="0.4">Power Platform &amp; Microsoft 365 governance</text>
+</svg>

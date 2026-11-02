@@ -1,0 +1,17 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "22.23.4",
+    "version": "1.21.1",
+    "libraryName": "platform-lens",
+    "libraryId": "6f2d8a51-93c4-4e7b-b0a2-5d1c7e94a3f6",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "platform-lens",
+    "solutionShortDescription": "Platform Lens - Power Platform and Microsoft 365 admin dashboards",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}
