@@ -1,0 +1,15 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "sharepoint-experience-suite-client-side-solution",
+    "id": "6d15f9a7-4c0d-4c1a-9f1a-9b18a4b4d2e1",
+    "version": "1.0.1.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": false,
+    "isDomainIsolated": false,
+    "developer": { "name": "Experience Suite", "websiteUrl": "", "privacyUrl": "", "termsOfUseUrl": "", "mpnId": "Undefined-1.24.1" },
+    "metadata": { "shortDescription": { "default": "A unified employee experience suite for SharePoint." }, "longDescription": { "default": "Employee productivity, requests, documents, sites, approvals, teams and people discovery." }, "screenshotPaths": [], "videoUrl": "", "categories": [] },
+    "features": [{ "title": "SharePoint Experience Suite", "description": "Deploys the SharePoint Experience Suite web part.", "id": "3b4a2f1d-4d1c-4a5e-8b2a-2f7c3d5e9a10", "version": "1.0.1.0" }]
+  },
+  "paths": { "zippedPackage": "solution/sharepoint-experience-suite.sppkg" }
+}

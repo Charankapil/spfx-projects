@@ -1,0 +1,7 @@
+{
+  "extends": "@microsoft/spfx-web-build-rig/profiles/default/config/jest.config.json",
+  "moduleNameMapper": {
+    "^@microsoft/sp-http$": "<rootDir>/lib-commonjs/webparts/experienceSuite/test/mocks/spHttp.js",
+    "\\.css$": "<rootDir>/lib-commonjs/webparts/experienceSuite/test/mocks/style.js"
+  }
+}

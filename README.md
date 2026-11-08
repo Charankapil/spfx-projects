@@ -11,3 +11,9 @@ A collection of SharePoint Framework (SPFx) web part solutions.
   SharePoint REST/Search APIs — no Azure AD app registration or client id
   required. See its own [README](./filetype-analyser/README.md) for setup,
   architecture and deployment details.
+- [`experience-suite`](./experience-suite) — SharePoint Experience Suite: one
+  employee web part with seven modules (MySpace, RequestHub, DocuSmart,
+  SiteNavigator, ApprovalFlow, TeamPulse, PeopleConnect) backed by
+  SharePoint lists and Search. Uses the signed-in user's SharePoint session —
+  no app registration for the web part. See its [README](./experience-suite/README.md)
+  and the [code review notes](./experience-suite/REVIEW.md).
