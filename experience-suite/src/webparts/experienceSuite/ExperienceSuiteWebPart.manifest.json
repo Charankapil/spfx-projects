@@ -1,0 +1,19 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "9a9d0c43-38b1-4e2a-bce8-4dcbef9d5e31",
+  "alias": "ExperienceSuiteWebPart",
+  "componentType": "WebPart",
+  "version": "1.0.0",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "supportsThemeVariants": true,
+  "preconfiguredEntries": [{
+    "groupId": "1edbd9a8-0bfb-4aa2-9afd-14b8c45dd489",
+    "group": { "default": "Collaboration" },
+    "title": { "default": "SharePoint Experience Suite" },
+    "description": { "default": "A unified employee experience for SharePoint." },
+    "officeFabricIconFontName": "People",
+    "properties": { "title": "SharePoint Experience Suite", "enablePeopleSearch": true }
+  }]
+}
