@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "vantage-enterprise-work-management-client-side-solution",
+    "id": "2f5d5c9e-9c0d-4c82-9d2a-8f4b1d8b61a7",
+    "version": "0.2.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.24.1"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "VANTAGE - workspace provisioning and verified archive & retention for SharePoint lists"
+      },
+      "longDescription": {
+        "default": "VANTAGE provisions workspace work-item and archive lists in the current SharePoint site and moves completed or cancelled task records to the archive list using a verified copy, read-back check and audit log before the source item is removed. Uses SharePoint REST with the signed-in user's permissions only; no Entra ID app registration or API permissions are required."
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "VANTAGE Feature",
+        "description": "Activates the VANTAGE web part.",
+        "id": "a54123ab-ba89-461b-b1c6-06800ef30441",
+        "version": "0.2.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/vantage.sppkg"
+  }
+}

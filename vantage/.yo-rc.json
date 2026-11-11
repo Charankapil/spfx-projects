@@ -1,0 +1,21 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "whichFolder": "subdir",
+    "solutionName": "vantage",
+    "environment": "spo",
+    "useGulp": false,
+    "componentType": "webpart",
+    "template": "react",
+    "componentName": "Vantage",
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "22.23.4",
+    "sdksVersions": {},
+    "version": "1.24.1",
+    "libraryName": "vantage",
+    "libraryId": "2f5d5c9e-9c0d-4c82-9d2a-8f4b1d8b61a7",
+    "packageManager": "npm",
+    "solutionShortDescription": "VANTAGE work management and archive",
+    "skipFeatureDeployment": true
+  }
+}
