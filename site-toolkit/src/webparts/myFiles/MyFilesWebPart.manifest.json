@@ -1,0 +1,32 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "62d6e1d7-c52a-4909-bbba-236c546ae240",
+  "alias": "MyFilesWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Site Toolkit"
+      },
+      "title": {
+        "default": "My Files"
+      },
+      "description": {
+        "default": "Files you have checked out and files you worked on recently in this site."
+      },
+      "officeFabricIconFontName": "Contact",
+      "properties": {
+        "title": "My Files",
+        "rowCount": "10"
+      }
+    }
+  ]
+}

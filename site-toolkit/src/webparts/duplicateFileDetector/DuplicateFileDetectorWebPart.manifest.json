@@ -1,0 +1,31 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "c33ef2fd-69db-4107-9f03-7207b787d1a8",
+  "alias": "DuplicateFileDetectorWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Site Toolkit"
+      },
+      "title": {
+        "default": "Duplicate File Detector"
+      },
+      "description": {
+        "default": "Finds files with the same name and size."
+      },
+      "officeFabricIconFontName": "Copy",
+      "properties": {
+        "title": "Duplicate File Detector"
+      }
+    }
+  ]
+}

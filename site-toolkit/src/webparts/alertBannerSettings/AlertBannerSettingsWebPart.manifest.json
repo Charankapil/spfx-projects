@@ -1,0 +1,31 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "6390b217-0232-467d-8894-1b3411aa2f2d",
+  "alias": "AlertBannerSettingsWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Site Toolkit"
+      },
+      "title": {
+        "default": "Alert Banner Settings"
+      },
+      "description": {
+        "default": "Turns the site-wide alert banner on or off and manages its alerts."
+      },
+      "officeFabricIconFontName": "Megaphone",
+      "properties": {
+        "title": "Alert Banner Settings"
+      }
+    }
+  ]
+}

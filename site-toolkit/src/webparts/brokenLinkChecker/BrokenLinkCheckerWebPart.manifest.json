@@ -1,0 +1,32 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "98e53560-1ef3-4c41-b8a5-d32d7bbb6d0b",
+  "alias": "BrokenLinkCheckerWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Site Toolkit"
+      },
+      "title": {
+        "default": "Broken Link Checker"
+      },
+      "description": {
+        "default": "Checks the links on this site's pages and lists the dead ones."
+      },
+      "officeFabricIconFontName": "RemoveLink",
+      "properties": {
+        "title": "Broken Link Checker",
+        "maxLinks": "300"
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2019",
+    "lib": ["es2019", "dom"],
+    "outDir": "temp/tests",
+    "rootDir": ".",
+    "declaration": false,
+    "declarationMap": false,
+    "esModuleInterop": true,
+    "sourceMap": false,
+    "types": ["node", "webpack-env"]
+  },
+  "include": ["tests/**/*.ts", "src/common/*.ts", "src/webparts/**/*.ts", "src/loc/*.d.ts"],
+  "exclude": ["src/common/ToolkitWebPart.ts", "src/webparts/**/*WebPart.ts"]
+}

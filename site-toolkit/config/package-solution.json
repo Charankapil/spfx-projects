@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "site-toolkit-client-side-solution",
+    "id": "bbde1456-e680-4247-b3a8-11005d0e224c",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "undefined"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Site Toolkit - fourteen everyday SharePoint web parts that need no API permissions"
+      },
+      "longDescription": {
+        "default": "Fourteen web parts and an alert banner for content health, productivity, people and engagement. Everything runs as the signed-in user through SharePoint REST and Search only: no Microsoft Graph permissions, no Azure AD app registration and no external services. All requests go through one page-wide queue that sends one request at a time and backs off when SharePoint asks it to."
+      },
+      "screenshotPaths": []
+    },
+    "features": [
+      {
+        "title": "site-toolkit Feature",
+        "description": "The feature that activates elements of the site-toolkit solution.",
+        "id": "4ea67223-8e68-44e5-99f4-d19a02e72dc0",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/site-toolkit.sppkg"
+  }
+}

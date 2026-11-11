@@ -1,0 +1,31 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "335a9572-7ad3-4ae6-94cc-454a369c5aa3",
+  "alias": "BulkMetadataEditorWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Site Toolkit"
+      },
+      "title": {
+        "default": "Bulk Metadata Editor"
+      },
+      "description": {
+        "default": "Edit the properties of many files at once in a grid."
+      },
+      "officeFabricIconFontName": "Table",
+      "properties": {
+        "title": "Bulk Metadata Editor"
+      }
+    }
+  ]
+}

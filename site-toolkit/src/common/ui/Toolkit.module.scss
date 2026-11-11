@@ -1,0 +1,663 @@
+@import '~@fluentui/react/dist/sass/References.scss';
+
+// SharePoint theme tokens: SPFx swaps these for the site's theme colours at runtime.
+$theme-primary: '[theme:themePrimary, default:#0078d4]';
+$theme-dark: '[theme:themeDark, default:#005a9e]';
+$theme-lighter: '[theme:themeLighter, default:#deecf9]';
+$theme-lighter-alt: '[theme:themeLighterAlt, default:#eff6fc]';
+$border: rgba(11, 11, 11, 0.1);
+$wash: #f7f6f3;
+$card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+
+.shell {
+  font-family: $ms-font-family-fallbacks;
+  color: $ms-color-neutralPrimary;
+  padding: 4px 0 16px;
+}
+
+.header {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 16px 24px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  border: 1px solid $border;
+  background: linear-gradient(120deg, $theme-lighter-alt 0%, #ffffff 70%);
+  box-shadow: $card-shadow;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: $theme-primary;
+  }
+}
+
+.headerText {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.headerIcon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: $theme-dark;
+  background: $theme-lighter;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.subtitle {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: $ms-color-neutralSecondary;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card {
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: $card-shadow;
+  padding: 14px 16px;
+}
+
+.cardTitle {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.grow {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.muted {
+  color: $ms-color-neutralSecondary;
+  font-size: 13px;
+}
+
+.small {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+}
+
+.empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: $ms-color-neutralSecondary;
+  border: 1px dashed $border;
+  border-radius: 10px;
+  background: $wash;
+}
+
+.emptyIcon {
+  font-size: 28px;
+  display: block;
+  margin-bottom: 8px;
+  color: $ms-color-neutralTertiary;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid $border;
+    vertical-align: middle;
+  }
+
+  th {
+    font-weight: 600;
+    background: $wash;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover td {
+    background: $theme-lighter-alt;
+  }
+}
+
+.num {
+  text-align: right !important;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.fileCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.fileName {
+  font-weight: 600;
+  color: $ms-color-neutralPrimary;
+  text-decoration: none;
+  word-break: break-word;
+
+  &:hover {
+    text-decoration: underline;
+    color: $theme-dark;
+  }
+}
+
+.path {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+  word-break: break-all;
+}
+
+.link {
+  color: $theme-dark;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.linkButton {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: $theme-dark;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $theme-primary;
+    outline-offset: 2px;
+  }
+}
+
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: $ms-color-neutralLighter;
+  color: $ms-color-neutralPrimary;
+  white-space: nowrap;
+}
+
+.pillGood {
+  background: #dff6dd;
+  color: #0b5a0b;
+}
+
+.pillWarn {
+  background: #fff4ce;
+  color: #6b4a00;
+}
+
+.pillBad {
+  background: #fde7e9;
+  color: #8a1016;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.kpi {
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 12px 14px;
+  box-shadow: $card-shadow;
+}
+
+.kpiValue {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.kpiLabel {
+  font-size: 12px;
+  color: $ms-color-neutralSecondary;
+}
+
+// Horizontal proportion bar used in lists of sizes and counts.
+.bar {
+  height: 8px;
+  border-radius: 4px;
+  background: $ms-color-neutralLighter;
+  overflow: hidden;
+  min-width: 80px;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 4px;
+  background: $theme-primary;
+}
+
+.barFillAlt {
+  height: 100%;
+  background: #c19c00;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.spread {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.tile {
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: $card-shadow;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tileIcon {
+  font-size: 28px;
+  color: $theme-dark;
+}
+
+.tileTitle {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+// Bulk metadata editor grid.
+.editGrid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th,
+  td {
+    border: 1px solid $border;
+    padding: 0;
+    vertical-align: middle;
+  }
+
+  th {
+    padding: 6px 8px;
+    background: $wash;
+    text-align: left;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+}
+
+.editCell {
+  width: 100%;
+  min-width: 120px;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+
+  &:focus {
+    outline: 2px solid $theme-primary;
+    outline-offset: -2px;
+    background: #ffffff;
+  }
+}
+
+.dirty {
+  background: #fff4ce;
+}
+
+.fixedCell {
+  padding: 6px 8px !important;
+  white-space: nowrap;
+}
+
+// Poll options.
+.option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px 12px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: $theme-primary;
+    background: $theme-lighter-alt;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $theme-primary;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.result {
+  position: relative;
+  border: 1px solid $border;
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.resultFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: $theme-lighter;
+}
+
+.resultText {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+// Accordion (FAQ).
+.accordionItem {
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.accordionHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: none;
+  background: none;
+  padding: 12px 14px;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: $theme-lighter-alt;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $theme-primary;
+    outline-offset: -2px;
+  }
+}
+
+.accordionBody {
+  padding: 0 14px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// Alert banner (rendered by the application customizer at the top of the page).
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 16px;
+  font-family: $ms-font-family-fallbacks;
+  font-size: 14px;
+  color: #201f1e;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.bannerInfo {
+  background: #eff6fc;
+}
+
+.bannerWarning {
+  background: #fff4ce;
+}
+
+.bannerCritical {
+  background: #fde7e9;
+}
+
+.bannerText {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.bannerClose {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  color: inherit;
+
+  &:focus-visible {
+    outline: 2px solid #201f1e;
+  }
+}
+
+// Org chart.
+.orgChart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.orgLevel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 340px;
+}
+
+.orgLine {
+  display: block;
+  width: 2px;
+  height: 16px;
+  background: $ms-color-neutralTertiaryAlt;
+}
+
+.orgSection {
+  width: 100%;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid $border;
+}
+
+.personGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.personCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid $border;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: $card-shadow;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    border-color: $theme-primary;
+    background: $theme-lighter-alt;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $theme-primary;
+    outline-offset: 2px;
+  }
+}
+
+.focusCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 520px;
+  box-sizing: border-box;
+  padding: 16px 18px;
+  border: 2px solid $theme-primary;
+  border-radius: 12px;
+  background: $theme-lighter-alt;
+  box-shadow: $card-shadow;
+}
+
+.personText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.personName {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.avatar {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  object-fit: cover;
+  color: #ffffff;
+  font-weight: 600;
+}

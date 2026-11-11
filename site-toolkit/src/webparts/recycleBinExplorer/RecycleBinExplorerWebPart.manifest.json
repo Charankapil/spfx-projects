@@ -1,0 +1,31 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "a00fd756-a456-4e5c-a987-1c66da5d2948",
+  "alias": "RecycleBinExplorerWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Site Toolkit"
+      },
+      "title": {
+        "default": "Recycle Bin Explorer"
+      },
+      "description": {
+        "default": "Search the recycle bin: what was deleted, when, and by whom."
+      },
+      "officeFabricIconFontName": "RecycleBin",
+      "properties": {
+        "title": "Recycle Bin Explorer"
+      }
+    }
+  ]
+}

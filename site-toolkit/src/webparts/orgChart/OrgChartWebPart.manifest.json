@@ -1,0 +1,33 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "aba0f5f3-efce-41aa-bf78-00545dca8d41",
+  "alias": "OrgChartWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Site Toolkit"
+      },
+      "title": {
+        "default": "Org Chart"
+      },
+      "description": {
+        "default": "Shows anyone's manager, team and peers, from Microsoft 365 profiles."
+      },
+      "officeFabricIconFontName": "Org",
+      "properties": {
+        "title": "Org Chart",
+        "managerLevels": "2",
+        "showPhotos": true
+      }
+    }
+  ]
+}

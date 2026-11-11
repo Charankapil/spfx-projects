@@ -1,0 +1,32 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "94a4b84f-1f9c-41d6-9733-1e6a310a202f",
+  "alias": "ReadAcknowledgeWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Site Toolkit"
+      },
+      "title": {
+        "default": "Read & Acknowledge"
+      },
+      "description": {
+        "default": "People confirm they have read each policy; owners see who has."
+      },
+      "officeFabricIconFontName": "ReadingMode",
+      "properties": {
+        "title": "Read & Acknowledge",
+        "libraryTitle": "Policies"
+      }
+    }
+  ]
+}

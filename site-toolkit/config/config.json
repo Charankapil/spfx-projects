@@ -1,0 +1,130 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/core-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "storage-hog-finder-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/storageHogFinder/StorageHogFinderWebPart.js",
+          "manifest": "./src/webparts/storageHogFinder/StorageHogFinderWebPart.manifest.json"
+        }
+      ]
+    },
+    "read-acknowledge-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/readAcknowledge/ReadAcknowledgeWebPart.js",
+          "manifest": "./src/webparts/readAcknowledge/ReadAcknowledgeWebPart.manifest.json"
+        }
+      ]
+    },
+    "stale-content-radar-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/staleContentRadar/StaleContentRadarWebPart.js",
+          "manifest": "./src/webparts/staleContentRadar/StaleContentRadarWebPart.manifest.json"
+        }
+      ]
+    },
+    "recycle-bin-explorer-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/recycleBinExplorer/RecycleBinExplorerWebPart.js",
+          "manifest": "./src/webparts/recycleBinExplorer/RecycleBinExplorerWebPart.manifest.json"
+        }
+      ]
+    },
+    "bulk-metadata-editor-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/bulkMetadataEditor/BulkMetadataEditorWebPart.js",
+          "manifest": "./src/webparts/bulkMetadataEditor/BulkMetadataEditorWebPart.manifest.json"
+        }
+      ]
+    },
+    "duplicate-file-detector-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/duplicateFileDetector/DuplicateFileDetectorWebPart.js",
+          "manifest": "./src/webparts/duplicateFileDetector/DuplicateFileDetectorWebPart.manifest.json"
+        }
+      ]
+    },
+    "my-files-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/myFiles/MyFilesWebPart.js",
+          "manifest": "./src/webparts/myFiles/MyFilesWebPart.manifest.json"
+        }
+      ]
+    },
+    "pulse-poll-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/pulsePoll/PulsePollWebPart.js",
+          "manifest": "./src/webparts/pulsePoll/PulsePollWebPart.manifest.json"
+        }
+      ]
+    },
+    "template-gallery-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/templateGallery/TemplateGalleryWebPart.js",
+          "manifest": "./src/webparts/templateGallery/TemplateGalleryWebPart.manifest.json"
+        }
+      ]
+    },
+    "org-chart-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/orgChart/OrgChartWebPart.js",
+          "manifest": "./src/webparts/orgChart/OrgChartWebPart.manifest.json"
+        }
+      ]
+    },
+    "faq-accordion-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/faqAccordion/FaqAccordionWebPart.js",
+          "manifest": "./src/webparts/faqAccordion/FaqAccordionWebPart.manifest.json"
+        }
+      ]
+    },
+    "who-has-access-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/whoHasAccess/WhoHasAccessWebPart.js",
+          "manifest": "./src/webparts/whoHasAccess/WhoHasAccessWebPart.manifest.json"
+        }
+      ]
+    },
+    "broken-link-checker-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/brokenLinkChecker/BrokenLinkCheckerWebPart.js",
+          "manifest": "./src/webparts/brokenLinkChecker/BrokenLinkCheckerWebPart.manifest.json"
+        }
+      ]
+    },
+    "alert-banner-settings-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/alertBannerSettings/AlertBannerSettingsWebPart.js",
+          "manifest": "./src/webparts/alertBannerSettings/AlertBannerSettingsWebPart.manifest.json"
+        }
+      ]
+    },
+    "alert-banner-application-customizer": {
+      "components": [
+        {
+          "entrypoint": "./lib/extensions/alertBanner/AlertBannerApplicationCustomizer.js",
+          "manifest": "./src/extensions/alertBanner/AlertBannerApplicationCustomizer.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "SiteToolkitStrings": "lib/loc/{locale}.js"
+  }
+}
