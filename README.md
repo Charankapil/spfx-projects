@@ -11,7 +11,7 @@ A collection of SharePoint Framework (SPFx) web part solutions.
   SharePoint REST/Search APIs — no Azure AD app registration or client id
   required. See its own [README](./filetype-analyser/README.md) for setup,
   architecture and deployment details.
-- [`vantage`](./vantage) — VANTAGE work-management foundation: provisions
-  workspace work-item/archive lists and moves completed tasks to an archive
-  with a verified copy, read-back check and audit log. SPFx 1.24.1 (Heft).
+- [`vantage`](./vantage) — **Vantage** 1.0: boards, tasks and collaboration
+  in secure SharePoint workspaces, with verified archive & restore (related
+  records and attachments). SPFx 1.24.1 (Heft), no app registration needed.
   See its [README](./vantage/README.md) and [review](./vantage/docs/REVIEW.md).

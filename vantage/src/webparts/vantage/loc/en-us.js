@@ -1,6 +1,6 @@
 define([], function() {
   return {
-    "AppTitle": "VANTAGE",
+    "AppTitle": "Vantage",
     "AppSubtitle": "Work management & archive center"
   }
 });

@@ -1,9 +1,9 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
   "solution": {
-    "name": "vantage-enterprise-work-management-client-side-solution",
+    "name": "Vantage",
     "id": "2f5d5c9e-9c0d-4c82-9d2a-8f4b1d8b61a7",
-    "version": "0.2.0.0",
+    "version": "1.0.0.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -16,23 +16,29 @@
     },
     "metadata": {
       "shortDescription": {
-        "default": "VANTAGE - workspace provisioning and verified archive & retention for SharePoint lists"
+        "default": "Vantage - work management and verified archive & retention for SharePoint"
       },
       "longDescription": {
-        "default": "VANTAGE provisions workspace work-item and archive lists in the current SharePoint site and moves completed or cancelled task records to the archive list using a verified copy, read-back check and audit log before the source item is removed. Uses SharePoint REST with the signed-in user's permissions only; no Entra ID app registration or API permissions are required."
+        "default": "Vantage brings boards, tasks, comments, checklists, dependencies and notifications to SharePoint Online, organised in secure workspaces with their own Administrators, Contributors and Readers groups. Completed work is moved to an archive list with its related records and attachments, verified field by field and by checksum before anything is removed, and can be restored. Runs entirely on SharePoint REST with the signed-in user's permissions: no Entra ID app registration or API permissions are required."
       },
-      "screenshotPaths": [],
+      "screenshotPaths": [
+        "images/screenshot-overview.png",
+        "images/screenshot-archive.png"
+      ],
       "videoUrl": "",
-      "categories": []
+      "categories": [
+        "Productivity"
+      ]
     },
     "features": [
       {
-        "title": "VANTAGE Feature",
-        "description": "Activates the VANTAGE web part.",
+        "title": "Vantage",
+        "description": "Activates the Vantage web part.",
         "id": "a54123ab-ba89-461b-b1c6-06800ef30441",
-        "version": "0.2.0.0"
+        "version": "1.0.0.0"
       }
-    ]
+    ],
+    "iconPath": "images/vantage-icon.png"
   },
   "paths": {
     "zippedPackage": "solution/vantage.sppkg"

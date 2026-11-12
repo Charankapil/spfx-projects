@@ -8,14 +8,22 @@ import { SPPermission } from '@microsoft/sp-page-context';
 import * as strings from 'VantageWebPartStrings';
 import { VantageApp, type IVantageAppProps } from './components/VantageApp';
 import { SharePointService } from './services/SharePointService';
+import type { ICurrentUser } from './models/Models';
 
 export default class VantageWebPart extends BaseClientSideWebPart<Record<string, never>> {
   private _root: Root | undefined;
   private _theme: IReadonlyTheme | undefined;
   private _sp: SharePointService | undefined;
+  private _user: ICurrentUser | undefined;
 
   protected onInit(): Promise<void> {
-    this._sp = new SharePointService(this.context.spHttpClient, this.context.pageContext.web.absoluteUrl);
+    const ctx = this.context.pageContext;
+    this._sp = new SharePointService(this.context.spHttpClient, ctx.web.absoluteUrl);
+    this._user = {
+      displayName: ctx.user.displayName,
+      loginName: SharePointService.claims(ctx.user.loginName),
+      email: ctx.user.email
+    };
     return super.onInit();
   }
 
@@ -23,11 +31,11 @@ export default class VantageWebPart extends BaseClientSideWebPart<Record<string,
     const permissions = this.context.pageContext.web.permissions;
     const element = React.createElement<IVantageAppProps>(VantageApp, {
       sp: this._sp as SharePointService,
-      webUrl: this.context.pageContext.web.absoluteUrl,
+      user: this._user as ICurrentUser,
       webServerRelativeUrl: this.context.pageContext.web.serverRelativeUrl,
-      currentUser: this.context.pageContext.user.displayName,
-      canManageLists: permissions.hasPermission(SPPermission.manageLists),
-      canArchive: permissions.hasAllPermissions(SPPermission.addListItems, SPPermission.editListItems, SPPermission.deleteListItems),
+      siteOwner: permissions.hasPermission(SPPermission.managePermissions),
+      canManageLists: permissions.hasAllPermissions(SPPermission.manageLists, SPPermission.managePermissions),
+      siteCanEdit: permissions.hasAllPermissions(SPPermission.addListItems, SPPermission.editListItems),
       theme: this._theme,
       title: strings.AppTitle,
       subtitle: strings.AppSubtitle

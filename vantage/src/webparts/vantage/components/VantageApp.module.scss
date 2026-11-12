@@ -32,22 +32,17 @@
 
 .logo {
   flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: var(--vnt-primary, #0078d4);
-  color: var(--vnt-on-primary, #ffffff);
-  font-weight: 700;
-  font-size: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: block;
 }
 
 .title {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  letter-spacing: .04em;
+  letter-spacing: .01em;
   line-height: 1.2;
 }
 
@@ -224,10 +219,310 @@
   margin-top: var(--vnt-gap);
 }
 
+// ---------------------------------------------------------------------------
+// 1.0 additions
+// ---------------------------------------------------------------------------
+
+.stack > * + * { margin-top: var(--vnt-gap); }
+
+.twoColEven {
+  display: grid;
+  gap: var(--vnt-gap);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: start;
+}
+
+.grid3 {
+  display: grid;
+  gap: var(--vnt-gap);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: start;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cardActions { display: flex; gap: 4px; }
+
+.purple { color: var(--vnt-purple, #8764b8); }
+
+.meter {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--vnt-border, #edebe9);
+  overflow: hidden;
+  min-width: 60px;
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+    background: var(--vnt-primary, #0078d4);
+  }
+}
+
+.statusBars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  li {
+    display: grid;
+    grid-template-columns: 130px 1fr 48px;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+  }
+}
+
+.statusLabel { min-width: 0; }
+.statusCount { text-align: right; font-variant-numeric: tabular-nums; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.boardPicker { min-width: 240px; }
+
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.commandBar {
+  padding: 0;
+  min-width: 220px;
+
+  :global(.ms-CommandBar) { padding: 0; background: transparent; }
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+
+  :global(.ms-Toggle) { margin: 0; }
+}
+
+.search { width: 220px; }
+.statusFilter { width: 150px; }
+.rolePicker { width: 170px; flex: 0 0 auto !important; }
+
+.taskLink {
+  font-weight: 600;
+  text-align: left;
+}
+
+.fieldLabel {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 5px 0;
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.linkButton {
+  border: 0;
+  padding: 0;
+  height: auto;
+  min-width: 0;
+  background: transparent;
+  color: var(--vnt-primary, #0078d4);
+}
+
+.panelFooter {
+  display: flex;
+  gap: 8px;
+}
+
+.panelMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.feed {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+
+  li {
+    padding: 10px 0;
+    border-top: 1px solid var(--vnt-border, #edebe9);
+  }
+}
+
+.feedHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.feedBody {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.checklist {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    border-bottom: 1px solid var(--vnt-border, #edebe9);
+  }
+}
+
+.dangerZone {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--vnt-border, #edebe9);
+}
+
+.dangerButton {
+  background: var(--vnt-error, #a4262c) !important;
+  border-color: var(--vnt-error, #a4262c) !important;
+}
+
+.dialogText {
+  line-height: 1.5;
+
+  p { margin: 0 0 8px; }
+}
+
+.setupCard { margin-top: var(--vnt-gap); }
+
+.bellWrap { position: relative; }
+
+.bellCount {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--vnt-error, #a4262c);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.markAll { margin: 8px 0; }
+
+.notificationList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+
+  li {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--vnt-border, #edebe9);
+    line-height: 1.4;
+  }
+}
+
+.unread {
+  background: var(--vnt-primary-soft, #eff6fc);
+  border-left: 3px solid var(--vnt-primary, #0078d4);
+  font-weight: 600;
+}
+
+.checkboxRow { margin-top: 12px; }
+
+.memberList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+  }
+}
+
+.narrowOnly { display: none; }
+
+.taskCard {
+  list-style: none;
+  border-bottom: 1px solid var(--vnt-border, #edebe9);
+}
+
+.taskCardButton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover { background: var(--vnt-primary-soft, #eff6fc); }
+  &:focus-visible { outline: 2px solid var(--vnt-primary, #0078d4); outline-offset: -2px; }
+}
+
+.taskCardTitle {
+  font-weight: 600;
+  color: var(--vnt-primary, #0078d4);
+}
+
+.taskCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+
+@container (max-width: 600px) {
+  .wideOnly { display: none; }
+  .narrowOnly { display: block; margin: 0; padding: 0; }
+}
+
 @container (max-width: 720px) {
   .twoCol { grid-template-columns: 1fr; }
+  .statusBars li { grid-template-columns: 110px 1fr 40px; }
+  .search, .statusFilter, .boardPicker { width: 100%; min-width: 0; }
+  .filters { width: 100%; }
   .header, .body { padding-left: 16px; padding-right: 16px; }
   .counters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .workspacePicker { min-width: 0; width: 100%; }
-  .headerActions { width: 100%; }
+  .workspacePicker { min-width: 0; flex: 1 1 auto; }
+  .headerActions { width: 100%; flex-wrap: nowrap; }
 }
