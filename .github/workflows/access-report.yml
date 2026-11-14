@@ -1,0 +1,86 @@
+# Monthly SharePoint access report (see access-report-automation/README.md).
+#
+# Runs four times a day on the first five days of each month. The first run makes the
+# report; the others find it done and stop within a minute. If a run hits its time limit
+# (very large tenants) or fails, the next one carries on from the saved progress - so the
+# job finishes and retries without anyone watching it.
+#
+# Nothing runs until the repository variable ACCESS_REPORT_TENANT_ID is set.
+name: SharePoint access report
+
+on:
+  schedule:
+    - cron: '23 1,7,13,19 1-5 * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'run = make the report; check = only test sign-in, permissions and the folder'
+        type: choice
+        options: [run, check]
+        default: run
+      period:
+        description: 'Month to report on (yyyy-mm). Empty = current month.'
+        required: false
+      force:
+        description: 'Make the report again even if this month already has one'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write # only used with ACCESS_REPORT_AUTH=federated
+
+concurrency:
+  group: access-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    if: ${{ vars.ACCESS_REPORT_TENANT_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    defaults:
+      run:
+        working-directory: access-report-automation
+    env:
+      ACCESS_REPORT_TENANT_ID: ${{ vars.ACCESS_REPORT_TENANT_ID }}
+      ACCESS_REPORT_CLIENT_ID: ${{ vars.ACCESS_REPORT_CLIENT_ID }}
+      ACCESS_REPORT_AUTH: ${{ vars.ACCESS_REPORT_AUTH }}
+      ACCESS_REPORT_FOLDER_URL: ${{ secrets.ACCESS_REPORT_FOLDER_URL }}
+      ACCESS_REPORT_CERTIFICATE: ${{ secrets.ACCESS_REPORT_CERTIFICATE }}
+      ACCESS_REPORT_CERTIFICATE_PASSWORD: ${{ secrets.ACCESS_REPORT_CERTIFICATE_PASSWORD }}
+      ACCESS_REPORT_PRINCIPALS: ${{ secrets.ACCESS_REPORT_PRINCIPALS }}
+      ACCESS_REPORT_CONFIG: ${{ secrets.ACCESS_REPORT_CONFIG }}
+      # Leave 50 minutes of the job's time for the last site and the upload.
+      ACCESS_REPORT_MAX_MINUTES: '300'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: access-report-automation/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+      - name: Check sign-in, permissions and the report folder
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'check' }}
+        run: node dist/cli.js check
+
+      - name: Make the report
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode == 'run' }}
+        env:
+          PERIOD: ${{ inputs.period }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          args=()
+          if [ -n "$PERIOD" ]; then args+=(--period "$PERIOD"); fi
+          if [ "$FORCE" = "true" ]; then args+=(--force); fi
+          set +e
+          node dist/cli.js run "${args[@]}"
+          code=$?
+          if [ "$code" -eq 75 ]; then
+            echo "::notice::Time limit reached. Progress is saved in the report folder; the next scheduled run carries on."
+            exit 0
+          fi
+          exit "$code"

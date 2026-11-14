@@ -1,0 +1,6 @@
+Type,Identity,Notes
+user,alice@contoso.com,CFO - reviewed monthly
+user,partner@fabrikam.com,External auditor (guest account)
+group,Finance team,By display name
+group,marketing@contoso.com,Microsoft 365 group by e-mail
+group,00000000-0000-0000-0000-000000000000,By object id (use when two groups share a name)

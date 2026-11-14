@@ -1,0 +1,34 @@
+{
+  "$comment": "Copy to config.json (ignored by git) for local runs, or paste as the ACCESS_REPORT_CONFIG secret. Every setting is optional except where the README says otherwise; environment variables win.",
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "clientId": "00000000-0000-0000-0000-000000000000",
+  "auth": {
+    "mode": "certificate",
+    "certificatePath": "./access-report.secret.pem"
+  },
+  "report": {
+    "folderUrl": "https://contoso.sharepoint.com/sites/governance/Shared Documents/Access reports",
+    "name": "Access report"
+  },
+  "principals": [
+    { "type": "user", "id": "alice@contoso.com" },
+    { "type": "group", "id": "Finance team" },
+    { "type": "group", "id": "00000000-0000-0000-0000-000000000000" }
+  ],
+  "principalsFile": "principals.csv",
+  "sites": {
+    "only": [],
+    "include": [],
+    "exclude": ["https://contoso.sharepoint.com/sites/archive-*"],
+    "includeOneDrive": false
+  },
+  "scan": {
+    "includeLibraries": true,
+    "includeLists": false,
+    "includeSubsites": true,
+    "expandGroups": true,
+    "thorough": true,
+    "concurrency": 2,
+    "maxMinutes": 300
+  }
+}

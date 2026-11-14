@@ -1,0 +1,31 @@
+name: Access report tests
+
+on:
+  push:
+    paths: ['access-report-automation/**', '.github/workflows/access-report-tests.yml']
+  pull_request:
+    paths: ['access-report-automation/**', '.github/workflows/access-report-tests.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    defaults:
+      run:
+        working-directory: access-report-automation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: access-report-automation/package-lock.json
+      - run: npm ci
+      # The workbook is also opened with openpyxl when it is installed (skipped otherwise).
+      - run: pip install --quiet openpyxl || true
+      - run: npm test

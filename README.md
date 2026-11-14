@@ -1,6 +1,6 @@
 # SPFx Projects
 
-A collection of SharePoint Framework (SPFx) web part solutions.
+A collection of SharePoint Framework (SPFx) web part solutions, and automation that goes with them.
 
 ## Projects
 
@@ -11,3 +11,10 @@ A collection of SharePoint Framework (SPFx) web part solutions.
   SharePoint REST/Search APIs — no Azure AD app registration or client id
   required. See its own [README](./filetype-analyser/README.md) for setup,
   architecture and deployment details.
+- [`access-report-automation`](./access-report-automation) — The Access report
+  from the SharePoint Admin Center web part, as an unattended monthly job:
+  every site, subsite and library a person or group can reach, how they get
+  that access and what changed since last month, posted as an Excel workbook
+  to a SharePoint folder. Runs on a schedule in GitHub Actions (or any
+  scheduler) with app-only sign-in; resumes by itself on large tenants. See
+  its [README](./access-report-automation/README.md) for setup.

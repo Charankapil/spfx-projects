@@ -1,0 +1,8 @@
+node_modules/
+dist/
+out/
+*.pem
+*.key
+*.pfx
+config.json
+.env
