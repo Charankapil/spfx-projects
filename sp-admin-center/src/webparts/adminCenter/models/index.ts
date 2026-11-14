@@ -184,6 +184,7 @@ export type ViewKey =
   | 'recycle'
   | 'locks'
   | 'grant'
+  | 'accessreport'
   | 'create'
   | 'activity'
   | 'health'

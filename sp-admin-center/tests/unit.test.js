@@ -2140,6 +2140,97 @@ test('subsites: tree walked level by level, parents before children; storage fro
   assert.deepStrictEqual([col(rows[2], 'Permissions'), col(rows[2], 'Owners group'), col(rows[2], 'Owners'), col(rows[2], 'Note'), col(rows[2], 'Last modified')], ['Unique', 'X Owners', 'ann@x.com', 'Size not available', '2026-10-01']);
 });
 
+// ---------------------------------------------------------------- access report
+const AS = src('services/AccessScan');
+
+function accessTenant() {
+  const calls = [];
+  const FULL = { Low: '4294967295', High: '2147483647' };
+  const READ = { Low: '138612833', High: '176' };
+  const NONE = { Low: '0', High: '0' };
+  const lists = [
+    { Id: 'l1', Title: 'Documents', BaseType: 1, HasUniqueRoleAssignments: false, IsSystemList: false, RootFolder: { ServerRelativeUrl: '/sites/a/Shared Documents' } },
+    { Id: 'l2', Title: 'Contracts', BaseType: 1, HasUniqueRoleAssignments: true, IsSystemList: false, RootFolder: { ServerRelativeUrl: '/sites/a/Contracts' } },
+    { Id: 'l3', Title: 'Tasks', BaseType: 0, HasUniqueRoleAssignments: true, IsSystemList: false, RootFolder: { ServerRelativeUrl: '/sites/a/Lists/Tasks' } },
+    { Id: 'l4', Title: 'Site Assets', BaseType: 1, HasUniqueRoleAssignments: false, IsSystemList: true, RootFolder: { ServerRelativeUrl: '/sites/a/SiteAssets' } }
+  ];
+  const ra = (pid, name) => ({ PrincipalId: pid, RoleDefinitionBindings: [{ Name: name, RoleTypeKind: name === 'Limited Access' ? 1 : 2 }] });
+  const c = make(async (m, url) => {
+    const u = decodeURIComponent(url);
+    calls.push(u.replace(ORIGIN, ''));
+    if (/\/sites\/locked\//.test(u)) return json({ error: { message: { value: 'Access denied.' } } }, 403);
+    if (/\/sites\/a\/_api\/web\/getusereffectivepermissions/.test(u)) return json(/ann@/.test(u) ? READ : NONE);
+    if (/\/sites\/a\/_api\/web\/lists\(guid'l2'\)\/getusereffectivepermissions/.test(u)) return json(/bob@/.test(u) ? FULL : NONE);
+    if (/\/sites\/b\/_api\/web\/getusereffectivepermissions/.test(u)) return json(NONE);
+    if (/\/_api\/web\/lists\?/.test(u)) return json({ value: lists });
+    if (/\/sites\/a\/_api\/web\/siteusers\?\$filter/.test(u)) return /tenant\|1111/.test(u) ? json({ value: [{ Id: 21, LoginName: 'c:0t.c|tenant|1111' }] }) : json({ value: [] });
+    if (/\/sites\/b\/_api\/web\/siteusers\?\$filter/.test(u)) return json({ value: [] });
+    if (/siteusers\/getbyid\(21\)\/groups/.test(u)) return json({ value: [{ Id: 5, Title: 'A Visitors' }] });
+    if (/\/_api\/web\/roleassignments\?/.test(u)) return json({ value: [ra(5, 'Read'), ra(21, 'Limited Access'), ra(3, 'Full Control')] });
+    if (/lists\(guid'l2'\)\/roleassignments/.test(u)) return json({ value: [ra(21, 'Contribute')] });
+    return json({ error: { message: { value: 'no route ' + u } } }, 404);
+  });
+  return { calls, scanner: new AS.AccessScanner(c, ORIGIN + '/sites/it') };
+}
+
+test('access report: a person gets the site, inherited libraries and libraries with own permissions', async () => {
+  const { calls, scanner } = accessTenant();
+  const ann = await scanner.scanSite({ url: ORIGIN + '/sites/a', title: 'A' }, { kind: 'user', key: 'ann@contoso.com', label: 'Ann' }, true);
+  assert.deepStrictEqual(ann.map((r) => [r.object, r.title, r.level, r.unique]), [['Site', 'A', 'Read', false], ['Library', 'Documents', 'Read', false]], 'system libraries and lists are left out; no access to Contracts');
+  assert.ok(calls.some((x) => /getusereffectivepermissions\(@v\)\?@v='i:0#\.f\|membership\|ann@contoso\.com'/.test(x) || /getusereffectivepermissions\(@v='i:0#\.f\|membership\|ann@contoso\.com'\)/.test(x)), calls[0]);
+  assert.strictEqual(calls.length, 3, 'site + lists + one library with own permissions');
+  calls.length = 0;
+  const bob = await scanner.scanSite({ url: ORIGIN + '/sites/a', title: 'A' }, { kind: 'user', key: 'bob@contoso.com', label: 'Bob' }, true);
+  assert.deepStrictEqual(bob.map((r) => [r.object, r.title, r.level, r.how]), [['Library', 'Contracts', 'Full control', 'Effective permission (own permissions)']], 'access to one library only');
+  calls.length = 0;
+  const siteOnly = await scanner.scanSite({ url: ORIGIN + '/sites/a', title: 'A' }, { kind: 'user', key: 'ann@contoso.com', label: 'Ann' }, false);
+  assert.strictEqual(siteOnly.length, 1);
+  assert.strictEqual(calls.length, 1, 'one request per site without libraries');
+});
+
+test('access report: a group costs one request on sites where it is absent; direct and via SharePoint groups elsewhere', async () => {
+  const { calls, scanner } = accessTenant();
+  const g = { kind: 'security', key: '1111', label: 'Sec' };
+  assert.deepStrictEqual(AS.groupClaims(g), ['c:0t.c|tenant|1111']);
+  assert.deepStrictEqual(AS.groupClaims({ kind: 'm365', key: 'ABC', label: 'M' }), ['c:0o.c|federateddirectoryclaimprovider|abc', 'c:0o.c|federateddirectoryclaimprovider|abc_o']);
+  assert.deepStrictEqual(await scanner.scanSite({ url: ORIGIN + '/sites/b', title: 'B' }, g, true), []);
+  assert.strictEqual(calls.length, 1, 'absent: one request');
+  calls.length = 0;
+  const rows = await scanner.scanSite({ url: ORIGIN + '/sites/a', title: 'A' }, g, true);
+  assert.deepStrictEqual(rows.map((r) => [r.object, r.title, r.level, r.how]), [
+    ['Site', 'A', 'Read', 'SharePoint group: A Visitors'],
+    ['Library', 'Documents', 'Read', 'Inherits from site'],
+    ['Library', 'Contracts', 'Contribute', 'Direct']
+  ]);
+  assert.ok(/LoginName eq 'c:0t\.c\|tenant\|1111'/.test(calls[0]));
+  assert.strictEqual(AS.matchAssignments([{ PrincipalId: 9, RoleDefinitionBindings: [{ Name: 'Limited Access', RoleTypeKind: 1 }] }], [9], []), undefined, 'limited access alone is not access');
+  await assert.rejects(() => scanner.scanSite({ url: ORIGIN + '/sites/locked', title: 'L' }, g, true), (e) => /cannot open/.test(AS.scanError(e)));
+});
+
+test('access report: the job saves, resumes interrupted sites first, and exports rows', () => {
+  const store = {};
+  global.window = global.window || {};
+  const had = global.window.localStorage;
+  global.window.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
+  try {
+    const sites = [{ url: 'u0', title: 't0' }, { url: 'u1', title: 't1' }, { url: 'u2', title: 't2' }, { url: 'u3', title: 't3' }];
+    const job = { v: 1, id: 'x', principal: { kind: 'user', key: 'ann@x.com', label: 'Ann' }, includeLibraries: true, speed: 'gentle', next: 3, pending: [1], rows: [{ siteUrl: 'u0', siteTitle: 't0', object: 'Site', title: 't0', url: 'u0', level: 'Read', how: 'Effective permission', unique: false }], failed: [], started: 1, saved: 1, finished: false, total: 4 };
+    assert.ok(AS.saveJob(job, sites));
+    const back = AS.loadJob();
+    assert.deepStrictEqual(back.sites, sites);
+    assert.deepStrictEqual(AS.remaining(back.job), [1, 3], 'the interrupted site first, then the rest');
+    assert.deepStrictEqual(AS.accessRows('Ann', back.job.rows)[0], ['Ann', 'u0', 't0', 'Site', 't0', 'u0', 'Read', 'Effective permission', '']);
+    store['spAdminCenter.accessScan.sites.v1'] = JSON.stringify([['u0', 't0']]);
+    assert.strictEqual(AS.loadJob(), undefined, 'a site list that does not match the job is ignored');
+    AS.clearJob();
+    assert.strictEqual(AS.loadJob(), undefined);
+    global.window.localStorage = { setItem: () => { throw new Error('QuotaExceeded'); }, getItem: () => null, removeItem: () => undefined };
+    assert.strictEqual(AS.saveJob(job, sites), false, 'a full storage is reported, not thrown');
+  } finally {
+    global.window.localStorage = had;
+  }
+});
+
 // ---------------------------------------------------------------- runner
 (async () => {
   let failed = 0;

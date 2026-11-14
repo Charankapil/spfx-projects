@@ -23,6 +23,7 @@ import styles from './AdminCenter.module.scss';
 import { Logo } from './shared/ui';
 import { AdminContext, IAdminContext, IConfirmOptions } from './shared/context';
 import { ActivityView } from './views/ActivityView';
+import { AccessReportView } from './views/AccessReportView';
 import { ApiAccessView } from './views/ApiAccessView';
 import { InactiveGroupsView, TeamsUsageView } from './views/ActivityReportsView';
 import { CompareGroupsView } from './views/CompareGroupsView';
@@ -109,6 +110,7 @@ const NAV: INavEntry[] = [
       { key: 'people', text: 'This site' },
       { key: 'm365groups', text: 'Microsoft 365 group' },
       { key: 'grant', text: 'Grant access by URL' },
+      { key: 'accessreport', text: 'Access report' },
       { key: 'guests', text: 'Guest users' }
     ]
   },
@@ -295,6 +297,8 @@ export const AdminCenter: React.FC<IAdminCenterProps> = ({ client, graphClient, 
         return <OffboardingView />;
       case 'groupcompare':
         return <CompareGroupsView />;
+      case 'accessreport':
+        return <AccessReportView />;
       case 'grant':
         return <GrantAccessView />;
       case 'create':

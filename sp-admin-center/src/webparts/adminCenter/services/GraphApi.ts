@@ -745,6 +745,25 @@ export class GraphApi {
     return (res.value || []).map((g) => ({ id: g.id.toLowerCase(), displayName: g.displayName || g.mail || g.id, mail: g.mail || '' }));
   }
 
+  /** Any group whose name starts with the text: Microsoft 365 and security groups (for the access report). */
+  public async searchAnyGroups(text: string): Promise<Array<IGroupRef & { kind: 'm365' | 'security' }>> {
+    const t = text.trim().replace(/'/g, "''");
+    if (!t) {
+      return [];
+    }
+    const filter = encodeURIComponent(`startswith(displayName,'${t}')`);
+    const res = await this.client.get<{ value?: Array<IRawGroup & { groupTypes?: string[]; securityEnabled?: boolean }> }>(
+      `/v1.0/groups?$filter=${filter}&$select=id,displayName,mail,groupTypes,securityEnabled&$top=25&$count=true&$orderby=displayName`,
+      { headers: { ConsistencyLevel: 'eventual' } }
+    );
+    return (res.value || []).map((g) => ({
+      id: g.id.toLowerCase(),
+      displayName: g.displayName || g.mail || g.id,
+      mail: g.mail || '',
+      kind: (g.groupTypes || []).indexOf('Unified') >= 0 ? ('m365' as const) : ('security' as const)
+    }));
+  }
+
   // ---- people
 
   /** Resolves an e-mail / UPN to a directory user (exact match first, then mail). */
