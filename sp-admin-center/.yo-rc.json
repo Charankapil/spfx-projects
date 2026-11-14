@@ -1,0 +1,21 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "18.17.1",
+    "sdksVersions": {
+      "@microsoft/microsoft-graph-client": "3.0.2",
+      "@microsoft/teams-js": "2.19.0"
+    },
+    "version": "1.18.2",
+    "libraryName": "sp-admin-center",
+    "libraryId": "4639d2c3-aef2-467b-8e1a-a112818bce95",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "sp-admin-center",
+    "solutionShortDescription": "SharePoint Admin Center",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}
