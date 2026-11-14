@@ -390,6 +390,7 @@ export async function run(cfg: Config, clients: Clients, log: Logger, opts: RunO
 
   // ---- report ----
   const failedSites: FailedSite[] = state.failed.map((f) => ({ url: state.sites[f.i][0], title: state.sites[f.i][1], error: f.error }));
+  scanNotes().forEach((n) => warnings.push(n));
   const previous = await previousSnapshot(store, period, log);
   const files = buildReport({
     name: cfg.report.name,
@@ -399,7 +400,7 @@ export async function run(cfg: Config, clients: Clients, log: Logger, opts: RunO
     rows: state.rows,
     failedSites,
     unresolved,
-    warnings: (scanNotes().forEach((n) => warnings.push(n)), warnings),
+    warnings,
     sitesTotal: total,
     previous,
     scope: scopeText(cfg) + (opts.limit ? `; TRIAL RUN limited to ${opts.limit} sites` : '')
