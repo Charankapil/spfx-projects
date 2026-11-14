@@ -129,13 +129,28 @@ export class SearchApi {
     let useDocId = true;
     let startRow = 0;
     let oneDriveHidden = 0;
-    // OneDrive personal sites are site collections too; they are left out here (the query
-    // skips their template, and the URL check catches any the index labels differently).
-    const scope = 'contentclass:STS_Site -WebTemplate:SPSPERS';
+    // OneDrive personal sites are site collections too: they are left out by their address and
+    // template below. (Excluding them in the query itself is rejected by some tenants' search
+    // with "We didn't understand your search terms", so the query stays the plain one.)
+    const scope = 'contentclass:STS_Site';
     for (let guard = 0; guard < 400; guard++) {
-      const res = await this.run(homeWebUrl, useDocId
-        ? { query: `${scope} IndexDocId>${lastDocId}`, select, rowLimit: 500, sort: '[DocId]:ascending' }
-        : { query: scope, select, rowLimit: 500, startRow, sort: 'LastModifiedTime:descending' });
+      let res: ISearchResult;
+      try {
+        res = await this.run(homeWebUrl, useDocId
+          ? { query: `${scope} IndexDocId>${lastDocId}`, select, rowLimit: 500, sort: '[DocId]:ascending' }
+          : { query: scope, select, rowLimit: 500, startRow, sort: 'LastModifiedTime:descending' });
+      } catch (e) {
+        if (useDocId && e instanceof HttpError && e.status === 400) {
+          // DocId paging refused: start again with startrow paging (capped by search at 50,000 rows).
+          useDocId = false;
+          startRow = 0;
+          sites.length = 0;
+          oneDriveHidden = 0;
+          Object.keys(seen).forEach((k) => delete seen[k]);
+          continue;
+        }
+        throw e;
+      }
       let maxDoc = lastDocId;
       res.rows.forEach((r) => {
         const doc = Number(r.DocId);

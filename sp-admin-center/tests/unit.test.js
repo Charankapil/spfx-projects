@@ -1916,7 +1916,7 @@ test('sites: OneDrive personal sites are left out of every site list', async () 
   const r = await new SearchApi(c).listSites(ORIGIN + '/sites/it');
   assert.deepStrictEqual(r.sites.map((x) => x.title), ['Finance', 'Intranet']);
   assert.strictEqual(r.oneDriveHidden, 1);
-  assert.ok(/querytext='contentclass:STS_Site -WebTemplate:SPSPERS IndexDocId>0'/.test(queries[0]), queries[0]);
+  assert.ok(/querytext='contentclass:STS_Site IndexDocId>0'/.test(queries[0]), 'plain query; OneDrive left out by address: ' + queries[0]);
 });
 
 // ---------------------------------------------------------------- export: Excel limits
@@ -2229,6 +2229,23 @@ test('access report: the job saves, resumes interrupted sites first, and exports
   } finally {
     global.window.localStorage = had;
   }
+});
+
+test('sites: a search that rejects the DocId query falls back to startrow paging instead of failing', async () => {
+  const queries = [];
+  const c = make(async (m, url) => {
+    const q = decodeURIComponent(url);
+    queries.push(q);
+    if (/IndexDocId/.test(q)) return json({ error: { message: { value: "We didn't understand your search terms. Make sure they're using proper syntax." } } }, 400);
+    return json({ d: { query: { PrimaryQueryResult: { RelevantResults: { TotalRows: 2, Table: { Rows: { results: [
+      { Cells: { results: [{ Key: 'Title', Value: 'Fin' }, { Key: 'Path', Value: ORIGIN + '/sites/fin' }, { Key: 'WebTemplate', Value: 'STS' }] } },
+      { Cells: { results: [{ Key: 'Title', Value: 'Ann' }, { Key: 'Path', Value: 'https://contoso-my.sharepoint.com/personal/ann' }, { Key: 'WebTemplate', Value: 'SPSPERS' }] } }
+    ] } } } } } } });
+  });
+  const r = await new SearchApi(c).listSites(ORIGIN + '/sites/it');
+  assert.deepStrictEqual(r.sites.map((x) => x.title), ['Fin']);
+  assert.strictEqual(r.oneDriveHidden, 1);
+  assert.ok(/querytext='contentclass:STS_Site'/.test(queries[1]) && /startrow|sortlist='LastModifiedTime/.test(queries[1]), queries[1]);
 });
 
 // ---------------------------------------------------------------- runner
