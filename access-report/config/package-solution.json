@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "access-report-client-side-solution",
+    "id": "1d393ddd-2db0-4a1d-a592-d86d004b2728",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "undefined"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Access Report - a monthly report of every site and library a person or group can reach"
+      },
+      "longDescription": {
+        "default": "Lists every site and library that chosen people and groups can reach, with the access level and how they get it, and saves it as a CSV in a SharePoint folder. Run it from the page, or import the included Power Automate flow to have it run on the first of every month. Uses only SharePoint REST as the signed-in user: no app registration, no Microsoft Graph and no API permission approval."
+      },
+      "screenshotPaths": []
+    },
+    "features": [
+      {
+        "title": "Access Report Feature",
+        "description": "Activates the Access Report web part.",
+        "id": "1fd877ad-1cb0-4b3e-a5ed-3b77beddbe75",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/access-report-webpart.sppkg"
+  }
+}

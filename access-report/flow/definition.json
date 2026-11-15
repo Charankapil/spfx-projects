@@ -1,0 +1,1334 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "On_the_first_of_every_month": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Month",
+        "interval": 1,
+        "startTime": "2026-01-01T03:00:00Z"
+      }
+    }
+  },
+  "actions": {
+    "Home_site_URL": {
+      "type": "Compose",
+      "inputs": "https://contoso.sharepoint.com/sites/your-site",
+      "description": "The site that hosts the Access Report web part. Its lists say who to report on and where the file goes.",
+      "runAfter": {}
+    },
+    "Home": {
+      "type": "Compose",
+      "inputs": "@substring(trim(outputs('Home_site_URL')),0,sub(length(trim(outputs('Home_site_URL'))),if(endsWith(trim(outputs('Home_site_URL')),'/'),1,0)))",
+      "runAfter": {
+        "Home_site_URL": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Origin": {
+      "type": "Compose",
+      "inputs": "@concat('https://',uriHost(outputs('Home')))",
+      "runAfter": {
+        "Home": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Web_path": {
+      "type": "Compose",
+      "inputs": "@if(equals(uriPath(outputs('Home')),'/'),'',uriPath(outputs('Home')))",
+      "runAfter": {
+        "Origin": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_Lines": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "Lines",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      },
+      "runAfter": {
+        "Web_path": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_Sites": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "Sites",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_Lines": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_LastDocId": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "LastDocId",
+            "type": "string",
+            "value": "0"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_Sites": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_PageSize": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "PageSize",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_LastDocId": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Get_settings": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "HttpRequest"
+        },
+        "parameters": {
+          "dataset": "@outputs('Home')",
+          "parameters/method": "GET",
+          "parameters/uri": "_api/web/GetList(@u)/items?$select=Id,ARIncludeLibraries,ARSiteFilter,ARReportFolder&$orderby=Id&$top=1&@u='@{encodeUriComponent(concat(outputs('Web_path'),'/Lists/AccessReportSettings'))}'",
+          "parameters/headers": {
+            "Accept": "application/json;odata=nometadata"
+          }
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runAfter": {
+        "Initialize_PageSize": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Settings": {
+      "type": "Compose",
+      "inputs": {
+        "itemId": "@first(coalesce(body('Get_settings')?['value'],json('[]')))?['Id']",
+        "includeLibraries": "@not(equals(first(coalesce(body('Get_settings')?['value'],json('[]')))?['ARIncludeLibraries'],false))",
+        "siteFilter": "@toLower(trim(coalesce(first(coalesce(body('Get_settings')?['value'],json('[]')))?['ARSiteFilter'],'')))",
+        "folder": "@if(equals(trim(coalesce(first(coalesce(body('Get_settings')?['value'],json('[]')))?['ARReportFolder'],'')),''),concat(outputs('Web_path'),'/AccessReports'),trim(coalesce(first(coalesce(body('Get_settings')?['value'],json('[]')))?['ARReportFolder'],'')))"
+      },
+      "runAfter": {
+        "Get_settings": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Get_subjects": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "HttpRequest"
+        },
+        "parameters": {
+          "dataset": "@outputs('Home')",
+          "parameters/method": "GET",
+          "parameters/uri": "_api/web/GetList(@u)/items?$select=Id,Title,ARLogin,ARActive&$orderby=Id&$top=5000&@u='@{encodeUriComponent(concat(outputs('Web_path'),'/Lists/AccessReportSubjects'))}'",
+          "parameters/headers": {
+            "Accept": "application/json;odata=nometadata"
+          }
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runAfter": {
+        "Settings": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Active_subjects": {
+      "type": "Query",
+      "inputs": {
+        "from": "@coalesce(body('Get_subjects')?['value'],json('[]'))",
+        "where": "@and(equals(item()?['ARActive'],true),not(equals(trim(coalesce(item()?['ARLogin'],'')),'')))"
+      },
+      "runAfter": {
+        "Get_subjects": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Subjects": {
+      "type": "Select",
+      "inputs": {
+        "from": "@body('Active_subjects')",
+        "select": {
+          "who": "@concat('\"',replace(if(or(startsWith(coalesce(item()?['Title'],''),'='),startsWith(coalesce(item()?['Title'],''),'+'),startsWith(coalesce(item()?['Title'],''),'-'),startsWith(coalesce(item()?['Title'],''),'@'),startsWith(coalesce(item()?['Title'],''),decodeUriComponent('%09')),startsWith(coalesce(item()?['Title'],''),decodeUriComponent('%0D'))),concat('''',coalesce(item()?['Title'],'')),coalesce(item()?['Title'],'')),'\"','\"\"'),'\"')",
+          "whoOwners": "@concat('\"',replace(if(or(startsWith(concat(coalesce(item()?['Title'],''),' (owners)'),'='),startsWith(concat(coalesce(item()?['Title'],''),' (owners)'),'+'),startsWith(concat(coalesce(item()?['Title'],''),' (owners)'),'-'),startsWith(concat(coalesce(item()?['Title'],''),' (owners)'),'@'),startsWith(concat(coalesce(item()?['Title'],''),' (owners)'),decodeUriComponent('%09')),startsWith(concat(coalesce(item()?['Title'],''),' (owners)'),decodeUriComponent('%0D'))),concat('''',concat(coalesce(item()?['Title'],''),' (owners)')),concat(coalesce(item()?['Title'],''),' (owners)')),'\"','\"\"'),'\"')",
+          "person": "@startsWith(toLower(trim(coalesce(item()?['ARLogin'],''))),'i:')",
+          "m365": "@contains(toLower(trim(coalesce(item()?['ARLogin'],''))),'|federateddirectoryclaimprovider|')",
+          "param": "@encodeUriComponent(replace(trim(coalesce(item()?['ARLogin'],'')),'''',''''''))",
+          "filter": "@encodeUriComponent(if(contains(toLower(trim(coalesce(item()?['ARLogin'],''))),'|federateddirectoryclaimprovider|'),concat('LoginName eq ''',replace(trim(coalesce(item()?['ARLogin'],'')),'''',''''''),''' or LoginName eq ''',replace(trim(coalesce(item()?['ARLogin'],'')),'''',''''''),'_o'''),concat('LoginName eq ''',replace(trim(coalesce(item()?['ARLogin'],'')),'''',''''''),'''')))"
+        }
+      },
+      "runAfter": {
+        "Active_subjects": [
+          "Succeeded"
+        ]
+      }
+    },
+    "People": {
+      "type": "Query",
+      "inputs": {
+        "from": "@body('Subjects')",
+        "where": "@equals(item()?['person'],true)"
+      },
+      "runAfter": {
+        "Subjects": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Groups": {
+      "type": "Query",
+      "inputs": {
+        "from": "@body('Subjects')",
+        "where": "@equals(item()?['person'],false)"
+      },
+      "runAfter": {
+        "People": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Mark_started": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "HttpRequest"
+        },
+        "parameters": {
+          "dataset": "@outputs('Home')",
+          "parameters/method": "POST",
+          "parameters/uri": "_api/web/GetList(@u)/items(@{outputs('Settings')?['itemId']})?@u='@{encodeUriComponent(concat(outputs('Web_path'),'/Lists/AccessReportSettings'))}'",
+          "parameters/headers": {
+            "Accept": "application/json;odata=nometadata",
+            "Content-Type": "application/json;odata=nometadata",
+            "IF-MATCH": "*",
+            "X-HTTP-Method": "MERGE"
+          },
+          "parameters/body": "{\"ARLastRun\":\"Started @{formatDateTime(utcNow(),'yyyy-MM-dd HH:mm')} UTC\"}"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runAfter": {
+        "Groups": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Until_all_sites_are_listed": {
+      "type": "Until",
+      "expression": "@less(variables('PageSize'),500)",
+      "limit": {
+        "count": 400,
+        "timeout": "PT6H"
+      },
+      "actions": {
+        "Assume_this_is_the_last_page": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "PageSize",
+            "value": 0
+          },
+          "runAfter": {}
+        },
+        "Search_sites": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest"
+            },
+            "parameters": {
+              "dataset": "@outputs('Home')",
+              "parameters/method": "GET",
+              "parameters/uri": "_api/search/query?querytext='contentclass%3ASTS_Site%20IndexDocId%3E@{variables('LastDocId')}'&selectproperties='Title%2CPath%2CWebTemplate%2CDocId'&rowlimit=500&trimduplicates=false&sortlist='%5BDocId%5D%3Aascending'",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              }
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runAfter": {
+            "Assume_this_is_the_last_page": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Site_rows": {
+          "type": "Select",
+          "inputs": {
+            "from": "@coalesce(body('Search_sites')?['PrimaryQueryResult']?['RelevantResults']?['Table']?['Rows'],json('[]'))",
+            "select": {
+              "url": "@substring(xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(item()?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"Path\"]/Value)'),0,sub(length(xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(item()?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"Path\"]/Value)')),if(endsWith(xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(item()?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"Path\"]/Value)'),'/'),1,0)))",
+              "title": "@if(equals(xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(item()?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"Title\"]/Value)'),''),substring(xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(item()?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"Path\"]/Value)'),0,sub(length(xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(item()?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"Path\"]/Value)')),if(endsWith(xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(item()?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"Path\"]/Value)'),'/'),1,0))),xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(item()?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"Title\"]/Value)'))",
+              "template": "@xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(item()?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"WebTemplate\"]/Value)')"
+            }
+          },
+          "runAfter": {
+            "Search_sites": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Sites_in_scope": {
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Site_rows')",
+            "where": "@and(not(equals(item()?['url'],'')),startsWith(toLower(concat(item()?['url'],'/')),toLower(concat(outputs('Origin'),'/'))),not(startsWith(toLower(concat(item()?['url'],'/')),toLower(concat(outputs('Origin'),'/personal/')))),not(startsWith(toUpper(item()?['template']),'SPSPERS')),contains(toLower(concat(item()?['title'],' ',item()?['url'])),outputs('Settings')?['siteFilter']))"
+          },
+          "runAfter": {
+            "Site_rows": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Sites_so_far": {
+          "type": "Compose",
+          "inputs": "@union(variables('Sites'),body('Sites_in_scope'))",
+          "runAfter": {
+            "Sites_in_scope": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Remember_sites": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "Sites",
+            "value": "@outputs('Sites_so_far')"
+          },
+          "runAfter": {
+            "Sites_so_far": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Next_DocId": {
+          "type": "Compose",
+          "inputs": "@xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(last(coalesce(body('Search_sites')?['PrimaryQueryResult']?['RelevantResults']?['Table']?['Rows'],json('[]')))?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"DocId\"]/Value)')",
+          "runAfter": {
+            "Remember_sites": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Remember_DocId": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "LastDocId",
+            "value": "@if(equals(outputs('Next_DocId'),''),'0',outputs('Next_DocId'))"
+          },
+          "runAfter": {
+            "Next_DocId": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Remember_page_size": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "PageSize",
+            "value": "@if(equals(outputs('Next_DocId'),''),0,length(coalesce(body('Search_sites')?['PrimaryQueryResult']?['RelevantResults']?['Table']?['Rows'],json('[]'))))"
+          },
+          "runAfter": {
+            "Remember_DocId": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Mark_started": [
+          "Succeeded"
+        ]
+      }
+    },
+    "For_each_site": {
+      "type": "Foreach",
+      "foreach": "@variables('Sites')",
+      "actions": {
+        "Site_cells": {
+          "type": "Compose",
+          "inputs": {
+            "start": "@concat(concat('\"',replace(if(or(startsWith(items('For_each_site')?['url'],'='),startsWith(items('For_each_site')?['url'],'+'),startsWith(items('For_each_site')?['url'],'-'),startsWith(items('For_each_site')?['url'],'@'),startsWith(items('For_each_site')?['url'],decodeUriComponent('%09')),startsWith(items('For_each_site')?['url'],decodeUriComponent('%0D'))),concat('''',items('For_each_site')?['url']),items('For_each_site')?['url']),'\"','\"\"'),'\"'),',',concat('\"',replace(if(or(startsWith(items('For_each_site')?['title'],'='),startsWith(items('For_each_site')?['title'],'+'),startsWith(items('For_each_site')?['title'],'-'),startsWith(items('For_each_site')?['title'],'@'),startsWith(items('For_each_site')?['title'],decodeUriComponent('%09')),startsWith(items('For_each_site')?['title'],decodeUriComponent('%0D'))),concat('''',items('For_each_site')?['title']),items('For_each_site')?['title']),'\"','\"\"'),'\"'))",
+            "self": "@concat(concat('\"',replace(if(or(startsWith(items('For_each_site')?['title'],'='),startsWith(items('For_each_site')?['title'],'+'),startsWith(items('For_each_site')?['title'],'-'),startsWith(items('For_each_site')?['title'],'@'),startsWith(items('For_each_site')?['title'],decodeUriComponent('%09')),startsWith(items('For_each_site')?['title'],decodeUriComponent('%0D'))),concat('''',items('For_each_site')?['title']),items('For_each_site')?['title']),'\"','\"\"'),'\"'),',',concat('\"',replace(if(or(startsWith(items('For_each_site')?['url'],'='),startsWith(items('For_each_site')?['url'],'+'),startsWith(items('For_each_site')?['url'],'-'),startsWith(items('For_each_site')?['url'],'@'),startsWith(items('For_each_site')?['url'],decodeUriComponent('%09')),startsWith(items('For_each_site')?['url'],decodeUriComponent('%0D'))),concat('''',items('For_each_site')?['url']),items('For_each_site')?['url']),'\"','\"\"'),'\"'))"
+          },
+          "runAfter": {}
+        },
+        "Libraries_wanted": {
+          "type": "If",
+          "expression": {
+            "equals": [
+              "@outputs('Settings')?['includeLibraries']",
+              true
+            ]
+          },
+          "actions": {
+            "Get_libraries": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "HttpRequest"
+                },
+                "parameters": {
+                  "dataset": "@items('For_each_site')?['url']",
+                  "parameters/method": "GET",
+                  "parameters/uri": "_api/web/lists?$select=Id,Title,BaseType,HasUniqueRoleAssignments,IsSystemList,RootFolder/ServerRelativeUrl&$expand=RootFolder&$filter=Hidden%20eq%20false&$top=5000",
+                  "parameters/headers": {
+                    "Accept": "application/json;odata=nometadata"
+                  }
+                },
+                "authentication": "@parameters('$authentication')"
+              },
+              "runAfter": {}
+            },
+            "Libraries": {
+              "type": "Select",
+              "inputs": {
+                "from": "@coalesce(if(equals(outputs('Get_libraries')?['statusCode'],200),body('Get_libraries'),json('{}'))?['value'],json('[]'))",
+                "select": {
+                  "id": "@item()?['Id']",
+                  "name": "@coalesce(item()?['Title'],'')",
+                  "title": "@concat('\"',replace(if(or(startsWith(coalesce(item()?['Title'],''),'='),startsWith(coalesce(item()?['Title'],''),'+'),startsWith(coalesce(item()?['Title'],''),'-'),startsWith(coalesce(item()?['Title'],''),'@'),startsWith(coalesce(item()?['Title'],''),decodeUriComponent('%09')),startsWith(coalesce(item()?['Title'],''),decodeUriComponent('%0D'))),concat('''',coalesce(item()?['Title'],'')),coalesce(item()?['Title'],'')),'\"','\"\"'),'\"')",
+                  "url": "@concat('\"',replace(if(or(startsWith(if(equals(coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''),''),'',concat(outputs('Origin'),coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''))),'='),startsWith(if(equals(coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''),''),'',concat(outputs('Origin'),coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''))),'+'),startsWith(if(equals(coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''),''),'',concat(outputs('Origin'),coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''))),'-'),startsWith(if(equals(coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''),''),'',concat(outputs('Origin'),coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''))),'@'),startsWith(if(equals(coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''),''),'',concat(outputs('Origin'),coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''))),decodeUriComponent('%09')),startsWith(if(equals(coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''),''),'',concat(outputs('Origin'),coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''))),decodeUriComponent('%0D'))),concat('''',if(equals(coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''),''),'',concat(outputs('Origin'),coalesce(item()?['RootFolder']?['ServerRelativeUrl'],'')))),if(equals(coalesce(item()?['RootFolder']?['ServerRelativeUrl'],''),''),'',concat(outputs('Origin'),coalesce(item()?['RootFolder']?['ServerRelativeUrl'],'')))),'\"','\"\"'),'\"')",
+                  "kind": "@if(and(equals(item()?['BaseType'],1),not(equals(item()?['IsSystemList'],true))),if(equals(item()?['HasUniqueRoleAssignments'],true),'own','inherited'),'skip')"
+                }
+              },
+              "runAfter": {
+                "Get_libraries": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ]
+              }
+            },
+            "Inherited_libraries": {
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Libraries')",
+                "where": "@equals(item()?['kind'],'inherited')"
+              },
+              "runAfter": {
+                "Libraries": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Own_permission_libraries": {
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Libraries')",
+                "where": "@equals(item()?['kind'],'own')"
+              },
+              "runAfter": {
+                "Inherited_libraries": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Libraries_unread": {
+              "type": "AppendToStringVariable",
+              "inputs": {
+                "name": "Lines",
+                "value": "@if(equals(outputs('Get_libraries')?['statusCode'],200),'',concat('!','\"(all)\"',',',outputs('Site_cells')?['start'],',','\"Libraries\"',',\"',string(coalesce(outputs('Get_libraries')?['statusCode'],'')),'\",\"',replace(replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Get_libraries'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Get_libraries'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '),'\"','\"\"'),'\"',decodeUriComponent('%0D%0A')))"
+              },
+              "runAfter": {
+                "Own_permission_libraries": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "For_each_person": {
+              "type": "Foreach",
+              "foreach": "@body('People')",
+              "actions": {
+                "Check_person_on_site": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "HttpRequest"
+                    },
+                    "parameters": {
+                      "dataset": "@items('For_each_site')?['url']",
+                      "parameters/method": "GET",
+                      "parameters/uri": "_api/web/getusereffectivepermissions(@v)?@v='@{items('For_each_person')?['param']}'",
+                      "parameters/headers": {
+                        "Accept": "application/json;odata=nometadata"
+                      }
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  },
+                  "runAfter": {}
+                },
+                "Person_library_lines": {
+                  "type": "Select",
+                  "inputs": {
+                    "from": "@if(and(equals(outputs('Check_person_on_site')?['statusCode'],200),not(and(equals(string(coalesce(if(equals(outputs('Check_person_on_site')?['statusCode'],200),body('Check_person_on_site'),json('{}'))?['Low'],'0')),'0'),equals(string(coalesce(if(equals(outputs('Check_person_on_site')?['statusCode'],200),body('Check_person_on_site'),json('{}'))?['High'],'0')),'0')))),body('Inherited_libraries'),json('[]'))",
+                    "select": "@concat(concat(items('For_each_person')?['who'],',',outputs('Site_cells')?['start'],',\"Library\",',item()?['title'],',',item()?['url'],',\"'),decodeUriComponent('%1F'),string(coalesce(if(equals(outputs('Check_person_on_site')?['statusCode'],200),body('Check_person_on_site'),json('{}'))?['Low'],'0')),decodeUriComponent('%1F'),string(coalesce(if(equals(outputs('Check_person_on_site')?['statusCode'],200),body('Check_person_on_site'),json('{}'))?['High'],'0')),decodeUriComponent('%1F'),'\",\"Inherits from site\",\"No\"')"
+                  },
+                  "runAfter": {
+                    "Check_person_on_site": [
+                      "Succeeded",
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  }
+                },
+                "Person_lines": {
+                  "type": "AppendToStringVariable",
+                  "inputs": {
+                    "name": "Lines",
+                    "value": "@concat(if(and(equals(outputs('Check_person_on_site')?['statusCode'],200),not(and(equals(string(coalesce(if(equals(outputs('Check_person_on_site')?['statusCode'],200),body('Check_person_on_site'),json('{}'))?['Low'],'0')),'0'),equals(string(coalesce(if(equals(outputs('Check_person_on_site')?['statusCode'],200),body('Check_person_on_site'),json('{}'))?['High'],'0')),'0')))),concat(concat(concat(items('For_each_person')?['who'],',',outputs('Site_cells')?['start'],',\"Site\",',outputs('Site_cells')?['self'],',\"'),decodeUriComponent('%1F'),string(coalesce(if(equals(outputs('Check_person_on_site')?['statusCode'],200),body('Check_person_on_site'),json('{}'))?['Low'],'0')),decodeUriComponent('%1F'),string(coalesce(if(equals(outputs('Check_person_on_site')?['statusCode'],200),body('Check_person_on_site'),json('{}'))?['High'],'0')),decodeUriComponent('%1F'),'\",\"Effective permission\",\"\"'),decodeUriComponent('%0D%0A')),''),if(empty(body('Person_library_lines')),'',concat(join(body('Person_library_lines'),decodeUriComponent('%0D%0A')),decodeUriComponent('%0D%0A'))),if(equals(outputs('Check_person_on_site')?['statusCode'],200),'',concat('!',items('For_each_person')?['who'],',',outputs('Site_cells')?['start'],',','\"Site\"',',\"',string(coalesce(outputs('Check_person_on_site')?['statusCode'],'')),'\",\"',replace(replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Check_person_on_site'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Check_person_on_site'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '),'\"','\"\"'),'\"',decodeUriComponent('%0D%0A'))))"
+                  },
+                  "runAfter": {
+                    "Person_library_lines": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "For_each_person_library": {
+                  "type": "Foreach",
+                  "foreach": "@if(equals(outputs('Check_person_on_site')?['statusCode'],200),body('Own_permission_libraries'),json('[]'))",
+                  "actions": {
+                    "Check_person_on_library": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "HttpRequest"
+                        },
+                        "parameters": {
+                          "dataset": "@items('For_each_site')?['url']",
+                          "parameters/method": "GET",
+                          "parameters/uri": "_api/web/lists(guid'@{items('For_each_person_library')?['id']}')/getusereffectivepermissions(@v)?@v='@{items('For_each_person')?['param']}'",
+                          "parameters/headers": {
+                            "Accept": "application/json;odata=nometadata"
+                          }
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      },
+                      "runAfter": {}
+                    },
+                    "Person_library_line": {
+                      "type": "AppendToStringVariable",
+                      "inputs": {
+                        "name": "Lines",
+                        "value": "@concat(if(and(equals(outputs('Check_person_on_library')?['statusCode'],200),not(and(equals(string(coalesce(if(equals(outputs('Check_person_on_library')?['statusCode'],200),body('Check_person_on_library'),json('{}'))?['Low'],'0')),'0'),equals(string(coalesce(if(equals(outputs('Check_person_on_library')?['statusCode'],200),body('Check_person_on_library'),json('{}'))?['High'],'0')),'0')))),concat(concat(concat(items('For_each_person')?['who'],',',outputs('Site_cells')?['start'],',\"Library\",',items('For_each_person_library')?['title'],',',items('For_each_person_library')?['url'],',\"'),decodeUriComponent('%1F'),string(coalesce(if(equals(outputs('Check_person_on_library')?['statusCode'],200),body('Check_person_on_library'),json('{}'))?['Low'],'0')),decodeUriComponent('%1F'),string(coalesce(if(equals(outputs('Check_person_on_library')?['statusCode'],200),body('Check_person_on_library'),json('{}'))?['High'],'0')),decodeUriComponent('%1F'),'\",\"Effective permission (own permissions)\",\"Yes\"'),decodeUriComponent('%0D%0A')),''),if(equals(outputs('Check_person_on_library')?['statusCode'],200),'',concat('!',items('For_each_person')?['who'],',',outputs('Site_cells')?['start'],',',concat('\"',replace(if(or(startsWith(concat('Library: ',items('For_each_person_library')?['name']),'='),startsWith(concat('Library: ',items('For_each_person_library')?['name']),'+'),startsWith(concat('Library: ',items('For_each_person_library')?['name']),'-'),startsWith(concat('Library: ',items('For_each_person_library')?['name']),'@'),startsWith(concat('Library: ',items('For_each_person_library')?['name']),decodeUriComponent('%09')),startsWith(concat('Library: ',items('For_each_person_library')?['name']),decodeUriComponent('%0D'))),concat('''',concat('Library: ',items('For_each_person_library')?['name'])),concat('Library: ',items('For_each_person_library')?['name'])),'\"','\"\"'),'\"'),',\"',string(coalesce(outputs('Check_person_on_library')?['statusCode'],'')),'\",\"',replace(replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Check_person_on_library'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Check_person_on_library'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '),'\"','\"\"'),'\"',decodeUriComponent('%0D%0A'))))"
+                      },
+                      "runAfter": {
+                        "Check_person_on_library": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      }
+                    }
+                  },
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "runAfter": {
+                    "Person_lines": [
+                      "Succeeded"
+                    ]
+                  }
+                }
+              },
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "runAfter": {
+                "Libraries_unread": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ]
+              }
+            },
+            "For_each_group": {
+              "type": "Foreach",
+              "foreach": "@body('Groups')",
+              "actions": {
+                "Find_group_on_site": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "HttpRequest"
+                    },
+                    "parameters": {
+                      "dataset": "@items('For_each_site')?['url']",
+                      "parameters/method": "GET",
+                      "parameters/uri": "_api/web/siteusers?$filter=@{items('For_each_group')?['filter']}&$select=Id,LoginName,IsSiteAdmin,Groups/Id,Groups/Title&$expand=Groups",
+                      "parameters/headers": {
+                        "Accept": "application/json;odata=nometadata"
+                      }
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  },
+                  "runAfter": {}
+                },
+                "For_each_claim_found": {
+                  "type": "Foreach",
+                  "foreach": "@coalesce(if(equals(outputs('Find_group_on_site')?['statusCode'],200),body('Find_group_on_site'),json('{}'))?['value'],json('[]'))",
+                  "actions": {
+                    "SharePoint_group_ids": {
+                      "type": "Select",
+                      "inputs": {
+                        "from": "@coalesce(items('For_each_claim_found')?['Groups'],json('[]'))",
+                        "select": "@item()?['Id']"
+                      },
+                      "runAfter": {}
+                    },
+                    "Get_site_permissions": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "HttpRequest"
+                        },
+                        "parameters": {
+                          "dataset": "@items('For_each_site')?['url']",
+                          "parameters/method": "GET",
+                          "parameters/uri": "_api/web/roleassignments?$select=PrincipalId,Member/Title,Member/PrincipalType,RoleDefinitionBindings/Name,RoleDefinitionBindings/RoleTypeKind&$expand=Member,RoleDefinitionBindings&$top=5000",
+                          "parameters/headers": {
+                            "Accept": "application/json;odata=nometadata"
+                          }
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      },
+                      "runAfter": {
+                        "SharePoint_group_ids": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Site_grants": {
+                      "type": "Query",
+                      "inputs": {
+                        "from": "@coalesce(if(equals(outputs('Get_site_permissions')?['statusCode'],200),body('Get_site_permissions'),json('{}'))?['value'],json('[]'))",
+                        "where": "@or(equals(item()?['PrincipalId'],items('For_each_claim_found')?['Id']),contains(body('SharePoint_group_ids'),item()?['PrincipalId']))"
+                      },
+                      "runAfter": {
+                        "Get_site_permissions": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      }
+                    },
+                    "Claim_lines": {
+                      "type": "AppendToStringVariable",
+                      "inputs": {
+                        "name": "Lines",
+                        "value": "@concat(if(equals(items('For_each_claim_found')?['IsSiteAdmin'],true),concat(concat(concat(if(and(equals(items('For_each_group')?['m365'],true),endsWith(toLower(coalesce(items('For_each_claim_found')?['LoginName'],'')),'_o')),items('For_each_group')?['whoOwners'],items('For_each_group')?['who']),',',outputs('Site_cells')?['start'],',\"Site\",',outputs('Site_cells')?['self'],',\"Full control\",\"Site collection administrator\",\"\"'),decodeUriComponent('%1F'),decodeUriComponent('%1F'),decodeUriComponent('%1F')),decodeUriComponent('%0D%0A')),''),if(equals(outputs('Get_site_permissions')?['statusCode'],200),'',concat('!',if(and(equals(items('For_each_group')?['m365'],true),endsWith(toLower(coalesce(items('For_each_claim_found')?['LoginName'],'')),'_o')),items('For_each_group')?['whoOwners'],items('For_each_group')?['who']),',',outputs('Site_cells')?['start'],',','\"Site permissions\"',',\"',string(coalesce(outputs('Get_site_permissions')?['statusCode'],'')),'\",\"',replace(replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Get_site_permissions'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Get_site_permissions'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '),'\"','\"\"'),'\"',decodeUriComponent('%0D%0A'))))"
+                      },
+                      "runAfter": {
+                        "Site_grants": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "For_each_site_grant": {
+                      "type": "Foreach",
+                      "foreach": "@body('Site_grants')",
+                      "actions": {
+                        "Site_grant_levels": {
+                          "type": "Query",
+                          "inputs": {
+                            "from": "@coalesce(items('For_each_site_grant')?['RoleDefinitionBindings'],json('[]'))",
+                            "where": "@and(not(equals(item()?['RoleTypeKind'],1)),not(startsWith(toLower(coalesce(item()?['Name'],'')),'limited access')))"
+                          },
+                          "runAfter": {}
+                        },
+                        "Site_grant_level_names": {
+                          "type": "Select",
+                          "inputs": {
+                            "from": "@body('Site_grant_levels')",
+                            "select": "@coalesce(item()?['Name'],'')"
+                          },
+                          "runAfter": {
+                            "Site_grant_levels": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Site_grant_library_lines": {
+                          "type": "Select",
+                          "inputs": {
+                            "from": "@if(empty(body('Site_grant_level_names')),json('[]'),body('Inherited_libraries'))",
+                            "select": "@concat(concat(if(and(equals(items('For_each_group')?['m365'],true),endsWith(toLower(coalesce(items('For_each_claim_found')?['LoginName'],'')),'_o')),items('For_each_group')?['whoOwners'],items('For_each_group')?['who']),',',outputs('Site_cells')?['start'],',\"Library\",',item()?['title'],',',item()?['url'],',',concat('\"',replace(if(or(startsWith(join(body('Site_grant_level_names'),', '),'='),startsWith(join(body('Site_grant_level_names'),', '),'+'),startsWith(join(body('Site_grant_level_names'),', '),'-'),startsWith(join(body('Site_grant_level_names'),', '),'@'),startsWith(join(body('Site_grant_level_names'),', '),decodeUriComponent('%09')),startsWith(join(body('Site_grant_level_names'),', '),decodeUriComponent('%0D'))),concat('''',join(body('Site_grant_level_names'),', ')),join(body('Site_grant_level_names'),', ')),'\"','\"\"'),'\"'),',',concat('\"',replace(if(or(startsWith(concat('Inherits from site - ',if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct')),'='),startsWith(concat('Inherits from site - ',if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct')),'+'),startsWith(concat('Inherits from site - ',if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct')),'-'),startsWith(concat('Inherits from site - ',if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct')),'@'),startsWith(concat('Inherits from site - ',if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct')),decodeUriComponent('%09')),startsWith(concat('Inherits from site - ',if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct')),decodeUriComponent('%0D'))),concat('''',concat('Inherits from site - ',if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct'))),concat('Inherits from site - ',if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct'))),'\"','\"\"'),'\"'),',\"No\"'),decodeUriComponent('%1F'),decodeUriComponent('%1F'),decodeUriComponent('%1F'))"
+                          },
+                          "runAfter": {
+                            "Site_grant_level_names": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Site_grant_lines": {
+                          "type": "AppendToStringVariable",
+                          "inputs": {
+                            "name": "Lines",
+                            "value": "@concat(if(empty(body('Site_grant_level_names')),'',concat(concat(concat(if(and(equals(items('For_each_group')?['m365'],true),endsWith(toLower(coalesce(items('For_each_claim_found')?['LoginName'],'')),'_o')),items('For_each_group')?['whoOwners'],items('For_each_group')?['who']),',',outputs('Site_cells')?['start'],',\"Site\",',outputs('Site_cells')?['self'],',',concat('\"',replace(if(or(startsWith(join(body('Site_grant_level_names'),', '),'='),startsWith(join(body('Site_grant_level_names'),', '),'+'),startsWith(join(body('Site_grant_level_names'),', '),'-'),startsWith(join(body('Site_grant_level_names'),', '),'@'),startsWith(join(body('Site_grant_level_names'),', '),decodeUriComponent('%09')),startsWith(join(body('Site_grant_level_names'),', '),decodeUriComponent('%0D'))),concat('''',join(body('Site_grant_level_names'),', ')),join(body('Site_grant_level_names'),', ')),'\"','\"\"'),'\"'),',',concat('\"',replace(if(or(startsWith(if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct'),'='),startsWith(if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct'),'+'),startsWith(if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct'),'-'),startsWith(if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct'),'@'),startsWith(if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct'),decodeUriComponent('%09')),startsWith(if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct'),decodeUriComponent('%0D'))),concat('''',if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct')),if(equals(items('For_each_site_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant')?['Member']?['Title'],'')),'Direct')),'\"','\"\"'),'\"'),',\"\"'),decodeUriComponent('%1F'),decodeUriComponent('%1F'),decodeUriComponent('%1F')),decodeUriComponent('%0D%0A'))),if(empty(body('Site_grant_library_lines')),'',concat(join(body('Site_grant_library_lines'),decodeUriComponent('%0D%0A')),decodeUriComponent('%0D%0A'))))"
+                          },
+                          "runAfter": {
+                            "Site_grant_library_lines": [
+                              "Succeeded"
+                            ]
+                          }
+                        }
+                      },
+                      "runtimeConfiguration": {
+                        "concurrency": {
+                          "repetitions": 1
+                        }
+                      },
+                      "runAfter": {
+                        "Claim_lines": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "For_each_group_library": {
+                      "type": "Foreach",
+                      "foreach": "@if(equals(outputs('Get_site_permissions')?['statusCode'],200),body('Own_permission_libraries'),json('[]'))",
+                      "actions": {
+                        "Get_library_permissions": {
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "HttpRequest"
+                            },
+                            "parameters": {
+                              "dataset": "@items('For_each_site')?['url']",
+                              "parameters/method": "GET",
+                              "parameters/uri": "_api/web/lists(guid'@{items('For_each_group_library')?['id']}')/roleassignments?$select=PrincipalId,Member/Title,Member/PrincipalType,RoleDefinitionBindings/Name,RoleDefinitionBindings/RoleTypeKind&$expand=Member,RoleDefinitionBindings&$top=5000",
+                              "parameters/headers": {
+                                "Accept": "application/json;odata=nometadata"
+                              }
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          },
+                          "runAfter": {}
+                        },
+                        "Library_grants": {
+                          "type": "Query",
+                          "inputs": {
+                            "from": "@coalesce(if(equals(outputs('Get_library_permissions')?['statusCode'],200),body('Get_library_permissions'),json('{}'))?['value'],json('[]'))",
+                            "where": "@or(equals(item()?['PrincipalId'],items('For_each_claim_found')?['Id']),contains(body('SharePoint_group_ids'),item()?['PrincipalId']))"
+                          },
+                          "runAfter": {
+                            "Get_library_permissions": [
+                              "Succeeded",
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          }
+                        },
+                        "For_each_library_grant": {
+                          "type": "Foreach",
+                          "foreach": "@body('Library_grants')",
+                          "actions": {
+                            "Library_grant_levels": {
+                              "type": "Query",
+                              "inputs": {
+                                "from": "@coalesce(items('For_each_library_grant')?['RoleDefinitionBindings'],json('[]'))",
+                                "where": "@and(not(equals(item()?['RoleTypeKind'],1)),not(startsWith(toLower(coalesce(item()?['Name'],'')),'limited access')))"
+                              },
+                              "runAfter": {}
+                            },
+                            "Library_grant_level_names": {
+                              "type": "Select",
+                              "inputs": {
+                                "from": "@body('Library_grant_levels')",
+                                "select": "@coalesce(item()?['Name'],'')"
+                              },
+                              "runAfter": {
+                                "Library_grant_levels": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Library_grant_line": {
+                              "type": "AppendToStringVariable",
+                              "inputs": {
+                                "name": "Lines",
+                                "value": "@if(empty(body('Library_grant_level_names')),'',concat(concat(concat(if(and(equals(items('For_each_group')?['m365'],true),endsWith(toLower(coalesce(items('For_each_claim_found')?['LoginName'],'')),'_o')),items('For_each_group')?['whoOwners'],items('For_each_group')?['who']),',',outputs('Site_cells')?['start'],',\"Library\",',items('For_each_group_library')?['title'],',',items('For_each_group_library')?['url'],',',concat('\"',replace(if(or(startsWith(join(body('Library_grant_level_names'),', '),'='),startsWith(join(body('Library_grant_level_names'),', '),'+'),startsWith(join(body('Library_grant_level_names'),', '),'-'),startsWith(join(body('Library_grant_level_names'),', '),'@'),startsWith(join(body('Library_grant_level_names'),', '),decodeUriComponent('%09')),startsWith(join(body('Library_grant_level_names'),', '),decodeUriComponent('%0D'))),concat('''',join(body('Library_grant_level_names'),', ')),join(body('Library_grant_level_names'),', ')),'\"','\"\"'),'\"'),',',concat('\"',replace(if(or(startsWith(if(equals(items('For_each_library_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_library_grant')?['Member']?['Title'],'')),'Direct'),'='),startsWith(if(equals(items('For_each_library_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_library_grant')?['Member']?['Title'],'')),'Direct'),'+'),startsWith(if(equals(items('For_each_library_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_library_grant')?['Member']?['Title'],'')),'Direct'),'-'),startsWith(if(equals(items('For_each_library_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_library_grant')?['Member']?['Title'],'')),'Direct'),'@'),startsWith(if(equals(items('For_each_library_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_library_grant')?['Member']?['Title'],'')),'Direct'),decodeUriComponent('%09')),startsWith(if(equals(items('For_each_library_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_library_grant')?['Member']?['Title'],'')),'Direct'),decodeUriComponent('%0D'))),concat('''',if(equals(items('For_each_library_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_library_grant')?['Member']?['Title'],'')),'Direct')),if(equals(items('For_each_library_grant')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_library_grant')?['Member']?['Title'],'')),'Direct')),'\"','\"\"'),'\"'),',\"Yes\"'),decodeUriComponent('%1F'),decodeUriComponent('%1F'),decodeUriComponent('%1F')),decodeUriComponent('%0D%0A')))"
+                              },
+                              "runAfter": {
+                                "Library_grant_level_names": [
+                                  "Succeeded"
+                                ]
+                              }
+                            }
+                          },
+                          "runtimeConfiguration": {
+                            "concurrency": {
+                              "repetitions": 1
+                            }
+                          },
+                          "runAfter": {
+                            "Library_grants": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Library_permissions_unread": {
+                          "type": "AppendToStringVariable",
+                          "inputs": {
+                            "name": "Lines",
+                            "value": "@if(equals(outputs('Get_library_permissions')?['statusCode'],200),'',concat('!',if(and(equals(items('For_each_group')?['m365'],true),endsWith(toLower(coalesce(items('For_each_claim_found')?['LoginName'],'')),'_o')),items('For_each_group')?['whoOwners'],items('For_each_group')?['who']),',',outputs('Site_cells')?['start'],',',concat('\"',replace(if(or(startsWith(concat('Library: ',items('For_each_group_library')?['name']),'='),startsWith(concat('Library: ',items('For_each_group_library')?['name']),'+'),startsWith(concat('Library: ',items('For_each_group_library')?['name']),'-'),startsWith(concat('Library: ',items('For_each_group_library')?['name']),'@'),startsWith(concat('Library: ',items('For_each_group_library')?['name']),decodeUriComponent('%09')),startsWith(concat('Library: ',items('For_each_group_library')?['name']),decodeUriComponent('%0D'))),concat('''',concat('Library: ',items('For_each_group_library')?['name'])),concat('Library: ',items('For_each_group_library')?['name'])),'\"','\"\"'),'\"'),',\"',string(coalesce(outputs('Get_library_permissions')?['statusCode'],'')),'\",\"',replace(replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Get_library_permissions'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Get_library_permissions'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '),'\"','\"\"'),'\"',decodeUriComponent('%0D%0A')))"
+                          },
+                          "runAfter": {
+                            "For_each_library_grant": [
+                              "Succeeded"
+                            ]
+                          }
+                        }
+                      },
+                      "runtimeConfiguration": {
+                        "concurrency": {
+                          "repetitions": 1
+                        }
+                      },
+                      "runAfter": {
+                        "For_each_site_grant": [
+                          "Succeeded"
+                        ]
+                      }
+                    }
+                  },
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "runAfter": {
+                    "Find_group_on_site": [
+                      "Succeeded",
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  }
+                },
+                "Group_unread": {
+                  "type": "AppendToStringVariable",
+                  "inputs": {
+                    "name": "Lines",
+                    "value": "@if(equals(outputs('Find_group_on_site')?['statusCode'],200),'',concat('!',items('For_each_group')?['who'],',',outputs('Site_cells')?['start'],',','\"Site\"',',\"',string(coalesce(outputs('Find_group_on_site')?['statusCode'],'')),'\",\"',replace(replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Find_group_on_site'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Find_group_on_site'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '),'\"','\"\"'),'\"',decodeUriComponent('%0D%0A')))"
+                  },
+                  "runAfter": {
+                    "For_each_claim_found": [
+                      "Succeeded"
+                    ]
+                  }
+                }
+              },
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "runAfter": {
+                "For_each_person": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "For_each_person_site_only": {
+                "type": "Foreach",
+                "foreach": "@body('People')",
+                "actions": {
+                  "Check_person_on_site_site_only": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "HttpRequest"
+                      },
+                      "parameters": {
+                        "dataset": "@items('For_each_site')?['url']",
+                        "parameters/method": "GET",
+                        "parameters/uri": "_api/web/getusereffectivepermissions(@v)?@v='@{items('For_each_person_site_only')?['param']}'",
+                        "parameters/headers": {
+                          "Accept": "application/json;odata=nometadata"
+                        }
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    },
+                    "runAfter": {}
+                  },
+                  "Person_lines_site_only": {
+                    "type": "AppendToStringVariable",
+                    "inputs": {
+                      "name": "Lines",
+                      "value": "@concat(if(and(equals(outputs('Check_person_on_site_site_only')?['statusCode'],200),not(and(equals(string(coalesce(if(equals(outputs('Check_person_on_site_site_only')?['statusCode'],200),body('Check_person_on_site_site_only'),json('{}'))?['Low'],'0')),'0'),equals(string(coalesce(if(equals(outputs('Check_person_on_site_site_only')?['statusCode'],200),body('Check_person_on_site_site_only'),json('{}'))?['High'],'0')),'0')))),concat(concat(concat(items('For_each_person_site_only')?['who'],',',outputs('Site_cells')?['start'],',\"Site\",',outputs('Site_cells')?['self'],',\"'),decodeUriComponent('%1F'),string(coalesce(if(equals(outputs('Check_person_on_site_site_only')?['statusCode'],200),body('Check_person_on_site_site_only'),json('{}'))?['Low'],'0')),decodeUriComponent('%1F'),string(coalesce(if(equals(outputs('Check_person_on_site_site_only')?['statusCode'],200),body('Check_person_on_site_site_only'),json('{}'))?['High'],'0')),decodeUriComponent('%1F'),'\",\"Effective permission\",\"\"'),decodeUriComponent('%0D%0A')),''),if(equals(outputs('Check_person_on_site_site_only')?['statusCode'],200),'',concat('!',items('For_each_person_site_only')?['who'],',',outputs('Site_cells')?['start'],',','\"Site\"',',\"',string(coalesce(outputs('Check_person_on_site_site_only')?['statusCode'],'')),'\",\"',replace(replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Check_person_on_site_site_only'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Check_person_on_site_site_only'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '),'\"','\"\"'),'\"',decodeUriComponent('%0D%0A'))))"
+                    },
+                    "runAfter": {
+                      "Check_person_on_site_site_only": [
+                        "Succeeded",
+                        "Failed",
+                        "TimedOut"
+                      ]
+                    }
+                  }
+                },
+                "runtimeConfiguration": {
+                  "concurrency": {
+                    "repetitions": 1
+                  }
+                },
+                "runAfter": {}
+              },
+              "For_each_group_site_only": {
+                "type": "Foreach",
+                "foreach": "@body('Groups')",
+                "actions": {
+                  "Find_group_on_site_site_only": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "HttpRequest"
+                      },
+                      "parameters": {
+                        "dataset": "@items('For_each_site')?['url']",
+                        "parameters/method": "GET",
+                        "parameters/uri": "_api/web/siteusers?$filter=@{items('For_each_group_site_only')?['filter']}&$select=Id,LoginName,IsSiteAdmin,Groups/Id,Groups/Title&$expand=Groups",
+                        "parameters/headers": {
+                          "Accept": "application/json;odata=nometadata"
+                        }
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    },
+                    "runAfter": {}
+                  },
+                  "For_each_claim_found_site_only": {
+                    "type": "Foreach",
+                    "foreach": "@coalesce(if(equals(outputs('Find_group_on_site_site_only')?['statusCode'],200),body('Find_group_on_site_site_only'),json('{}'))?['value'],json('[]'))",
+                    "actions": {
+                      "SharePoint_group_ids_site_only": {
+                        "type": "Select",
+                        "inputs": {
+                          "from": "@coalesce(items('For_each_claim_found_site_only')?['Groups'],json('[]'))",
+                          "select": "@item()?['Id']"
+                        },
+                        "runAfter": {}
+                      },
+                      "Get_site_permissions_site_only": {
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "HttpRequest"
+                          },
+                          "parameters": {
+                            "dataset": "@items('For_each_site')?['url']",
+                            "parameters/method": "GET",
+                            "parameters/uri": "_api/web/roleassignments?$select=PrincipalId,Member/Title,Member/PrincipalType,RoleDefinitionBindings/Name,RoleDefinitionBindings/RoleTypeKind&$expand=Member,RoleDefinitionBindings&$top=5000",
+                            "parameters/headers": {
+                              "Accept": "application/json;odata=nometadata"
+                            }
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        },
+                        "runAfter": {
+                          "SharePoint_group_ids_site_only": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "Site_grants_site_only": {
+                        "type": "Query",
+                        "inputs": {
+                          "from": "@coalesce(if(equals(outputs('Get_site_permissions_site_only')?['statusCode'],200),body('Get_site_permissions_site_only'),json('{}'))?['value'],json('[]'))",
+                          "where": "@or(equals(item()?['PrincipalId'],items('For_each_claim_found_site_only')?['Id']),contains(body('SharePoint_group_ids_site_only'),item()?['PrincipalId']))"
+                        },
+                        "runAfter": {
+                          "Get_site_permissions_site_only": [
+                            "Succeeded",
+                            "Failed",
+                            "TimedOut"
+                          ]
+                        }
+                      },
+                      "Claim_lines_site_only": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                          "name": "Lines",
+                          "value": "@concat(if(equals(items('For_each_claim_found_site_only')?['IsSiteAdmin'],true),concat(concat(concat(if(and(equals(items('For_each_group_site_only')?['m365'],true),endsWith(toLower(coalesce(items('For_each_claim_found_site_only')?['LoginName'],'')),'_o')),items('For_each_group_site_only')?['whoOwners'],items('For_each_group_site_only')?['who']),',',outputs('Site_cells')?['start'],',\"Site\",',outputs('Site_cells')?['self'],',\"Full control\",\"Site collection administrator\",\"\"'),decodeUriComponent('%1F'),decodeUriComponent('%1F'),decodeUriComponent('%1F')),decodeUriComponent('%0D%0A')),''),if(equals(outputs('Get_site_permissions_site_only')?['statusCode'],200),'',concat('!',if(and(equals(items('For_each_group_site_only')?['m365'],true),endsWith(toLower(coalesce(items('For_each_claim_found_site_only')?['LoginName'],'')),'_o')),items('For_each_group_site_only')?['whoOwners'],items('For_each_group_site_only')?['who']),',',outputs('Site_cells')?['start'],',','\"Site permissions\"',',\"',string(coalesce(outputs('Get_site_permissions_site_only')?['statusCode'],'')),'\",\"',replace(replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Get_site_permissions_site_only'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Get_site_permissions_site_only'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '),'\"','\"\"'),'\"',decodeUriComponent('%0D%0A'))))"
+                        },
+                        "runAfter": {
+                          "Site_grants_site_only": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "For_each_site_grant_site_only": {
+                        "type": "Foreach",
+                        "foreach": "@body('Site_grants_site_only')",
+                        "actions": {
+                          "Site_grant_levels_site_only": {
+                            "type": "Query",
+                            "inputs": {
+                              "from": "@coalesce(items('For_each_site_grant_site_only')?['RoleDefinitionBindings'],json('[]'))",
+                              "where": "@and(not(equals(item()?['RoleTypeKind'],1)),not(startsWith(toLower(coalesce(item()?['Name'],'')),'limited access')))"
+                            },
+                            "runAfter": {}
+                          },
+                          "Site_grant_level_names_site_only": {
+                            "type": "Select",
+                            "inputs": {
+                              "from": "@body('Site_grant_levels_site_only')",
+                              "select": "@coalesce(item()?['Name'],'')"
+                            },
+                            "runAfter": {
+                              "Site_grant_levels_site_only": [
+                                "Succeeded"
+                              ]
+                            }
+                          },
+                          "Site_grant_lines_site_only": {
+                            "type": "AppendToStringVariable",
+                            "inputs": {
+                              "name": "Lines",
+                              "value": "@if(empty(body('Site_grant_level_names_site_only')),'',concat(concat(concat(if(and(equals(items('For_each_group_site_only')?['m365'],true),endsWith(toLower(coalesce(items('For_each_claim_found_site_only')?['LoginName'],'')),'_o')),items('For_each_group_site_only')?['whoOwners'],items('For_each_group_site_only')?['who']),',',outputs('Site_cells')?['start'],',\"Site\",',outputs('Site_cells')?['self'],',',concat('\"',replace(if(or(startsWith(join(body('Site_grant_level_names_site_only'),', '),'='),startsWith(join(body('Site_grant_level_names_site_only'),', '),'+'),startsWith(join(body('Site_grant_level_names_site_only'),', '),'-'),startsWith(join(body('Site_grant_level_names_site_only'),', '),'@'),startsWith(join(body('Site_grant_level_names_site_only'),', '),decodeUriComponent('%09')),startsWith(join(body('Site_grant_level_names_site_only'),', '),decodeUriComponent('%0D'))),concat('''',join(body('Site_grant_level_names_site_only'),', ')),join(body('Site_grant_level_names_site_only'),', ')),'\"','\"\"'),'\"'),',',concat('\"',replace(if(or(startsWith(if(equals(items('For_each_site_grant_site_only')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant_site_only')?['Member']?['Title'],'')),'Direct'),'='),startsWith(if(equals(items('For_each_site_grant_site_only')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant_site_only')?['Member']?['Title'],'')),'Direct'),'+'),startsWith(if(equals(items('For_each_site_grant_site_only')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant_site_only')?['Member']?['Title'],'')),'Direct'),'-'),startsWith(if(equals(items('For_each_site_grant_site_only')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant_site_only')?['Member']?['Title'],'')),'Direct'),'@'),startsWith(if(equals(items('For_each_site_grant_site_only')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant_site_only')?['Member']?['Title'],'')),'Direct'),decodeUriComponent('%09')),startsWith(if(equals(items('For_each_site_grant_site_only')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant_site_only')?['Member']?['Title'],'')),'Direct'),decodeUriComponent('%0D'))),concat('''',if(equals(items('For_each_site_grant_site_only')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant_site_only')?['Member']?['Title'],'')),'Direct')),if(equals(items('For_each_site_grant_site_only')?['Member']?['PrincipalType'],8),concat('SharePoint group: ',coalesce(items('For_each_site_grant_site_only')?['Member']?['Title'],'')),'Direct')),'\"','\"\"'),'\"'),',\"\"'),decodeUriComponent('%1F'),decodeUriComponent('%1F'),decodeUriComponent('%1F')),decodeUriComponent('%0D%0A')))"
+                            },
+                            "runAfter": {
+                              "Site_grant_level_names_site_only": [
+                                "Succeeded"
+                              ]
+                            }
+                          }
+                        },
+                        "runtimeConfiguration": {
+                          "concurrency": {
+                            "repetitions": 1
+                          }
+                        },
+                        "runAfter": {
+                          "Claim_lines_site_only": [
+                            "Succeeded"
+                          ]
+                        }
+                      }
+                    },
+                    "runtimeConfiguration": {
+                      "concurrency": {
+                        "repetitions": 1
+                      }
+                    },
+                    "runAfter": {
+                      "Find_group_on_site_site_only": [
+                        "Succeeded",
+                        "Failed",
+                        "TimedOut"
+                      ]
+                    }
+                  },
+                  "Group_unread_site_only": {
+                    "type": "AppendToStringVariable",
+                    "inputs": {
+                      "name": "Lines",
+                      "value": "@if(equals(outputs('Find_group_on_site_site_only')?['statusCode'],200),'',concat('!',items('For_each_group_site_only')?['who'],',',outputs('Site_cells')?['start'],',','\"Site\"',',\"',string(coalesce(outputs('Find_group_on_site_site_only')?['statusCode'],'')),'\",\"',replace(replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Find_group_on_site_site_only'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Find_group_on_site_site_only'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '),'\"','\"\"'),'\"',decodeUriComponent('%0D%0A')))"
+                    },
+                    "runAfter": {
+                      "For_each_claim_found_site_only": [
+                        "Succeeded"
+                      ]
+                    }
+                  }
+                },
+                "runtimeConfiguration": {
+                  "concurrency": {
+                    "repetitions": 1
+                  }
+                },
+                "runAfter": {
+                  "For_each_person_site_only": [
+                    "Succeeded",
+                    "Failed",
+                    "TimedOut"
+                  ]
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Site_cells": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 1
+        }
+      },
+      "runAfter": {
+        "Until_all_sites_are_listed": [
+          "Succeeded"
+        ]
+      }
+    },
+    "All_lines": {
+      "type": "Compose",
+      "inputs": "@split(variables('Lines'),decodeUriComponent('%0D%0A'))",
+      "runAfter": {
+        "For_each_site": [
+          "Succeeded",
+          "Failed",
+          "TimedOut"
+        ]
+      }
+    },
+    "Report_lines": {
+      "type": "Query",
+      "inputs": {
+        "from": "@outputs('All_lines')",
+        "where": "@startsWith(item(),'\"')"
+      },
+      "runAfter": {
+        "All_lines": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Report_rows": {
+      "type": "Select",
+      "inputs": {
+        "from": "@body('Report_lines')",
+        "select": "@concat(split(item(),decodeUriComponent('%1F'))[0],if(equals(split(item(),decodeUriComponent('%1F'))[1],''),'',if(and(equals(split(item(),decodeUriComponent('%1F'))[1],'4294967295'),equals(split(item(),decodeUriComponent('%1F'))[2],'2147483647')),'Full control',if(or(equals(mod(add(mul(int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),0,sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9))),3814),div(add(mul(int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),0,sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9))),182784),int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9),9))),262144)),2),1),equals(mod(add(mul(int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),0,sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9))),29),div(add(mul(int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),0,sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9))),26921472),int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9),9))),33554432)),2),1)),'Design / manage',if(and(equals(mod(div(int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9),9)),2),2),1),equals(mod(div(int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9),9)),4),2),1),equals(mod(div(int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9),9)),8),2),1)),'Edit / contribute',if(equals(mod(div(int(substring(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1]),sub(length(concat('0000000000',split(item(),decodeUriComponent('%1F'))[1])),9),9)),1),2),1),'Read',decodeUriComponent('%1F')))))),split(item(),decodeUriComponent('%1F'))[3])"
+      },
+      "runAfter": {
+        "Report_lines": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Rows_with_access": {
+      "type": "Query",
+      "inputs": {
+        "from": "@body('Report_rows')",
+        "where": "@not(contains(item(),decodeUriComponent('%1F')))"
+      },
+      "runAfter": {
+        "Report_rows": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Unread_lines": {
+      "type": "Query",
+      "inputs": {
+        "from": "@outputs('All_lines')",
+        "where": "@startsWith(item(),'!')"
+      },
+      "runAfter": {
+        "Rows_with_access": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Unread_rows": {
+      "type": "Select",
+      "inputs": {
+        "from": "@body('Unread_lines')",
+        "select": "@substring(item(),1)"
+      },
+      "runAfter": {
+        "Unread_lines": [
+          "Succeeded"
+        ]
+      }
+    },
+    "File_stamp": {
+      "type": "Compose",
+      "inputs": "@formatDateTime(utcNow(),'yyyy-MM-dd-HHmm')",
+      "runAfter": {
+        "Unread_rows": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Save_the_report": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "HttpRequest"
+        },
+        "parameters": {
+          "dataset": "@outputs('Home')",
+          "parameters/method": "POST",
+          "parameters/uri": "_api/web/GetFolderByServerRelativeUrl(@f)/Files/add(url=@n,overwrite=true)?@f='@{encodeUriComponent(replace(outputs('Settings')?['folder'],'''',''''''))}'&@n='access-report-@{outputs('File_stamp')}.csv'",
+          "parameters/headers": {
+            "Accept": "application/json;odata=nometadata"
+          },
+          "parameters/body": "@concat(decodeUriComponent('%EF%BB%BF'),'\"Who\",\"Site URL\",\"Site title\",\"Object\",\"Name\",\"URL\",\"Access\",\"How\",\"Own permissions\"',decodeUriComponent('%0D%0A'),if(empty(body('Rows_with_access')),'',concat(join(body('Rows_with_access'),decodeUriComponent('%0D%0A')),decodeUriComponent('%0D%0A'))))"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runAfter": {
+        "File_stamp": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Anything_unread": {
+      "type": "If",
+      "expression": {
+        "greater": [
+          "@length(body('Unread_rows'))",
+          0
+        ]
+      },
+      "actions": {
+        "Save_the_unread_list": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest"
+            },
+            "parameters": {
+              "dataset": "@outputs('Home')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/GetFolderByServerRelativeUrl(@f)/Files/add(url=@n,overwrite=true)?@f='@{encodeUriComponent(replace(outputs('Settings')?['folder'],'''',''''''))}'&@n='access-report-@{outputs('File_stamp')}-unread.csv'",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata"
+              },
+              "parameters/body": "@concat(decodeUriComponent('%EF%BB%BF'),'\"Who\",\"Site URL\",\"Site title\",\"Step\",\"Status\",\"Error\"',decodeUriComponent('%0D%0A'),if(empty(body('Unread_rows')),'',concat(join(body('Unread_rows'),decodeUriComponent('%0D%0A')),decodeUriComponent('%0D%0A'))))"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Save_the_report": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Mark_finished": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "HttpRequest"
+        },
+        "parameters": {
+          "dataset": "@outputs('Home')",
+          "parameters/method": "POST",
+          "parameters/uri": "_api/web/GetList(@u)/items(@{outputs('Settings')?['itemId']})?@u='@{encodeUriComponent(concat(outputs('Web_path'),'/Lists/AccessReportSettings'))}'",
+          "parameters/headers": {
+            "Accept": "application/json;odata=nometadata",
+            "Content-Type": "application/json;odata=nometadata",
+            "IF-MATCH": "*",
+            "X-HTTP-Method": "MERGE"
+          },
+          "parameters/body": "{\"ARLastRun\":\"Finished @{formatDateTime(utcNow(),'yyyy-MM-dd HH:mm')} UTC: @{length(variables('Sites'))} sites, @{length(body('Subjects'))} people and groups, @{length(body('Rows_with_access'))} rows, @{length(body('Unread_rows'))} not read. File: access-report-@{outputs('File_stamp')}.csv\"}"
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runAfter": {
+        "Anything_unread": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Scan_completed": {
+      "type": "Compose",
+      "inputs": "The scan visited every site.",
+      "runAfter": {
+        "For_each_site": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

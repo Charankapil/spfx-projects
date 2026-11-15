@@ -1,0 +1,21 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "b7ce4136-ff53-4d2e-9734-9d8ba6e7ca70",
+  "alias": "AccessReportWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportsThemeVariants": true,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": { "default": "Other" },
+      "title": { "default": "Access Report" },
+      "description": { "default": "Every site and library chosen people and groups can reach, saved as a monthly report. Runs as the signed-in user with SharePoint permissions only." },
+      "officeFabricIconFontName": "ReportDocument",
+      "properties": { "heading": "Access Report" }
+    }
+  ]
+}

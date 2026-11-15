@@ -1,0 +1,265 @@
+// Theme tokens come from the hosting site, so the web part follows its colours (dark themes too).
+$primary: "[theme: themePrimary, default: #0b6a5d]";
+$primaryDark: "[theme: themeDark, default: #084e45]";
+$primaryTint: "[theme: themeLighterAlt, default: #f1f9f7]";
+$text: "[theme: bodyText, default: #1f2328]";
+$subtle: "[theme: bodySubtext, default: #5b6470]";
+$surface: "[theme: bodyBackground, default: #ffffff]";
+$line: "[theme: neutralLight, default: #e3e6ea]";
+$wash: "[theme: neutralLighterAlt, default: #f7f8f9]";
+
+.root {
+  color: $text;
+  background: $surface;
+  font-size: 14px;
+  line-height: 1.45;
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 4px 0 12px;
+  border-bottom: 1px solid $line;
+  margin-bottom: 8px;
+
+  h2 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+}
+
+.muted {
+  color: $subtle;
+}
+
+.small {
+  font-size: 12px;
+}
+
+.tab {
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  border: 1px solid $line;
+  border-radius: 8px;
+  padding: 16px 18px;
+  background: $surface;
+  min-width: 0;
+
+  > h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+  }
+}
+
+.hint {
+  color: $subtle;
+  margin: 0 0 12px;
+  max-width: 76ch;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 0;
+
+  > div {
+    background: $wash;
+    border-radius: 6px;
+    padding: 10px 12px;
+    min-width: 0;
+  }
+
+  dt {
+    color: $subtle;
+    font-size: 12px;
+    margin: 0 0 2px;
+  }
+
+  dd {
+    margin: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+}
+
+.stat {
+  dd {
+    font-size: 22px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+}
+
+.warn dd {
+  color: #a4410b;
+}
+
+.link {
+  color: $primary;
+  text-decoration: none;
+
+  &:hover {
+    color: $primaryDark;
+    text-decoration: underline;
+  }
+}
+
+.cellSub {
+  color: $subtle;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: $wash;
+  border: 1px solid $line;
+  white-space: nowrap;
+}
+
+.pillAdded {
+  background: #e7f5ec;
+  border-color: #b9dfc6;
+  color: #17603a;
+}
+
+.pillRemoved {
+  background: #fdecea;
+  border-color: #f3c2bc;
+  color: #96261b;
+}
+
+.pillChanged {
+  background: #fff4dc;
+  border-color: #f0d596;
+  color: #7a5200;
+}
+
+.empty {
+  color: $subtle;
+  padding: 18px 0 6px;
+}
+
+.grid {
+  overflow-x: auto;
+  max-height: 560px;
+  overflow-y: auto;
+  border: 1px solid $line;
+  border-radius: 6px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    color: $subtle;
+    padding: 6px 10px;
+    border-bottom: 1px solid $line;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid $line;
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+  }
+
+  tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  max-width: 80ch;
+
+  li {
+    margin-bottom: 6px;
+  }
+}
+
+.note {
+  background: $primaryTint;
+  border-left: 3px solid $primary;
+  border-radius: 0 6px 6px 0;
+  padding: 10px 14px;
+  max-width: 80ch;
+}
+
+.code {
+  font-family: Consolas, 'Cascadia Mono', Menlo, monospace;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.found {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 1px solid $line;
+  border-radius: 6px;
+
+  li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 10px;
+    border-bottom: 1px solid $line;
+    min-width: 0;
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+}
