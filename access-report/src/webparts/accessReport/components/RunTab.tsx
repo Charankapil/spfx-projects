@@ -138,7 +138,7 @@ export const RunTab: React.FC<{ services: IServices; config: IConfig; onOpenTab:
       setBusy(undefined);
       await run(j);
       if (r.truncated && mounted.current) {
-        setMessage({ kind: MessageBarType.warning, text: 'The site list was cut short by search (more than 50,000 sites without DocId paging); the report covers the sites that were listed.' });
+        setMessage({ kind: MessageBarType.warning, text: 'The site list was cut short by search (more than 50,000 results); the report covers the sites that were listed.' });
       }
     } catch (e) {
       setMessage({ kind: MessageBarType.error, text: errorText(e) });

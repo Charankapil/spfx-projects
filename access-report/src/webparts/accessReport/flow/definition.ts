@@ -163,16 +163,18 @@ function listTheSites(): Json {
   return {
     type: 'Until',
     expression: "@less(variables('PageSize'),500)",
-    limit: { count: 400, timeout: 'PT6H' },
+    // 100 pages of 500: search serves a result set up to 50,000 rows this way.
+    limit: { count: 100, timeout: 'PT6H' },
     actions: chain([
       // Set first, so a failed search ends the loop instead of repeating it.
       ['Assume_this_is_the_last_page', setVar('PageSize', 0)],
       [
         'Search_sites',
+        // The plain query every tenant accepts, walked with startrow in a fixed (DocId) order.
         http(
           'GET',
           "outputs('Home')",
-          "_api/search/query?querytext='contentclass%3ASTS_Site%20IndexDocId%3E@{variables('LastDocId')}'&selectproperties='Title%2CPath%2CWebTemplate%2CDocId'&rowlimit=500&trimduplicates=false&sortlist='%5BDocId%5D%3Aascending'"
+          "_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Title,Path,WebTemplate'&rowlimit=500&startrow=@{variables('StartRow')}&trimduplicates=false&sortlist='%5BDocId%5D:ascending'"
         )
       ],
       ['Site_rows', select(rows, { url: '@' + url, title: `@if(equals(${title},''),${url},${title})`, template: '@' + cellOf('item()', 'WebTemplate') })],
@@ -185,10 +187,9 @@ function listTheSites(): Json {
       ],
       ['Sites_so_far', compose("@union(variables('Sites'),body('Sites_in_scope'))")],
       ['Remember_sites', setVar('Sites', "@outputs('Sites_so_far')")],
-      ['Next_DocId', compose('@' + cellOf(`last(${rows})`, 'DocId'))],
-      ['Remember_DocId', setVar('LastDocId', "@if(equals(outputs('Next_DocId'),''),'0',outputs('Next_DocId'))")],
-      // No DocId on a full page would repeat the same page: stop instead.
-      ['Remember_page_size', setVar('PageSize', `@if(equals(outputs('Next_DocId'),''),0,length(${rows}))`)]
+      ['Next_start_row', compose("@add(variables('StartRow'),500)")],
+      ['Remember_start_row', setVar('StartRow', "@outputs('Next_start_row')")],
+      ['Remember_page_size', setVar('PageSize', `@length(${rows})`)]
     ])
   };
 }
@@ -411,7 +412,7 @@ export function buildDefinition(o: IFlowOptions): Json {
     ['Web_path', compose("@if(equals(uriPath(outputs('Home')),'/'),'',uriPath(outputs('Home')))")],
     ['Initialize_Lines', initVar('Lines', 'string', '')],
     ['Initialize_Sites', initVar('Sites', 'array', [])],
-    ['Initialize_LastDocId', initVar('LastDocId', 'string', '0')],
+    ['Initialize_StartRow', initVar('StartRow', 'integer', 0)],
     ['Initialize_PageSize', initVar('PageSize', 'integer', 0)],
     ['Get_settings', http('GET', "outputs('Home')", `_api/web/GetList(@u)/items?$select=Id,ARIncludeLibraries,ARSiteFilter,ARReportFolder&$orderby=Id&$top=1&${listAlias('AccessReportSettings')}`)],
     [

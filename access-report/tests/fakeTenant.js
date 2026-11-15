@@ -25,8 +25,8 @@ class FakeTenant {
     this.folders = new Set();
     this.log = [];
     this.nextId = 1;
-    /** Search behaviour: 'docid' (default), 'nodocid' (DocId cells missing), 'reject' (400 on IndexDocId). */
-    this.search = 'docid';
+    /** Search behaviour: 'ok', or 'reject' (400 on every query). A query with IndexDocId is always refused, as some tenants do. */
+    this.search = 'ok';
     this.picker = [];
   }
 
@@ -236,7 +236,7 @@ class FakeTenant {
     const text = (/^'(.*)'$/s.exec(params.querytext || '') || [])[1] || '';
     if (!/^contentclass:STS_Site/.test(text)) return this.error(400, "We didn't understand your search terms.");
     const doc = /IndexDocId>(\d+)/.exec(text);
-    if (doc && this.search === 'reject') return this.error(400, "We didn't understand your search terms.");
+    if (doc || / /.test(text) || this.search === 'reject') return this.error(400, "We didn't understand your search terms.");
     let hits = this.sites
       .concat(this.extraSearchHits || [])
       .map((s, i) => Object.assign({ docId: 1000 + i * 7 }, s))
@@ -247,7 +247,7 @@ class FakeTenant {
     const rows = hits.map((s) => ({
       Cells: [
         { Key: 'Rank', Value: '0', ValueType: 'Edm.Double' },
-        { Key: 'DocId', Value: this.search === 'docid' ? String(s.docId) : null, ValueType: 'Edm.Int64' },
+        { Key: 'DocId', Value: String(s.docId), ValueType: 'Edm.Int64' },
         { Key: 'Title', Value: s.title === undefined ? null : s.title, ValueType: 'Edm.String' },
         { Key: 'Path', Value: s.searchPath || s.url, ValueType: 'Edm.String' },
         { Key: 'WebTemplate', Value: s.template || 'GROUP', ValueType: 'Edm.String' },

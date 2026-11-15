@@ -252,16 +252,6 @@ test('nobody to report on, and no sites: a header-only file', async () => {
 });
 
 // ---------------------------------------------------------------- when things go wrong
-test('search without DocId: the flow stops after the first page instead of looping', async () => {
-  const tenant = scenarios.large(1203);
-  tenant.search = 'nodocid';
-  const { run } = await viaFlow(tenant);
-  assert.deepStrictEqual(run.errors, []);
-  assert.strictEqual(run.counts.Search_sites, 1);
-  assert.strictEqual(run.variables.Sites.value.length, 500);
-  assert.strictEqual(run.status, 'Succeeded');
-});
-
 test('search refused: the run fails before scanning and the note still says Started', async () => {
   const tenant = scenarios.rich();
   tenant.search = 'reject';

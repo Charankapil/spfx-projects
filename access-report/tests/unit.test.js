@@ -206,15 +206,17 @@ test('sites: scope rules', () => {
   assert.ok(isOneDriveSite(o + '/personal/x') && !isOneDriveSite(o + '/sites/personal'));
 });
 
-test('sites: falls back to startrow paging when search refuses or omits DocId', async () => {
-  for (const mode of ['reject', 'nodocid']) {
-    const t = scenarios.large(1203);
-    t.search = mode;
-    const r = await new SiteLister(clientOf(t)).list(t.home, '');
-    assert.strictEqual(r.sites.length, 1203, mode);
-    assert.strictEqual(new Set(r.sites.map((s) => s.url)).size, 1203);
-    assert.ok(t.log.some((l) => /startrow=500/.test(l.url)), mode);
-  }
+test('sites: plain query walked by startrow in DocId order; a refused search is an error', async () => {
+  const t = scenarios.large(1203);
+  const r = await new SiteLister(clientOf(t)).list(t.home, '');
+  assert.strictEqual(r.sites.length, 1203);
+  assert.strictEqual(new Set(r.sites.map((s) => s.url)).size, 1203);
+  const urls = t.log.map((l) => decodeURIComponent(l.url));
+  assert.strictEqual(urls.length, 3);
+  assert.ok(urls.every((u) => /querytext='contentclass:STS_Site'&/.test(u) && /sortlist='\[DocId\]:ascending'/.test(u) && !/IndexDocId/.test(u)), urls[0]);
+  assert.deepStrictEqual(urls.map((u) => /startrow=(\d+)/.exec(u)[1]), ['0', '500', '1000']);
+  t.search = 'reject';
+  await assert.rejects(() => new SiteLister(clientOf(t)).list(t.home, ''), (e) => e instanceof HttpError && e.status === 400);
 });
 
 test('sites: duplicates are listed once, titles fall back to the address, progress is reported', async () => {

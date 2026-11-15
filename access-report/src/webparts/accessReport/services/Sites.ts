@@ -1,4 +1,4 @@
-import { entityOf, HttpError, odataString, ODataCollection, SPClient, toArray, trimSlash } from '../core/SPClient';
+import { entityOf, odataString, ODataCollection, SPClient, toArray, trimSlash } from '../core/SPClient';
 import { ISite } from './AccessScan';
 
 /**
@@ -21,6 +21,7 @@ interface ISearchResponse {
 }
 
 export const PAGE = 500;
+export const MAX_ROWS = 50000;
 
 export function searchRows(json: ISearchResponse): Array<{ [key: string]: string }> {
   const primary = (json.d && (json.d.query ? json.d.query.PrimaryQueryResult : json.d.PrimaryQueryResult)) || (json.query ? json.query.PrimaryQueryResult : undefined) || json.PrimaryQueryResult;
@@ -54,57 +55,31 @@ export function inScope(url: string, title: string, template: string, origin: st
 export class SiteLister {
   constructor(private client: SPClient) {}
 
-  private async page(homeWebUrl: string, query: string, sort: string, startRow: number): Promise<Array<{ [key: string]: string }>> {
+  private async page(homeWebUrl: string, startRow: number): Promise<Array<{ [key: string]: string }>> {
     const parts = [
-      `querytext='${encodeURIComponent(odataString(query))}'`,
-      `selectproperties='${encodeURIComponent('Title,Path,WebTemplate,DocId')}'`,
+      `querytext='${encodeURIComponent(odataString('contentclass:STS_Site'))}'`,
+      `selectproperties='${encodeURIComponent('Title,Path,WebTemplate')}'`,
       `rowlimit=${PAGE}`,
+      `startrow=${startRow}`,
       'trimduplicates=false',
-      `sortlist='${encodeURIComponent(sort)}'`
+      `sortlist='${encodeURIComponent('[DocId]:ascending')}'`
     ];
-    if (startRow) {
-      parts.push(`startrow=${startRow}`);
-    }
     const json = await this.client.get<ISearchResponse>(`${trimSlash(homeWebUrl)}/_api/search/query?${parts.join('&')}`, { odata3: true, cacheTtlMs: 0 });
     return searchRows(entityOf<ISearchResponse>(json));
   }
 
   /**
-   * Pages of 500 in DocId order with "IndexDocId>last" in the query - Microsoft's recommended
-   * way to walk a large result set (no 50,000-row ceiling). If the tenant's search refuses
-   * that or returns no DocId, it falls back to startrow paging.
+   * Pages of 500 of the plain site query, in a fixed (DocId) order, by startrow. Some tenants
+   * refuse the "IndexDocId>n" paging trick ("We didn't understand your search terms"), so it
+   * is not used; startrow serves up to 50,000 rows, beyond which the list is marked truncated.
    */
   public async list(homeWebUrl: string, filter: string, onProgress?: (loaded: number) => void): Promise<{ sites: ISite[]; truncated: boolean }> {
     const origin = originOf(homeWebUrl);
-    const scope = 'contentclass:STS_Site';
-    let sites: ISite[] = [];
-    let seen: { [url: string]: boolean } = {};
-    let lastDocId = 0;
-    let useDocId = true;
-    let startRow = 0;
-    const restart = (): void => {
-      useDocId = false;
-      startRow = 0;
-      sites = [];
-      seen = {};
-    };
-    for (let guard = 0; guard < 400; guard++) {
-      let rows: Array<{ [key: string]: string }>;
-      try {
-        rows = useDocId ? await this.page(homeWebUrl, `${scope} IndexDocId>${lastDocId}`, '[DocId]:ascending', 0) : await this.page(homeWebUrl, scope, 'LastModifiedTime:descending', startRow);
-      } catch (e) {
-        if (useDocId && e instanceof HttpError && e.status === 400) {
-          restart();
-          continue;
-        }
-        throw e;
-      }
-      let maxDoc = lastDocId;
+    const sites: ISite[] = [];
+    const seen: { [url: string]: boolean } = {};
+    for (let startRow = 0; startRow < MAX_ROWS; startRow += PAGE) {
+      const rows = await this.page(homeWebUrl, startRow);
       rows.forEach((r) => {
-        const doc = Number(r.DocId);
-        if (isFinite(doc) && doc > maxDoc) {
-          maxDoc = doc;
-        }
         const url = trimSlash(r.Path || '');
         const title = r.Title || url;
         if (seen[url.toLowerCase()] || !inScope(url, title, r.WebTemplate || '', origin, filter)) {
@@ -118,15 +93,6 @@ export class SiteLister {
       }
       if (rows.length < PAGE) {
         return { sites, truncated: false };
-      }
-      if (useDocId && maxDoc === lastDocId) {
-        restart();
-        continue;
-      }
-      lastDocId = maxDoc;
-      startRow += PAGE;
-      if (!useDocId && startRow >= 50000) {
-        return { sites, truncated: true };
       }
     }
     return { sites, truncated: true };

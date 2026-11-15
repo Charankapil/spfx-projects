@@ -89,14 +89,14 @@
         ]
       }
     },
-    "Initialize_LastDocId": {
+    "Initialize_StartRow": {
       "type": "InitializeVariable",
       "inputs": {
         "variables": [
           {
-            "name": "LastDocId",
-            "type": "string",
-            "value": "0"
+            "name": "StartRow",
+            "type": "integer",
+            "value": 0
           }
         ]
       },
@@ -118,7 +118,7 @@
         ]
       },
       "runAfter": {
-        "Initialize_LastDocId": [
+        "Initialize_StartRow": [
           "Succeeded"
         ]
       }
@@ -272,7 +272,7 @@
       "type": "Until",
       "expression": "@less(variables('PageSize'),500)",
       "limit": {
-        "count": 400,
+        "count": 100,
         "timeout": "PT6H"
       },
       "actions": {
@@ -295,7 +295,7 @@
             "parameters": {
               "dataset": "@outputs('Home')",
               "parameters/method": "GET",
-              "parameters/uri": "_api/search/query?querytext='contentclass%3ASTS_Site%20IndexDocId%3E@{variables('LastDocId')}'&selectproperties='Title%2CPath%2CWebTemplate%2CDocId'&rowlimit=500&trimduplicates=false&sortlist='%5BDocId%5D%3Aascending'",
+              "parameters/uri": "_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Title,Path,WebTemplate'&rowlimit=500&startrow=@{variables('StartRow')}&trimduplicates=false&sortlist='%5BDocId%5D:ascending'",
               "parameters/headers": {
                 "Accept": "application/json;odata=nometadata"
               }
@@ -357,23 +357,23 @@
             ]
           }
         },
-        "Next_DocId": {
+        "Next_start_row": {
           "type": "Compose",
-          "inputs": "@xpath(xml(json(concat('{\"r\":{\"c\":',string(coalesce(last(coalesce(body('Search_sites')?['PrimaryQueryResult']?['RelevantResults']?['Table']?['Rows'],json('[]')))?['Cells'],json('[]'))),'}}'))),'string(/r/c[Key=\"DocId\"]/Value)')",
+          "inputs": "@add(variables('StartRow'),500)",
           "runAfter": {
             "Remember_sites": [
               "Succeeded"
             ]
           }
         },
-        "Remember_DocId": {
+        "Remember_start_row": {
           "type": "SetVariable",
           "inputs": {
-            "name": "LastDocId",
-            "value": "@if(equals(outputs('Next_DocId'),''),'0',outputs('Next_DocId'))"
+            "name": "StartRow",
+            "value": "@outputs('Next_start_row')"
           },
           "runAfter": {
-            "Next_DocId": [
+            "Next_start_row": [
               "Succeeded"
             ]
           }
@@ -382,10 +382,10 @@
           "type": "SetVariable",
           "inputs": {
             "name": "PageSize",
-            "value": "@if(equals(outputs('Next_DocId'),''),0,length(coalesce(body('Search_sites')?['PrimaryQueryResult']?['RelevantResults']?['Table']?['Rows'],json('[]'))))"
+            "value": "@length(coalesce(body('Search_sites')?['PrimaryQueryResult']?['RelevantResults']?['Table']?['Rows'],json('[]')))"
           },
           "runAfter": {
-            "Remember_DocId": [
+            "Remember_start_row": [
               "Succeeded"
             ]
           }

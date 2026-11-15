@@ -84,7 +84,7 @@ Limits worth knowing:
 ## How the monthly flow works
 
 `Recurrence` (first of the month, 03:00 UTC) -> read settings and subjects from the site ->
-list the sites through search (pages of 500, by DocId) -> for each site: one request per person,
+list the sites through search (pages of 500, by start row, up to 50,000 sites) -> for each site: one request per person,
 one per group (more only where the group is known to the site), the libraries once -> write the
 CSV into the folder, the unread list if there is one, and a "Finished ..." note the web part
 shows.
