@@ -206,21 +206,25 @@ test('sites: scope rules', () => {
   assert.ok(isOneDriveSite(o + '/personal/x') && !isOneDriveSite(o + '/sites/personal'));
 });
 
-test('sites: plain query walked by startrow in DocId order; a refused search is an error', async () => {
+test('sites: the plain query, paged by startrow in the first order search accepts; never a DocId sort', async () => {
   const t = scenarios.large(1203);
+  t.refusedSorts = ['Created:ascending'];
   const r = await new SiteLister(clientOf(t)).list(t.home, '');
   assert.strictEqual(r.sites.length, 1203);
   assert.strictEqual(new Set(r.sites.map((s) => s.url)).size, 1203);
   const urls = t.log.map((l) => decodeURIComponent(l.url));
-  assert.strictEqual(urls.length, 3);
-  assert.ok(urls.every((u) => /querytext='contentclass:STS_Site'&/.test(u) && /sortlist='\[DocId\]:ascending'/.test(u) && !/IndexDocId/.test(u)), urls[0]);
-  assert.deepStrictEqual(urls.map((u) => /startrow=(\d+)/.exec(u)[1]), ['0', '500', '1000']);
+  assert.ok(urls.every((u) => /querytext='contentclass:STS_Site'&/.test(u) && !/DocId/i.test(u)), urls.join('\n'));
+  assert.strictEqual(urls.length, 2 + 3, 'two probes, three pages');
+  assert.deepStrictEqual(t.sortsUsed, ['LastModifiedTime:ascending', 'LastModifiedTime:ascending', 'LastModifiedTime:ascending']);
+  assert.deepStrictEqual(urls.slice(2).map((u) => (/startrow=(\d+)/.exec(u) || [0, '0'])[1]), ['0', '500', '1000']);
   t.search = 'reject';
-  await assert.rejects(() => new SiteLister(clientOf(t)).list(t.home, ''), (e) => e instanceof HttpError && e.status === 400);
+  await assert.rejects(() => new SiteLister(clientOf(t)).list(t.home, ''), /refused every way of listing the sites\. Created:ascending: 400: We didn't understand/);
+  const down = make(async () => json({}, 500));
+  await assert.rejects(() => new SiteLister(down).list(ORIGIN, ''), (e) => e instanceof HttpError && e.status === 500, 'only a refusal moves on to the next order');
 });
 
 test('sites: duplicates are listed once, titles fall back to the address, progress is reported', async () => {
-  const t = new FakeTenant({ sites: [{ url: ORIGIN + '/sites/a', title: 'A' }, { url: ORIGIN + '/sites/A/', title: 'A again' }, { url: ORIGIN + '/sites/b' }] }).provisioned();
+  const t = new FakeTenant({ sites: [{ url: ORIGIN + '/sites/a', title: 'A', created: 1 }, { url: ORIGIN + '/sites/A/', title: 'A again', created: 2 }, { url: ORIGIN + '/sites/b', created: 3 }] }).provisioned();
   const seen = [];
   const r = await new SiteLister(clientOf(t)).list(t.home, '', (n) => seen.push(n));
   assert.deepStrictEqual(r.sites, [{ url: ORIGIN + '/sites/a', title: 'A' }, { url: ORIGIN + '/sites/b', title: ORIGIN + '/sites/b' }]);

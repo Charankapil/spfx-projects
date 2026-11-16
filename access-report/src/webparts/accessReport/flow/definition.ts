@@ -151,6 +151,34 @@ const NOT_LIMITED = "and(not(equals(item()?['RoleTypeKind'],1)),not(startsWith(t
 
 // ---- the parts of the flow -------------------------------------------------------------
 
+/**
+ * Orderings for paging the site list, most stable first. Created never changes, so new sites
+ * land at the end and no page shifts; LastModifiedTime is what most tenants accept; no order
+ * at all is the last resort (pages can then overlap - the union drops repeats).
+ * services/Sites.ts SITE_ORDERS is the same list.
+ */
+export const SITE_ORDERS = ['Created:ascending', 'LastModifiedTime:ascending', ''];
+
+const sortParam = (o: string): string => (o ? `&sortlist='${o}'` : '');
+
+function siteProbe(order: string): Json {
+  return http('GET', "outputs('Home')", `_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Path'&rowlimit=1&trimduplicates=false${sortParam(order)}`);
+}
+
+/** The sortlist parameter of the first probe that worked, or 'refused'. */
+function siteOrderExpression(): string {
+  return SITE_ORDERS.reduceRight((rest, o, i) => `if(${ok(`Probe_site_order_${i + 1}`)},'${sortParam(o).replace(/'/g, "''")}',${rest})`, "'refused'");
+}
+
+/** What each probe said, JSON-safe, for the "Failed" note. */
+function probeErrors(): string {
+  const parts = SITE_ORDERS.map((o, i) => {
+    const a = `Probe_site_order_${i + 1}`;
+    return `concat('${o || 'no order'}: ',string(coalesce(outputs('${a}')?['statusCode'],'')),' ',${errorText(a)})`;
+  });
+  return `replace(replace(concat(${parts.join(",'; ',")}),'\\','\\\\'),'"','\\"')`;
+}
+
 function listTheSites(): Json {
   const rows = `coalesce(body('Search_sites')?['PrimaryQueryResult']?['RelevantResults']?['Table']?['Rows'],${NONE})`;
   // A search row is a list of {Key, Value} cells: read one by its key.
@@ -170,11 +198,11 @@ function listTheSites(): Json {
       ['Assume_this_is_the_last_page', setVar('PageSize', 0)],
       [
         'Search_sites',
-        // The plain query every tenant accepts, walked with startrow in a fixed (DocId) order.
+        // The plain site query, walked with startrow in the order the probes found accepted.
         http(
           'GET',
           "outputs('Home')",
-          "_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Title,Path,WebTemplate'&rowlimit=500&startrow=@{variables('StartRow')}&trimduplicates=false&sortlist='%5BDocId%5D:ascending'"
+          "_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Title,Path,WebTemplate'&rowlimit=500&startrow=@{variables('StartRow')}&trimduplicates=false@{outputs('Site_order')}"
         )
       ],
       ['Site_rows', select(rows, { url: '@' + url, title: `@if(equals(${title},''),${url},${title})`, template: '@' + cellOf('item()', 'WebTemplate') })],
@@ -441,6 +469,19 @@ export function buildDefinition(o: IFlowOptions): Json {
     ['People', query("body('Subjects')", "equals(item()?['person'],true)")],
     ['Groups', query("body('Subjects')", "equals(item()?['person'],false)")],
     ['Mark_started', http('POST', "outputs('Home')", settingsItem, { headers: merge, body: `{"ARLastRun":"Started @{${now}} UTC"}` })],
+    // Search on some tenants refuses some sort orders ("We didn't understand your search terms").
+    // One-row probes find the first ordering this tenant accepts; services/Sites.ts tries the same list.
+    ...SITE_ORDERS.map((o, i): Step => [`Probe_site_order_${i + 1}`, siteProbe(o), i ? ALWAYS : undefined]),
+    ['Site_order', compose(`@${siteOrderExpression()}`), ALWAYS],
+    [
+      'Search_refused',
+      {
+        type: 'If',
+        expression: { equals: ["@outputs('Site_order')", 'refused'] },
+        actions: { Mark_search_refused: { ...http('POST', "outputs('Home')", settingsItem, { headers: merge, body: `{"ARLastRun":"Failed @{${now}} UTC: SharePoint search refused every way of listing the sites. @{${probeErrors()}}"}` }), runAfter: {} } },
+        else: { actions: {} }
+      }
+    ],
     ['Until_all_sites_are_listed', listTheSites()],
     ['For_each_site', forEachSite()],
     // From here on the report is written even if the scan stopped part-way.

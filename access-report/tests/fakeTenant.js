@@ -233,17 +233,22 @@ class FakeTenant {
   }
 
   searchQuery(web, params) {
+    const refuse = () => this.error(400, "We didn't understand your search terms. Make sure they're using proper syntax.");
     const text = (/^'(.*)'$/s.exec(params.querytext || '') || [])[1] || '';
-    if (!/^contentclass:STS_Site/.test(text)) return this.error(400, "We didn't understand your search terms.");
-    const doc = /IndexDocId>(\d+)/.exec(text);
-    if (doc || / /.test(text) || this.search === 'reject') return this.error(400, "We didn't understand your search terms.");
+    if (text !== 'contentclass:STS_Site' || this.search === 'reject') return refuse();
+    // Like the tenant that reported the bug: any DocId sort is refused; others can be refused on request.
+    const sort = (/^'(.*)'$/s.exec(params.sortlist || "''") || [])[1];
+    if (sort === undefined || /docid/i.test(sort) || (this.refusedSorts || []).indexOf(sort) >= 0) return refuse();
+    const known = { '': null, 'Created:ascending': 'created', 'LastModifiedTime:ascending': 'modified' };
+    if (!(sort in known)) return this.error(500, `Unexpected sortlist ${sort}`);
+    this.sortsUsed = (this.sortsUsed || []).concat(params.rowlimit === '1' ? [] : [sort]);
     let hits = this.sites
       .concat(this.extraSearchHits || [])
-      .map((s, i) => Object.assign({ docId: 1000 + i * 7 }, s))
-      .sort((a, b) => a.docId - b.docId);
-    if (doc) hits = hits.filter((s) => s.docId > Number(doc[1]));
+      .map((s, i) => Object.assign({ docId: 1000 + i * 7, created: 5000 - i * 3, modified: (i * 37) % 101 }, s));
+    // Unsorted: a "relevance" order that is not the site order, so a mismatch would show.
+    hits.sort(known[sort] ? (a, b) => a[known[sort]] - b[known[sort]] || a.docId - b.docId : (a, b) => (a.docId % 13) - (b.docId % 13) || a.docId - b.docId);
     const start = Number(params.startrow || 0);
-    hits = hits.slice(start, start + this.pageSize);
+    hits = hits.slice(start, start + (params.rowlimit === '1' ? 1 : this.pageSize));
     const rows = hits.map((s) => ({
       Cells: [
         { Key: 'Rank', Value: '0', ValueType: 'Edm.Double' },

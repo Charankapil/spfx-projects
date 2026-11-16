@@ -232,7 +232,8 @@ test('home site is the root site, typed with a trailing slash and spaces; folder
 test('1,203 sites: three search pages, same file, nothing unread', async () => {
   const { tenant, web, run } = await parity(() => scenarios.large(1203), { expectUnread: false });
   assert.strictEqual(web.sites.length, 1203);
-  assert.strictEqual(tenant.log.filter((l) => /search\/query/.test(l.url)).length, 3);
+  assert.strictEqual(tenant.log.filter((l) => /search\/query.*rowlimit=500/.test(l.url)).length, 3, "three full pages");
+  assert.strictEqual(tenant.log.filter((l) => /search\/query.*rowlimit=1&/.test(l.url)).length, 3, "three one-row probes");
   assert.strictEqual(run.counts.Search_sites, 3);
   assert.strictEqual(run.variables.Sites.value.length, 1203);
   console.log(`       (1,203 sites x 2 subjects: ${run.executed} flow actions = ${(run.executed / 1203 / 2).toFixed(1)} per site and subject)`);
@@ -241,7 +242,7 @@ test('1,203 sites: three search pages, same file, nothing unread', async () => {
 test('exactly 500 sites: one more (empty) page ends the listing', async () => {
   const { tenant, web } = await parity(() => scenarios.large(500), { expectUnread: false });
   assert.strictEqual(web.sites.length, 500);
-  assert.strictEqual(tenant.log.filter((l) => /search\/query/.test(l.url)).length, 2);
+  assert.strictEqual(tenant.log.filter((l) => /search\/query.*rowlimit=500/.test(l.url)).length, 2);
 });
 
 test('nobody to report on, and no sites: a header-only file', async () => {
@@ -252,15 +253,39 @@ test('nobody to report on, and no sites: a header-only file', async () => {
 });
 
 // ---------------------------------------------------------------- when things go wrong
+for (const [refused, expect] of [
+  [[], 'Created:ascending'],
+  [['Created:ascending'], 'LastModifiedTime:ascending'],
+  [['Created:ascending', 'LastModifiedTime:ascending'], '']
+]) {
+  test(`search refuses DocId${refused.map((r) => ' and ' + r).join('')}: the flow and the web part both page by "${expect || 'no order'}" and write the same file`, async () => {
+    const make = () => {
+      const t = scenarios.large(1203);
+      t.refusedSorts = refused;
+      return t;
+    };
+    const { tenant, web, run } = await parity(make, { expectUnread: false });
+    assert.strictEqual(web.sites.length, 1203);
+    assert.strictEqual(run.variables.Sites.value.length, 1203);
+    assert.deepStrictEqual(tenant.sortsUsed, [expect, expect, expect], 'every page used the chosen order');
+  });
+}
+
+test('the flow and the web part try the same orderings in the same order', () => {
+  assert.deepStrictEqual(src('flow/definition').SITE_ORDERS, src('services/Sites').SITE_ORDERS);
+});
+
 test('search refused: the run fails before scanning and the note still says Started', async () => {
   const tenant = scenarios.rich();
   tenant.search = 'reject';
   const { run } = await viaFlow(tenant);
   assert.strictEqual(run.status, 'Failed');
   assert.strictEqual(run.counts.Search_sites, 1, 'the loop does not repeat a failing search');
+  assert.strictEqual(run.counts.Probe_site_order_3, 1);
   assert.strictEqual(run.counts.For_each_site, undefined);
   assert.deepStrictEqual(Object.keys(tenant.files), []);
-  assert.strictEqual(tenant.settingsItem().ARLastRun, 'Started 2026-12-01 03:04 UTC');
+  const note = tenant.settingsItem().ARLastRun;
+  assert.ok(/^Failed 2026-12-01 03:04 UTC: SharePoint search refused every way of listing the sites\. Created:ascending: 400 We didn't understand your search terms\. Make sure they're using proper syntax\.; LastModifiedTime:ascending: 400 .*; no order: 400 /.test(note), note);
 });
 
 test('set-up not done: the run fails at the first step, nothing is written', async () => {

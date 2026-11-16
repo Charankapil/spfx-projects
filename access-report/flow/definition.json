@@ -268,6 +268,136 @@
         ]
       }
     },
+    "Probe_site_order_1": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "HttpRequest"
+        },
+        "parameters": {
+          "dataset": "@outputs('Home')",
+          "parameters/method": "GET",
+          "parameters/uri": "_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Path'&rowlimit=1&trimduplicates=false&sortlist='Created:ascending'",
+          "parameters/headers": {
+            "Accept": "application/json;odata=nometadata"
+          }
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runAfter": {
+        "Mark_started": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Probe_site_order_2": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "HttpRequest"
+        },
+        "parameters": {
+          "dataset": "@outputs('Home')",
+          "parameters/method": "GET",
+          "parameters/uri": "_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Path'&rowlimit=1&trimduplicates=false&sortlist='LastModifiedTime:ascending'",
+          "parameters/headers": {
+            "Accept": "application/json;odata=nometadata"
+          }
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runAfter": {
+        "Probe_site_order_1": [
+          "Succeeded",
+          "Failed",
+          "TimedOut"
+        ]
+      }
+    },
+    "Probe_site_order_3": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connectionName": "shared_sharepointonline",
+          "operationId": "HttpRequest"
+        },
+        "parameters": {
+          "dataset": "@outputs('Home')",
+          "parameters/method": "GET",
+          "parameters/uri": "_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Path'&rowlimit=1&trimduplicates=false",
+          "parameters/headers": {
+            "Accept": "application/json;odata=nometadata"
+          }
+        },
+        "authentication": "@parameters('$authentication')"
+      },
+      "runAfter": {
+        "Probe_site_order_2": [
+          "Succeeded",
+          "Failed",
+          "TimedOut"
+        ]
+      }
+    },
+    "Site_order": {
+      "type": "Compose",
+      "inputs": "@if(equals(outputs('Probe_site_order_1')?['statusCode'],200),'&sortlist=''Created:ascending''',if(equals(outputs('Probe_site_order_2')?['statusCode'],200),'&sortlist=''LastModifiedTime:ascending''',if(equals(outputs('Probe_site_order_3')?['statusCode'],200),'','refused')))",
+      "runAfter": {
+        "Probe_site_order_3": [
+          "Succeeded",
+          "Failed",
+          "TimedOut"
+        ]
+      }
+    },
+    "Search_refused": {
+      "type": "If",
+      "expression": {
+        "equals": [
+          "@outputs('Site_order')",
+          "refused"
+        ]
+      },
+      "actions": {
+        "Mark_search_refused": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "HttpRequest"
+            },
+            "parameters": {
+              "dataset": "@outputs('Home')",
+              "parameters/method": "POST",
+              "parameters/uri": "_api/web/GetList(@u)/items(@{outputs('Settings')?['itemId']})?@u='@{encodeUriComponent(concat(outputs('Web_path'),'/Lists/AccessReportSettings'))}'",
+              "parameters/headers": {
+                "Accept": "application/json;odata=nometadata",
+                "Content-Type": "application/json;odata=nometadata",
+                "IF-MATCH": "*",
+                "X-HTTP-Method": "MERGE"
+              },
+              "parameters/body": "{\"ARLastRun\":\"Failed @{formatDateTime(utcNow(),'yyyy-MM-dd HH:mm')} UTC: SharePoint search refused every way of listing the sites. @{replace(replace(concat(concat('Created:ascending: ',string(coalesce(outputs('Probe_site_order_1')?['statusCode'],'')),' ',replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Probe_site_order_1'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Probe_site_order_1'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' ')),'; ',concat('LastModifiedTime:ascending: ',string(coalesce(outputs('Probe_site_order_2')?['statusCode'],'')),' ',replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Probe_site_order_2'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Probe_site_order_2'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' ')),'; ',concat('no order: ',string(coalesce(outputs('Probe_site_order_3')?['statusCode'],'')),' ',replace(replace(substring(first(split(first(split(last(split(string(coalesce(body('Probe_site_order_3'),'')),'\"message\":\"')),'\",\"')),'\\r\\n')),0,min(length(first(split(first(split(last(split(string(coalesce(body('Probe_site_order_3'),'')),'\"message\":\"')),'\",\"')),'\\r\\n'))),300)),decodeUriComponent('%0D'),' '),decodeUriComponent('%0A'),' '))),'\\','\\\\'),'\"','\\\"')}\"}"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Site_order": [
+          "Succeeded"
+        ]
+      }
+    },
     "Until_all_sites_are_listed": {
       "type": "Until",
       "expression": "@less(variables('PageSize'),500)",
@@ -295,7 +425,7 @@
             "parameters": {
               "dataset": "@outputs('Home')",
               "parameters/method": "GET",
-              "parameters/uri": "_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Title,Path,WebTemplate'&rowlimit=500&startrow=@{variables('StartRow')}&trimduplicates=false&sortlist='%5BDocId%5D:ascending'",
+              "parameters/uri": "_api/search/query?querytext='contentclass:STS_Site'&selectproperties='Title,Path,WebTemplate'&rowlimit=500&startrow=@{variables('StartRow')}&trimduplicates=false@{outputs('Site_order')}",
               "parameters/headers": {
                 "Accept": "application/json;odata=nometadata"
               }
@@ -392,7 +522,7 @@
         }
       },
       "runAfter": {
-        "Mark_started": [
+        "Search_refused": [
           "Succeeded"
         ]
       }

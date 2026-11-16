@@ -1,4 +1,4 @@
-import { entityOf, odataString, ODataCollection, SPClient, toArray, trimSlash } from '../core/SPClient';
+import { entityOf, HttpError, odataString, ODataCollection, SPClient, toArray, trimSlash } from '../core/SPClient';
 import { ISite } from './AccessScan';
 
 /**
@@ -22,6 +22,8 @@ interface ISearchResponse {
 
 export const PAGE = 500;
 export const MAX_ROWS = 50000;
+/** Same list, same order as SITE_ORDERS in flow/definition.ts (the tests check). */
+export const SITE_ORDERS = ['Created:ascending', 'LastModifiedTime:ascending', ''];
 
 export function searchRows(json: ISearchResponse): Array<{ [key: string]: string }> {
   const primary = (json.d && (json.d.query ? json.d.query.PrimaryQueryResult : json.d.PrimaryQueryResult)) || (json.query ? json.query.PrimaryQueryResult : undefined) || json.PrimaryQueryResult;
@@ -55,30 +57,47 @@ export function inScope(url: string, title: string, template: string, origin: st
 export class SiteLister {
   constructor(private client: SPClient) {}
 
-  private async page(homeWebUrl: string, startRow: number): Promise<Array<{ [key: string]: string }>> {
-    const parts = [
-      `querytext='${encodeURIComponent(odataString('contentclass:STS_Site'))}'`,
-      `selectproperties='${encodeURIComponent('Title,Path,WebTemplate')}'`,
-      `rowlimit=${PAGE}`,
-      `startrow=${startRow}`,
-      'trimduplicates=false',
-      `sortlist='${encodeURIComponent('[DocId]:ascending')}'`
-    ];
+  private async page(homeWebUrl: string, order: string, startRow: number, rowLimit = PAGE, select = 'Title,Path,WebTemplate'): Promise<Array<{ [key: string]: string }>> {
+    const parts = [`querytext='${encodeURIComponent(odataString('contentclass:STS_Site'))}'`, `selectproperties='${encodeURIComponent(select)}'`, `rowlimit=${rowLimit}`];
+    if (startRow) {
+      parts.push(`startrow=${startRow}`);
+    }
+    parts.push('trimduplicates=false');
+    if (order) {
+      parts.push(`sortlist='${encodeURIComponent(order)}'`);
+    }
     const json = await this.client.get<ISearchResponse>(`${trimSlash(homeWebUrl)}/_api/search/query?${parts.join('&')}`, { odata3: true, cacheTtlMs: 0 });
     return searchRows(entityOf<ISearchResponse>(json));
   }
 
+  /** The first ordering of SITE_ORDERS this tenant's search accepts (one-row probes, as the flow does). */
+  public async order(homeWebUrl: string): Promise<string> {
+    const refusals: string[] = [];
+    for (const o of SITE_ORDERS) {
+      try {
+        await this.page(homeWebUrl, o, 0, 1, 'Path');
+        return o;
+      } catch (e) {
+        if (!(e instanceof HttpError) || e.status !== 400) {
+          throw e;
+        }
+        refusals.push(`${o || 'no order'}: ${e.message}`);
+      }
+    }
+    throw new Error(`SharePoint search refused every way of listing the sites. ${refusals.join('; ')}`);
+  }
+
   /**
-   * Pages of 500 of the plain site query, in a fixed (DocId) order, by startrow. Some tenants
-   * refuse the "IndexDocId>n" paging trick ("We didn't understand your search terms"), so it
-   * is not used; startrow serves up to 50,000 rows, beyond which the list is marked truncated.
+   * Pages of 500 of the plain site query by startrow (search serves up to 50,000 rows this
+   * way; beyond that the list is marked truncated), in the first ordering the tenant accepts.
    */
   public async list(homeWebUrl: string, filter: string, onProgress?: (loaded: number) => void): Promise<{ sites: ISite[]; truncated: boolean }> {
     const origin = originOf(homeWebUrl);
+    const order = await this.order(homeWebUrl);
     const sites: ISite[] = [];
     const seen: { [url: string]: boolean } = {};
     for (let startRow = 0; startRow < MAX_ROWS; startRow += PAGE) {
-      const rows = await this.page(homeWebUrl, startRow);
+      const rows = await this.page(homeWebUrl, order, startRow);
       rows.forEach((r) => {
         const url = trimSlash(r.Path || '');
         const title = r.Title || url;
