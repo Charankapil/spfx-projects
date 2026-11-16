@@ -2,8 +2,8 @@
 
 Every site, **subsite** and library that chosen **people and groups** can reach - with the
 access level and how they get it - saved as a CSV in a SharePoint folder. Run it from the page,
-let the included **Power Automate flow** run it on the first of every month, or run the
-included **PowerShell** script.
+or let the included **Power Automate flow** run it on the first of every month. A PowerShell
+script gives a quicker, site-collection-level version.
 
 It is the *Access report* of the SharePoint Admin Center solution, taken out into its own
 package and made schedulable.
@@ -25,7 +25,7 @@ package and made schedulable.
 | `releases/access-report-webpart.sppkg` | The SPFx web part (SPFx 1.18.2) |
 | `releases/AccessReport-monthly-flow.zip` | The flow, for *My flows > Import > Import Package (Legacy)* |
 | `releases/AccessReportMonthly_1_0_0_0.zip` | The same flow as an unmanaged solution, for *Solutions > Import solution* |
-| `powershell/Get-AccessReport.ps1` | The same report from PowerShell (PnP.PowerShell) |
+| `powershell/Get-AccessReport.ps1` | A site-collection-level report from PowerShell (SharePoint Online Management Shell, no app registration) |
 
 The two flow packages in `releases/` carry a placeholder site address. The web part's **Monthly
 schedule** tab downloads the same packages with your site's address already filled in - use
@@ -112,25 +112,35 @@ shows.
 
 ## PowerShell
 
-`powershell/Get-AccessReport.ps1` makes the same report: the same REST calls in the same order
-as the web part, the same file format, subsites included.
+`powershell/Get-AccessReport.ps1` gives a **site-collection-level** answer from PowerShell
+with **no app registration and no client id**: it signs in with `Connect-SPOService`, the
+SharePoint Online Management Shell (Microsoft's own admin module), and writes the same CSV
+format as the web part and the flow.
 
 ```powershell
-Install-Module PnP.PowerShell -Scope CurrentUser        # PowerShell 7.2 or later
+Install-Module Microsoft.Online.SharePoint.PowerShell -Scope CurrentUser
 
-# The report the monthly flow makes: reads who and where from the web part's site and uploads there.
-./Get-AccessReport.ps1 -HomeSiteUrl https://contoso.sharepoint.com/sites/it -ClientId <app id>
-
-# A one-off, local file only.
-./Get-AccessReport.ps1 -HomeSiteUrl https://contoso.sharepoint.com/sites/it -ClientId <app id> `
-    -Subject 'Ann=ann@contoso.com','Auditors=c:0t.c|tenant|<group object id>' `
-    -SiteUrl https://contoso.sharepoint.com/sites/fin -IncludeLibraries $false -NoUpload
+./Get-AccessReport.ps1 -AdminUrl https://contoso-admin.sharepoint.com `
+    -Subject 'Ann=ann@contoso.com', 'Auditors=c:0t.c|tenant|<group object id>' `
+    -SiteFilter finance -OutputPath C:\Reports
 ```
 
-**It needs an app registration.** PnP.PowerShell signs in through an Entra ID app of your own
-(since September 2024): create one once with `Register-PnPEntraIDAppForInteractiveLogin` and an
-admin consents to it. That is the one extra requirement of this route; the web part and the flow
-need none. `Get-Help ./Get-AccessReport.ps1 -Full` lists every parameter.
+For each site collection it reports where each person or group gets in as a **site collection
+administrator** or through the site's **SharePoint groups** (with their permission levels),
+including, for a person, groups that contain *Everyone* or *Everyone except external users*.
+It needs the SharePoint Administrator role, and then reads every site collection without being
+a member of it.
+
+What the Management Shell cannot see, so the script does not report:
+
+- **subsites and libraries** - the module has no cmdlets for webs or lists;
+- permissions granted **directly** to a person or group rather than through a SharePoint group;
+- a person's access through **Entra ID or Microsoft 365 groups** (report on the group itself by
+  passing its claim as a `-Subject`).
+
+Reaching those needs SharePoint REST, and calling SharePoint REST from PowerShell needs an Entra
+app to sign in through. The **web part and the monthly flow** do report all of it, with no app
+registration, so use them for the complete report and the script for a quick check.
 
 ## How it was tested
 
@@ -155,9 +165,8 @@ Playwright) drives the real UI in Chromium on the fake tenant: set-up, adding pe
 stop / reload / resume, saved reports and comparison, and that the flow packages the page
 downloads are exactly the ones built for that site.
 
-**Not run: the PowerShell script.** PowerShell was not available where it was written. It
-mirrors the tested web part code line for line, but its first run is its test: try it on one
-site collection with `-SiteUrl ... -NoUpload` and compare the file with one from **Run report**.
+**Not run: the PowerShell script.** PowerShell could not be installed where it was written, so
+its first run is its test: try it on one site collection with `-SiteUrl` and check the file.
 
 **Not tested: a real tenant.** There was none available. The REST calls are the documented
 ones and the flow's expressions use only documented functions, but the first import and the
