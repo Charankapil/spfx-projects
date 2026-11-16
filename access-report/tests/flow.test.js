@@ -179,6 +179,12 @@ test('rich tenant: same report and same unread list as the web part', async () =
   has(["'=Marketing team", undefined, 'IT', 'Site', undefined, undefined, "'=Odd level", 'Direct']);
   has(['Everyone except external users', ORIGIN + '/sites/it', 'IT', 'Site', undefined, undefined, 'Read', 'Direct']);
   has(['Odd claim', ORIGIN + '/sites/it', 'IT', 'Site', undefined, undefined, 'Read', 'Direct']);
+  // Subsites, every level down, with their own rows and the site collection they belong to.
+  has(['Ann Example <ann@contoso.com>', ORIGIN + '/sites/it/projects', 'Projects', 'Subsite', 'Projects', ORIGIN + '/sites/it/projects', 'Edit / contribute', 'Effective permission', 'Yes', ORIGIN + '/sites/it']);
+  has(['Ann Example <ann@contoso.com>', ORIGIN + '/sites/it/projects/alpha/deep', undefined, 'Subsite', undefined, undefined, 'Edit / contribute', 'Effective permission', 'No', ORIGIN + '/sites/it']);
+  has(['Finance Auditors', ORIGIN + '/sites/it/projects', 'Projects', 'Library', 'Contracts', undefined, 'Read', 'Direct', 'Yes', ORIGIN + '/sites/it']);
+  has(["'=Marketing team (owners)", ORIGIN + '/sites/it/archive', "'=Archive", 'Subsite', undefined, undefined, 'Full control', 'Site collection administrator', 'No', ORIGIN + '/sites/it']);
+  assert.ok(rows.slice(1).every((r) => r.length === 10), 'ten columns on every row');
   has(['Finance Auditors', ORIGIN + '/sites/ops', 'Ops', 'Site', undefined, undefined, 'Full control', 'Site collection administrator']);
   // Sites that must not be in it.
   ['/personal/', '/sites/odd', 'contoso-my', 'fabrikam', 'lookalike'].forEach((s) => assert.ok(report.indexOf(s) < 0, `${s} is out of scope`));
@@ -196,11 +202,14 @@ test('rich tenant: same report and same unread list as the web part', async () =
   unreadHas(['Ghost', ORIGIN + '/sites/it', 'IT', 'Site', '404']);
   unreadHas(['Ann Example <ann@contoso.com>', ORIGIN + '/sites/broken', 'Broken', 'Site', '500']);
   unreadHas(['Ann Example <ann@contoso.com>', ORIGIN + '/sites/offline', 'Offline', 'Site', '']);
+  unreadHas(['(all)', ORIGIN + '/sites/it/archive', "'=Archive", 'Subsites', '500']);
+  unreadHas(['(all)', ORIGIN + '/sites/fin/board', 'Board', 'Subsites', '403']);
+  unreadHas(['Ann Example <ann@contoso.com>', ORIGIN + '/sites/fin/board', 'Board', 'Site', '403']);
   const denied = u.filter((r) => r[1] === ORIGIN + '/sites/hr')[0];
   assert.ok(/Access denied/.test(denied[5]) && !/clientRequestId|[\r\n]/.test(denied[5]), `a readable one-line error: ${denied[5]}`);
   // The note the web part shows.
   const note = tenant.settingsItem().ARLastRun;
-  assert.strictEqual(note, `Finished 2026-12-01 03:04 UTC: ${web.sites.length} sites, 7 people and groups, ${rows.length - 1} rows, ${u.length - 1} not read. File: access-report-${STAMP}.csv`);
+  assert.strictEqual(note, `Finished 2026-12-01 03:04 UTC: ${web.sites.length} site collections, 7 people and groups, ${rows.length - 1} rows, ${u.length - 1} not read. File: access-report-${STAMP}.csv`);
   assert.strictEqual(run.results.Scan_completed.status, 'Succeeded');
   console.log(`       (${web.sites.length} sites x 7 subjects: ${run.executed} flow actions, ${tenant.log.length} requests; ${rows.length - 1} rows, ${u.length - 1} unread)`);
 });
@@ -214,7 +223,7 @@ test('libraries switched off: same file, and no library request is made', async 
 test('site filter: same file, only matching sites are visited', async () => {
   const { tenant, report } = await parity(() => scenarios.rich({ siteFilter: ' FINANCE ' }), { expectUnread: true });
   const visited = new Set(tenant.log.filter((l) => /getusereffectivepermissions/.test(l.url)).map((l) => l.url.split('/_api/')[0]));
-  assert.deepStrictEqual([...visited], [ORIGIN + '/sites/fin']);
+  assert.deepStrictEqual([...visited], [ORIGIN + '/sites/fin', ORIGIN + '/sites/fin/board'], 'the matching site collection and its subsite');
   assert.ok(parseCsv(report).length > 1);
 });
 

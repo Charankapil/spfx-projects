@@ -49,8 +49,8 @@ const siteCell = (title: string, url: string): JSX.Element => (
 );
 
 const whereCell = (r: string[], at: number): JSX.Element =>
-  r[at] === 'Site' ? (
-    <span className={styles.pill}>Whole site</span>
+  r[at] === 'Site' || r[at] === 'Subsite' ? (
+    <span className={styles.pill}>{r[at] === 'Site' ? 'Whole site' : r[at + 5] === 'Yes' ? 'Subsite · own permissions' : 'Subsite'}</span>
   ) : (
     <span>
       {r[at + 2] ? (

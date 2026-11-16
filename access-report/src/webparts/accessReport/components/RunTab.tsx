@@ -72,7 +72,7 @@ export const RunTab: React.FC<{ services: IServices; config: IConfig; onOpenTab:
         const u = unreadSites(j).length;
         setMessage({
           kind: u ? MessageBarType.warning : MessageBarType.success,
-          text: `Finished: ${j.rows.length.toLocaleString()} rows across ${j.total.toLocaleString()} sites, saved as ${reportFileName(stamp)} in ${j.folder}.${
+          text: `Finished: ${j.rows.length.toLocaleString()} rows across ${j.total.toLocaleString()} site collections (subsites included), saved as ${reportFileName(stamp)} in ${j.folder}.${
             u ? ` ${u.toLocaleString()} site${u === 1 ? '' : 's'} could not be read completely: the list is saved next to the report, and "Retry unread" checks them again.` : ''
           }`
         });
@@ -171,7 +171,7 @@ export const RunTab: React.FC<{ services: IServices; config: IConfig; onOpenTab:
     <div className={styles.tab}>
       <Card title="Run the report now">
         <p className={styles.hint}>
-          Checks every site you can open for the people and groups below and saves the result as a CSV in the report folder. The monthly flow does exactly this on its own; use this to try it out or
+          Checks every site you can open, and every subsite under it, for the people and groups below and saves the result as a CSV in the report folder. The monthly flow does exactly this on its own; use this to try it out or
           when you need a report today.
         </p>
         <Facts
@@ -254,7 +254,7 @@ export const RunTab: React.FC<{ services: IServices; config: IConfig; onOpenTab:
             }
           >
             <ProgressIndicator
-              label={`${done.toLocaleString()} of ${job.total.toLocaleString()} sites checked${running ? '' : job.finished ? ' (finished)' : ' (stopped)'}`}
+              label={`${done.toLocaleString()} of ${job.total.toLocaleString()} site collections checked${running ? '' : job.finished ? ' (finished)' : ' (stopped)'}`}
               description={`Started ${dateTime(new Date(job.started))} · ${job.subjects.length} people and groups · ${job.speed} speed${job.includeLibraries ? ' · with libraries' : ''}${
                 running ? ` · about ${duration(estimateSeconds(job.total - done, job.subjects.length, job.includeLibraries, job.speed))} left` : ''
               }`}
@@ -265,6 +265,7 @@ export const RunTab: React.FC<{ services: IServices; config: IConfig; onOpenTab:
                 big
                 items={[
                   { label: 'Sites with access', value: rowsAll.filter((r) => r[3] === 'Site').length.toLocaleString() },
+                  { label: 'Subsites with access', value: rowsAll.filter((r) => r[3] === 'Subsite').length.toLocaleString() },
                   { label: 'Libraries with access', value: rowsAll.filter((r) => r[3] === 'Library').length.toLocaleString() },
                   { label: 'Libraries with own permissions', value: rowsAll.filter((r) => r[8] === 'Yes').length.toLocaleString() },
                   { label: 'Sites not read completely', value: unreadCount.toLocaleString(), warn: unreadCount > 0 }

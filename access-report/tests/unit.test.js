@@ -183,11 +183,41 @@ test('scanner: one request per person and site, one per group where it is unknow
     { label: 'Auditors', login: scenarios.AUDITORS }
   ];
   const r = await scanner.scanSite({ url: ORIGIN + '/sites/legal/', title: 'Legal' }, subjects, false);
-  assert.strictEqual(t.log.length, 2);
-  assert.deepStrictEqual(r.rows, [['Ann', ORIGIN + '/sites/legal', 'Legal', 'Site', 'Legal', ORIGIN + '/sites/legal', 'Design / manage', 'Effective permission', '']]);
+  assert.strictEqual(t.log.length, 3, 'one for its subsites (none), one per subject');
+  assert.deepStrictEqual(r.rows, [['Ann', ORIGIN + '/sites/legal', 'Legal', 'Site', 'Legal', ORIGIN + '/sites/legal', 'Design / manage', 'Effective permission', '', ORIGIN + '/sites/legal']]);
   t.log.length = 0;
   await scanner.scanSite({ url: ORIGIN + '/sites/it', title: 'IT' }, subjects, true);
-  assert.strictEqual(t.log.filter((l) => /_api\/web\/lists\?/.test(l.url)).length, 1);
+  const per = (re) => t.log.filter((l) => re.test(l.url)).map((l) => l.url.split('/_api/')[0]);
+  assert.deepStrictEqual(per(/_api\/web\/lists\?/), [ORIGIN + '/sites/it', ORIGIN + '/sites/it/projects', ORIGIN + '/sites/it/archive', ORIGIN + '/sites/it/projects/alpha', ORIGIN + '/sites/it/projects/alpha/deep'], 'libraries listed once per web, webs breadth first');
+  assert.strictEqual(per(/_api\/web\/webs\?/).length, 5, 'one subsite listing per web');
+});
+
+test('scanner: subsites are walked breadth first, every level down, with their own rows', async () => {
+  const t = scenarios.rich();
+  const scanner = new AccessScanner(clientOf(t), t.home);
+  const unread = [];
+  const webs = await scanner.webs({ url: ORIGIN + '/sites/it/', title: 'IT' }, unread);
+  assert.deepStrictEqual(webs.map((w) => [w.url, w.title, w.object, w.unique, w.collection]), [
+    [ORIGIN + '/sites/it', 'IT', 'Site', '', ORIGIN + '/sites/it'],
+    [ORIGIN + '/sites/it/projects', 'Projects', 'Subsite', 'Yes', ORIGIN + '/sites/it'],
+    [ORIGIN + '/sites/it/archive', '=Archive', 'Subsite', 'No', ORIGIN + '/sites/it'],
+    [ORIGIN + '/sites/it/projects/alpha', 'Alpha', 'Subsite', 'No', ORIGIN + '/sites/it'],
+    [ORIGIN + '/sites/it/projects/alpha/deep', ORIGIN + '/sites/it/projects/alpha/deep', 'Subsite', 'No', ORIGIN + '/sites/it']
+  ]);
+  assert.deepStrictEqual(unread.map((u) => u.slice(0, 5)), [['(all)', ORIGIN + '/sites/it/archive', '=Archive', 'Subsites', '500']]);
+  const r = await scanner.scanSite({ url: ORIGIN + '/sites/it', title: 'IT' }, [{ label: 'Ann', login: scenarios.ANN }, { label: 'Auditors', login: scenarios.AUDITORS }], true);
+  const has = (cells) => assert.ok(r.rows.some((x) => cells.every((c, i) => c === undefined || x[i] === c)), `${JSON.stringify(cells)} in\n${r.rows.map((x) => x.join(' | ')).join('\n')}`);
+  has(['Ann', ORIGIN + '/sites/it/projects', 'Projects', 'Subsite', 'Projects', ORIGIN + '/sites/it/projects', 'Edit / contribute', 'Effective permission', 'Yes', ORIGIN + '/sites/it']);
+  has(['Ann', ORIGIN + '/sites/it/projects', 'Projects', 'Library', 'Contracts', undefined, 'Full control', 'Effective permission (own permissions)', 'Yes', ORIGIN + '/sites/it']);
+  has(['Ann', ORIGIN + '/sites/it/projects/alpha/deep', undefined, 'Subsite', undefined, undefined, 'Edit / contribute', undefined, 'No', ORIGIN + '/sites/it']);
+  has(['Auditors', ORIGIN + '/sites/it/projects', 'Projects', 'Subsite', 'Projects', undefined, 'Contribute', 'SharePoint group: Projects Members', 'Yes', ORIGIN + '/sites/it']);
+  has(['Auditors', ORIGIN + '/sites/it/projects', 'Projects', 'Subsite', 'Projects', undefined, 'Read', 'Direct', 'Yes']);
+  has(['Ann', ORIGIN + '/sites/it/archive', '=Archive', 'Subsite', undefined, undefined, 'Full control', undefined, 'No']);
+  assert.ok(r.rows.every((x) => x.length === 10 && x[9] === ORIGIN + '/sites/it'), 'every row names its site collection');
+  // A denied subsite is reported, not skipped.
+  const fin = await scanner.scanSite({ url: ORIGIN + '/sites/fin', title: 'Finance' }, [{ label: 'Ann', login: scenarios.ANN }], false);
+  assert.ok(fin.unread.some((u) => u[1] === ORIGIN + '/sites/fin/board' && u[3] === 'Subsites' && u[4] === '403'));
+  assert.ok(fin.unread.some((u) => u[1] === ORIGIN + '/sites/fin/board' && u[3] === 'Site' && u[4] === '403'));
 });
 
 // ---------------------------------------------------------------- sites
@@ -370,7 +400,7 @@ test('run job: stop, save, reload and resume gives the same file as an uninterru
   await R.runJob(back.job, back.sites, new AccessScanner(clientOf(t), t.home), { stop: false }, () => undefined, 0);
   assert.ok(back.job.finished);
   assert.strictEqual(R.reportCsv(back.job), R.reportCsv(a.job));
-  assert.strictEqual(t.log.length, 12, 'no site was scanned twice');
+  assert.strictEqual(t.log.length, 24, 'no site was scanned twice (two requests each: subsites, then Ann)');
   R.clearJob();
   assert.strictEqual(R.loadJob(), undefined);
 });

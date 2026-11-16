@@ -186,6 +186,13 @@ class FakeTenant {
     if (!site) return this.error(404, 'Site not found.');
     if (site.deny) return this.error(site.deny, site.deny === 403 ? 'Access denied. You do not have permission to perform this action or access this resource.' : 'Site unavailable.');
     if (site.broken) return site.broken;
+    // As in SharePoint: a subsite shares its site collection's user list, and one that inherits
+    // permissions answers with its parent's.
+    const parentOf = (w) => (w.parent ? this.site(w.parent) : undefined);
+    let collection = site;
+    while (parentOf(collection)) collection = parentOf(collection);
+    let perms = site;
+    while (perms.parent && !perms.unique && parentOf(perms)) perms = parentOf(perms);
     const maskOf = (users) => {
       const login = alias('@v');
       if (login === undefined) return this.error(400, 'The expression is not valid.');
@@ -195,7 +202,16 @@ class FakeTenant {
     };
     const listById = (id) => (site.lists || []).find((l) => l.Id.toLowerCase() === id.toLowerCase());
 
-    if (/^web\/getusereffectivepermissions\(@v\)$/i.test(path)) return maskOf(site.users);
+    if (/^web\/getusereffectivepermissions\(@v\)$/i.test(path)) return maskOf(perms.users);
+    if (/^web\/webs$/i.test(path)) {
+      if (site.websFail) return this.error(site.websFail, 'Subsites could not be read.');
+      if (!/Url/.test(params.$select || '')) return this.error(400, 'Expected $select with Url.');
+      const me = trimSlash(site.url).toLowerCase();
+      return {
+        status: 200,
+        body: { value: this.sites.filter((x) => x.parent && trimSlash(x.parent).toLowerCase() === me).map((x) => ({ Title: x.title === undefined ? null : x.title, Url: x.url, HasUniqueRoleAssignments: !!x.unique })) }
+      };
+    }
     if (/^web\/lists$/i.test(path)) {
       if (site.listsFail) return this.error(site.listsFail, 'Lists could not be read.');
       if (!/Hidden eq false/.test(params.$filter || '')) return this.error(400, 'Expected the hidden-lists filter.');
@@ -213,11 +229,11 @@ class FakeTenant {
       let q;
       while ((q = re.exec(params.$filter || ''))) wanted.push(q[1].replace(/''/g, "'").toLowerCase());
       if (!wanted.length || !/Groups/.test(params.$expand || '')) return this.error(400, 'Bad site user query.');
-      return { status: 200, body: { value: (site.siteUsers || []).filter((u) => wanted.indexOf(u.LoginName.toLowerCase()) >= 0).map((u) => Object.assign({ IsSiteAdmin: false, Groups: [] }, u)) } };
+      return { status: 200, body: { value: (collection.siteUsers || []).filter((u) => wanted.indexOf(u.LoginName.toLowerCase()) >= 0).map((u) => Object.assign({ IsSiteAdmin: false, Groups: [] }, u)) } };
     }
     if (/^web\/roleassignments$/i.test(path)) {
-      if (site.assignmentsFail) return this.error(site.assignmentsFail, 'Permissions could not be read.');
-      return { status: 200, body: { value: site.assignments || [] } };
+      if (perms.assignmentsFail) return this.error(perms.assignmentsFail, 'Permissions could not be read.');
+      return { status: 200, body: { value: perms.assignments || [] } };
     }
     if ((r = /^web\/lists\(guid'([^']+)'\)\/roleassignments$/i.exec(path))) {
       const l = listById(r[1]);
@@ -243,6 +259,7 @@ class FakeTenant {
     if (!(sort in known)) return this.error(500, `Unexpected sortlist ${sort}`);
     this.sortsUsed = (this.sortsUsed || []).concat(params.rowlimit === '1' ? [] : [sort]);
     let hits = this.sites
+      .filter((s) => !s.parent)
       .concat(this.extraSearchHits || [])
       .map((s, i) => Object.assign({ docId: 1000 + i * 7, created: 5000 - i * 3, modified: (i * 37) % 101 }, s));
     // Unsorted: a "relevance" order that is not the site order, so a mismatch would show.

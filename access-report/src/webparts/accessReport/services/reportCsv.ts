@@ -6,7 +6,7 @@
  * =HYPERLINK(...) would run as a formula when the file is opened in Excel (CSV injection).
  */
 
-export const REPORT_HEADERS = ['Who', 'Site URL', 'Site title', 'Object', 'Name', 'URL', 'Access', 'How', 'Own permissions'];
+export const REPORT_HEADERS = ['Who', 'Site URL', 'Site title', 'Object', 'Name', 'URL', 'Access', 'How', 'Own permissions', 'Site collection'];
 export const UNREAD_HEADERS = ['Who', 'Site URL', 'Site title', 'Step', 'Status', 'Error'];
 export const BOM = '﻿';
 

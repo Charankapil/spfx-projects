@@ -95,11 +95,18 @@ function unreadLine(action: string, whoCell: string, stepCell: string): string {
   return `if(${ok(action)},'',${line})`;
 }
 
-const SITE = "items('For_each_site')";
+/** The web being scanned: a site collection's top-level site or a subsite. */
+const SITE = "items('For_each_web')";
 /** "site url","site title" - the cells every line of a site starts with (after Who). */
 const START = "outputs('Site_cells')?['start']";
 /** "site title","site url" - the Name and URL cells of a row about the site itself. */
 const SELF = "outputs('Site_cells')?['self']";
+/** "Site" or "Subsite" - the Object cell of a row about the web itself. */
+const KIND = "outputs('Site_cells')?['kind']";
+/** "" (top-level site), "Yes" or "No" (subsite with / without its own permissions). */
+const OWN_WEB = "outputs('Site_cells')?['own']";
+/** ,"<site collection url>" - the last cell of every row. */
+const END = "outputs('Site_cells')?['end']";
 
 const low = (action: string): string => `string(coalesce(${safeBody(action)}?['Low'],'0'))`;
 const high = (action: string): string => `string(coalesce(${safeBody(action)}?['High'],'0'))`;
@@ -137,7 +144,7 @@ export function levelExpression(lowText: string, highText: string): string {
   );
 }
 
-const HEADER_LINE = '"Who","Site URL","Site title","Object","Name","URL","Access","How","Own permissions"';
+const HEADER_LINE = '"Who","Site URL","Site title","Object","Name","URL","Access","How","Own permissions","Site collection"';
 const UNREAD_HEADER_LINE = '"Who","Site URL","Site title","Step","Status","Error"';
 const ASSIGNMENTS = 'roleassignments?$select=PrincipalId,Member/Title,Member/PrincipalType,RoleDefinitionBindings/Name,RoleDefinitionBindings/RoleTypeKind&$expand=Member,RoleDefinitionBindings&$top=5000';
 
@@ -256,7 +263,7 @@ function forEachPerson(libraries: boolean): Json {
   const who = `${person}?['who']`;
   const check = `Check_person_on_site${x}`;
   const param = `'@{${person}?['param']}'`;
-  const siteRow = `if(${someMask(check)},concat(${maskRow(check, `concat(${who},',',${START},',"Site",',${SELF},',"')`, `'","Effective permission",""'`)},${CRLF}),'')`;
+  const siteRow = `if(${someMask(check)},concat(${maskRow(check, `concat(${who},',',${START},',',${KIND},',',${SELF},',"')`, `concat('","Effective permission",',${OWN_WEB},${END})`)},${CRLF}),'')`;
   const steps: Step[] = [[check, http('GET', `${SITE}?['url']`, `_api/web/getusereffectivepermissions(@v)?@v=${param}`)]];
   if (!libraries) {
     steps.push([`Person_lines${x}`, appendLines(`concat(${siteRow},${unreadLine(check, who, `'"Site"'`)})`), ALWAYS]);
@@ -267,7 +274,7 @@ function forEachPerson(libraries: boolean): Json {
   steps.push(
     [
       'Person_library_lines',
-      select(`if(${someMask(check)},body('Inherited_libraries'),${NONE})`, '@' + maskRow(check, `concat(${who},',',${START},',"Library",',item()?['title'],',',item()?['url'],',"')`, `'","Inherits from site","No"'`)),
+      select(`if(${someMask(check)},body('Inherited_libraries'),${NONE})`, '@' + maskRow(check, `concat(${who},',',${START},',"Library",',item()?['title'],',',item()?['url'],',"')`, `concat('","Inherits from site","No"',${END})`)),
       ALWAYS
     ],
     ['Person_lines', appendLines(`concat(${siteRow},${joined('Person_library_lines')},${unreadLine(check, who, `'"Site"'`)})`)],
@@ -283,7 +290,7 @@ function forEachPerson(libraries: boolean): Json {
               `concat(if(${someMask(libCheck)},concat(${maskRow(
                 libCheck,
                 `concat(${who},',',${START},',"Library",',${lib}?['title'],',',${lib}?['url'],',"')`,
-                `'","Effective permission (own permissions)","Yes"'`
+                `concat('","Effective permission (own permissions)","Yes"',${END})`
               )},${CRLF}),''),${unreadLine(libCheck, who, cell(`concat('Library: ',${lib}?['name'])`))})`
             ),
             ALWAYS
@@ -310,7 +317,7 @@ function forEachGroup(libraries: boolean): Json {
   const who = `if(and(equals(${group}?['m365'],true),endsWith(toLower(coalesce(${claim}?['LoginName'],'')),'_o')),${group}?['whoOwners'],${group}?['who'])`;
   const reaches = `or(equals(item()?['PrincipalId'],${claim}?['Id']),contains(body('${ids}'),item()?['PrincipalId']))`;
   const sg = grantParts(`items('${grantLoop}')`, names);
-  const siteGrantRow = `if(${sg.none},'',concat(${plainRow(`concat(${who},',',${START},',"Site",',${SELF},',',${sg.level},',',${cell(sg.how)},',""')`)},${CRLF}))`;
+  const siteGrantRow = `if(${sg.none},'',concat(${plainRow(`concat(${who},',',${START},',',${KIND},',',${SELF},',',${sg.level},',',${cell(sg.how)},',',${OWN_WEB},${END})`)},${CRLF}))`;
 
   const grantSteps: Step[] = [
     [`Site_grant_levels${x}`, query(`coalesce(items('${grantLoop}')?['RoleDefinitionBindings'],${NONE})`, NOT_LIMITED)],
@@ -322,7 +329,7 @@ function forEachGroup(libraries: boolean): Json {
         'Site_grant_library_lines',
         select(
           `if(${sg.none},${NONE},body('Inherited_libraries'))`,
-          '@' + plainRow(`concat(${who},',',${START},',"Library",',item()?['title'],',',item()?['url'],',',${sg.level},',',${cell(`concat('Inherits from site - ',${sg.how})`)},',"No"')`)
+          '@' + plainRow(`concat(${who},',',${START},',"Library",',item()?['title'],',',item()?['url'],',',${sg.level},',',${cell(`concat('Inherits from site - ',${sg.how})`)},',"No"',${END})`)
         )
       ],
       ['Site_grant_lines', appendLines(`concat(${siteGrantRow},${joined('Site_grant_library_lines')})`)]
@@ -339,7 +346,7 @@ function forEachGroup(libraries: boolean): Json {
       `Claim_lines${x}`,
       appendLines(
         `concat(if(equals(${claim}?['IsSiteAdmin'],true),concat(${plainRow(
-          `concat(${who},',',${START},',"Site",',${SELF},',"Full control","Site collection administrator",""')`
+          `concat(${who},',',${START},',',${KIND},',',${SELF},',"Full control","Site collection administrator",',${OWN_WEB},${END})`
         )},${CRLF}),''),${unreadLine(permissions, who, `'"Site permissions"'`)})`
       )
     ],
@@ -364,7 +371,7 @@ function forEachGroup(libraries: boolean): Json {
                 ['Library_grant_level_names', select("body('Library_grant_levels')", "@coalesce(item()?['Name'],'')")],
                 [
                   'Library_grant_line',
-                  appendLines(`if(${lg.none},'',concat(${plainRow(`concat(${who},',',${START},',"Library",',${lib}?['title'],',',${lib}?['url'],',',${lg.level},',',${cell(lg.how)},',"Yes"')`)},${CRLF}))`)
+                  appendLines(`if(${lg.none},'',concat(${plainRow(`concat(${who},',',${START},',"Library",',${lib}?['title'],',',${lib}?['url'],',',${lg.level},',',${cell(lg.how)},',"Yes"',${END})`)},${CRLF}))`)
                 ]
               ])
             )
@@ -386,6 +393,72 @@ function forEachGroup(libraries: boolean): Json {
   );
 }
 
+/**
+ * Every web of the current site collection into variables('Webs'): the top-level site, then
+ * its subsites level by level (breadth first, one request per web - the order of
+ * services/AccessScan.ts webs()). The top-level site's subsites are listed outside the loop,
+ * so a site collection without subsites - most of them - costs six actions; the queue loop
+ * only runs where there are subsites.
+ */
+function listTheWebs(): Step[] {
+  const collection = "items('For_each_site')";
+  /** The subsites a Get_... action returned, as web records. */
+  const subsites = (action: string): Json => {
+    const u = "coalesce(item()?['Url'],'')";
+    const trimmed = `if(endsWith(${u},'/'),substring(${u},0,sub(length(${u}),1)),${u})`;
+    return select(rowsOfAction(action), {
+      url: '@' + trimmed,
+      title: `@if(equals(coalesce(item()?['Title'],''),''),${trimmed},item()?['Title'])`,
+      kind: 'Subsite',
+      own: "@if(equals(item()?['HasUniqueRoleAssignments'],true),'Yes','No')",
+      collection: `@${collection}?['url']`
+    });
+  };
+  /** The "could not list the subsites" line for `web`, when `action` failed. */
+  const unread = (action: string, web: string): Json =>
+    appendLines(
+      `if(${ok(action)},'',concat('!','"(all)"',',',${cell(`${web}?['url']`)},',',${cell(`${web}?['title']`)},',"Subsites","',string(coalesce(outputs('${action}')?['statusCode'],'')),'","',replace(${errorText(action)},'"','""'),'"',${CRLF}))`
+    );
+  const WEBS = '_api/web/webs?$select=Title,Url,HasUniqueRoleAssignments';
+  const current = "first(variables('Queue'))";
+  return [
+    ['Top_level_site', compose({ url: `@${collection}?['url']`, title: `@${collection}?['title']`, kind: 'Site', own: '', collection: `@${collection}?['url']` })],
+    ['Get_top_level_subsites', http('GET', `${collection}?['url']`, WEBS)],
+    ['Top_level_subsites', subsites('Get_top_level_subsites'), ALWAYS],
+    ['Top_level_subsites_unread', unread('Get_top_level_subsites', "outputs('Top_level_site')")],
+    ['Start_the_webs', setVar('Webs', "@union(createArray(outputs('Top_level_site')),body('Top_level_subsites'))")],
+    [
+      'Any_subsites',
+      {
+        type: 'If',
+        expression: { greater: ["@length(body('Top_level_subsites'))", 0] },
+        actions: chain([
+          ['Start_the_queue', setVar('Queue', "@body('Top_level_subsites')")],
+          [
+            'Until_all_subsites_are_listed',
+            {
+              type: 'Until',
+              expression: "@equals(length(variables('Queue')),0)",
+              limit: { count: 5000, timeout: 'PT6H' },
+              actions: chain([
+                ['Get_subsites', http('GET', `${current}?['url']`, WEBS)],
+                ['Subsites', subsites('Get_subsites'), ALWAYS],
+                ['Subsites_unread', unread('Get_subsites', current)],
+                // The web just listed leaves the queue whatever happened, so a failure cannot repeat for ever.
+                ['Next_queue', compose("@union(skip(variables('Queue'),1),body('Subsites'))")],
+                ['Remember_the_queue', setVar('Queue', "@outputs('Next_queue')")],
+                ['Webs_so_far', compose("@union(variables('Webs'),body('Subsites'))")],
+                ['Remember_the_webs', setVar('Webs', "@outputs('Webs_so_far')")]
+              ])
+            }
+          ]
+        ]),
+        else: { actions: {} }
+      }
+    ]
+  ];
+}
+
 function forEachSite(): Json {
   const title = `${SITE}?['title']`;
   const url = `${SITE}?['url']`;
@@ -395,18 +468,38 @@ function forEachSite(): Json {
   ];
   return forEach(
     "variables('Sites')",
-    chain([
-      ['Site_cells', compose({ start: `@concat(${cell(url)},',',${cell(title)})`, self: `@concat(${cell(title)},',',${cell(url)})` })],
-      [
-        'Libraries_wanted',
-        {
-          type: 'If',
-          expression: { equals: ["@outputs('Settings')?['includeLibraries']", true] },
-          actions: chain(librarySteps().concat(subjects(true))),
-          else: { actions: chain(subjects(false)) }
-        }
-      ]
-    ])
+    chain(
+      listTheWebs().concat([
+        [
+          'For_each_web',
+          forEach(
+            "variables('Webs')",
+            chain([
+              [
+                'Site_cells',
+                compose({
+                  start: `@concat(${cell(url)},',',${cell(title)})`,
+                  self: `@concat(${cell(title)},',',${cell(url)})`,
+                  kind: '@' + cell(`${SITE}?['kind']`),
+                  own: '@' + cell(`${SITE}?['own']`),
+                  end: `@concat(',',${cell(`${SITE}?['collection']`)})`
+                })
+              ],
+              [
+                'Libraries_wanted',
+                {
+                  type: 'If',
+                  expression: { equals: ["@outputs('Settings')?['includeLibraries']", true] },
+                  actions: chain(librarySteps().concat(subjects(true))),
+                  else: { actions: chain(subjects(false)) }
+                }
+              ]
+            ])
+          ),
+          ALWAYS
+        ]
+      ])
+    )
   );
 }
 
@@ -441,6 +534,8 @@ export function buildDefinition(o: IFlowOptions): Json {
     ['Initialize_Lines', initVar('Lines', 'string', '')],
     ['Initialize_Sites', initVar('Sites', 'array', [])],
     ['Initialize_StartRow', initVar('StartRow', 'integer', 0)],
+    ['Initialize_Webs', initVar('Webs', 'array', [])],
+    ['Initialize_Queue', initVar('Queue', 'array', [])],
     ['Initialize_PageSize', initVar('PageSize', 'integer', 0)],
     ['Get_settings', http('GET', "outputs('Home')", `_api/web/GetList(@u)/items?$select=Id,ARIncludeLibraries,ARSiteFilter,ARReportFolder&$orderby=Id&$top=1&${listAlias('AccessReportSettings')}`)],
     [
@@ -506,7 +601,7 @@ export function buildDefinition(o: IFlowOptions): Json {
       'Mark_finished',
       http('POST', "outputs('Home')", settingsItem, {
         headers: merge,
-        body: `{"ARLastRun":"Finished @{${now}} UTC: @{length(variables('Sites'))} sites, @{length(body('Subjects'))} people and groups, @{length(body('Rows_with_access'))} rows, @{length(body('Unread_rows'))} not read. File: access-report-@{outputs('File_stamp')}.csv"}`
+        body: `{"ARLastRun":"Finished @{${now}} UTC: @{length(variables('Sites'))} site collections, @{length(body('Subjects'))} people and groups, @{length(body('Rows_with_access'))} rows, @{length(body('Unread_rows'))} not read. File: access-report-@{outputs('File_stamp')}.csv"}`
       })
     ]
   ]);

@@ -34,7 +34,7 @@ function richSites() {
       title: 'IT',
       users: { [ANN]: FULL },
       siteUsers: [
-        { Id: 20, LoginName: AUDITORS, Groups: [{ Id: 5, Title: 'IT Members' }] },
+        { Id: 20, LoginName: AUDITORS, Groups: [{ Id: 5, Title: 'IT Members' }, { Id: 8, Title: 'Projects Members' }] },
         { Id: 30, LoginName: MARKETING, Groups: [{ Id: 5, Title: 'IT Members' }, { Id: 7, Title: 'IT Visitors' }] },
         { Id: 31, LoginName: MARKETING + '_o', IsSiteAdmin: true, Groups: [{ Id: 3, Title: 'IT Owners' }] },
         { Id: 40, LoginName: EVERYONE.toUpperCase(), Groups: [] },
@@ -78,6 +78,23 @@ function richSites() {
       ]
     },
     { url: ORIGIN + '/sites/hr', title: 'HR', deny: 403 },
+    // Subsites: own permissions, inherited, nested two levels down, denied, and one whose subsites cannot be listed.
+    {
+      url: ORIGIN + '/sites/it/projects',
+      parent: ORIGIN + '/sites/it',
+      title: 'Projects',
+      unique: true,
+      users: { [ANN]: EDIT, [GUEST]: READ },
+      assignments: [grant(8, 'Projects Members', 8, role('Contribute', 3)), grant(20, 'Finance Auditors', 4, role('Read', 2))],
+      lists: [
+        lib('dddddddd-0000-0000-0000-000000000001', 'Project files', '/sites/it/projects/Project files'),
+        lib('dddddddd-0000-0000-0000-000000000002', 'Contracts', '/sites/it/projects/Contracts', { HasUniqueRoleAssignments: true, users: { [GUEST]: NONE, [ANN]: FULL }, assignments: [grant(20, 'Finance Auditors', 4, role('Read', 2))] })
+      ]
+    },
+    { url: ORIGIN + '/sites/it/projects/alpha', parent: ORIGIN + '/sites/it/projects', title: 'Alpha', lists: [] },
+    { url: ORIGIN + '/sites/it/projects/alpha/deep', parent: ORIGIN + '/sites/it/projects/alpha/', title: undefined, lists: [] },
+    { url: ORIGIN + '/sites/it/archive', parent: ORIGIN + '/sites/it', title: '=Archive', websFail: 500, lists: [] },
+    { url: ORIGIN + '/sites/fin/board', parent: ORIGIN + '/sites/fin', title: 'Board', unique: true, deny: 403 },
     { url: ORIGIN + '/sites/legal', title: 'Legal', listsFail: 500, users: { [ANN]: DESIGN }, siteUsers: [], assignments: [] },
     { url: ORIGIN + '/sites/ops', title: 'Ops', assignmentsFail: 500, users: {}, siteUsers: [{ Id: 4, LoginName: AUDITORS, IsSiteAdmin: true, Groups: [] }], lists: [lib('cccccccc-0000-0000-0000-000000000001', 'Runbooks', '/sites/ops/Runbooks', { HasUniqueRoleAssignments: true })] },
     { url: ORIGIN, searchPath: ORIGIN + '/', title: 'Home', users: { [ANN]: EDIT, [GUEST]: READ }, siteUsers: [], assignments: [], lists: [] },

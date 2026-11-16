@@ -107,8 +107,8 @@ async function freshSiteJourney(browser) {
   await tab(page, 'Run report');
   await page.getByText('4 included').waitFor();
   await page.getByRole('button', { name: 'Run report', exact: true }).click();
-  await page.getByText(/Finished: \d+ rows across 9 sites, saved as access-report-/).waitFor({ timeout: 60000 });
-  await page.getByText('9 of 9 sites checked (finished)').waitFor();
+  await page.getByText(/Finished: \d+ rows across 9 site collections \(subsites included\), saved as access-report-/).waitFor({ timeout: 60000 });
+  await page.getByText('9 of 9 site collections checked (finished)').waitFor();
   const files = await page.evaluate(() => window.__tenant.files);
   const names = Object.keys(files).sort();
   assert.strictEqual(names.length, 2, names.join(', '));
@@ -200,22 +200,24 @@ async function stopAndResume(browser) {
   const page = await context.newPage();
   await page.goto(PAGE + '?s=rich&delay=60');
   await page.getByRole('button', { name: 'Run report', exact: true }).click();
-  await page.getByText(/[2-5] of 9 sites checked/).waitFor({ timeout: 60000 });
+  await page.getByText(/[2-5] of 9 site collections checked/).waitFor({ timeout: 60000 });
   await page.getByRole('button', { name: 'Stop (resume later)' }).click();
   await page.getByText('Stopped. Progress is saved in this browser').waitFor({ timeout: 30000 });
-  const stoppedAt = Number(/(\d) of 9 sites checked \(stopped\)/.exec(await page.locator('body').innerText())[1]);
+  const stoppedAt = Number(/(\d) of 9 site collections checked \(stopped\)/.exec(await page.locator('body').innerText())[1]);
   assert.ok(stoppedAt >= 2 && stoppedAt < 9, `stopped at ${stoppedAt}`);
   await shot(page, '07-stopped');
   // Closing and reopening the page keeps the progress.
   await page.reload();
-  await page.getByText(`${stoppedAt} of 9 sites checked (stopped)`).waitFor();
+  await page.getByText(`${stoppedAt} of 9 site collections checked (stopped)`).waitFor();
   await page.getByText('Unfinished run').waitFor();
   await page.getByRole('button', { name: 'Resume' }).click();
-  await page.getByText('9 of 9 sites checked (finished)').waitFor({ timeout: 60000 });
-  await page.getByText(/Finished: \d+ rows across 9 sites/).waitFor();
+  await page.getByText('9 of 9 site collections checked (finished)').waitFor({ timeout: 60000 });
+  await page.getByText(/Finished: \d+ rows across 9 site collections/).waitFor();
   const log = await page.evaluate(() => window.__tenant.log.map((l) => l.url));
-  const scanned = new Set(log.filter((u) => /getusereffectivepermissions\(@v\)\?/.test(u) && /\/_api\/web\/getuser/.test(u)).map((u) => u.split('/_api/')[0]));
-  assert.strictEqual(scanned.size, 9 - stoppedAt, 'after the reload only the remaining sites were scanned');
+  // Each site collection starts by listing its top-level site's subsites: count those.
+  const collections = await page.evaluate(() => window.__tenant.sites.filter((x) => !x.parent).map((x) => x.url.toLowerCase()));
+  const scanned = new Set(log.filter((u) => /\/_api\/web\/webs\?/.test(u)).map((u) => u.split('/_api/')[0].toLowerCase()).filter((u) => collections.indexOf(u) >= 0));
+  assert.strictEqual(scanned.size, 9 - stoppedAt, 'after the reload only the remaining site collections were scanned');
   assert.strictEqual((await page.evaluate(() => Object.keys(window.__tenant.files))).length, 2);
   // Discard clears it for good.
   await page.getByRole('button', { name: 'Discard' }).click();

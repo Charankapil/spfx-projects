@@ -240,6 +240,8 @@ const FUNCTIONS = {
       return fail(`json: ${e.message} in ${String(s).slice(0, 80)}`);
     }
   },
+  createArray: (...a) => a,
+  skip: (a, n) => (int32(n, 'skip') < 0 ? fail('skip: negative count') : arr(a, 'skip').slice(n)),
   union: (...a) => {
     const out = [];
     a.forEach((x) => arr(x, 'union').forEach((v) => (out.some((o) => deepEqual(o, v)) ? 0 : out.push(v))));

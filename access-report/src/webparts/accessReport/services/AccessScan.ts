@@ -31,6 +31,21 @@ export interface ISiteResult {
   unread: string[][];
 }
 
+/** A web to scan: a site collection's top-level site or one of its subsites. */
+export interface IWeb extends ISite {
+  object: 'Site' | 'Subsite';
+  /** Subsites: Yes when it does not inherit permissions from its parent; '' for a top-level site. */
+  unique: string;
+  /** The site collection's URL. */
+  collection: string;
+}
+
+interface IRawWeb {
+  Title?: string;
+  Url?: string;
+  HasUniqueRoleAssignments?: boolean;
+}
+
 interface IRawList {
   Id?: string;
   Title?: string;
@@ -62,6 +77,7 @@ interface ILibrary {
 export const ALL_SUBJECTS = '(all)';
 const SP_GROUP = 8;
 
+const WEBS_QUERY = '$select=Title,Url,HasUniqueRoleAssignments';
 const LISTS_QUERY = '$select=Id,Title,BaseType,HasUniqueRoleAssignments,IsSystemList,RootFolder/ServerRelativeUrl&$expand=RootFolder&$filter=Hidden eq false&$top=5000';
 const ASSIGNMENTS_QUERY = '$select=PrincipalId,Member/Title,Member/PrincipalType,RoleDefinitionBindings/Name,RoleDefinitionBindings/RoleTypeKind&$expand=Member,RoleDefinitionBindings&$top=5000';
 const SITE_USER_QUERY = '$select=Id,LoginName,IsSiteAdmin,Groups/Id,Groups/Title&$expand=Groups';
@@ -118,8 +134,45 @@ export class AccessScanner {
     return this.client.get(url, { cacheTtlMs: 0 });
   }
 
-  /** Everything the subjects can reach on one site. Only a cancelled scan throws. */
+  /**
+   * Every web of a site collection, the top-level site first and then its subsites level by
+   * level (breadth first): one request per web lists its direct subsites.
+   */
+  public async webs(site: ISite, unread: string[][]): Promise<IWeb[]> {
+    const root = trimSlash(site.url);
+    const webs: IWeb[] = [{ url: root, title: site.title, object: 'Site', unique: '', collection: root }];
+    for (let i = 0; i < webs.length; i++) {
+      const w = webs[i];
+      try {
+        rowsOf<IRawWeb>(await this.get(`${w.url}/_api/web/webs?${WEBS_QUERY}`)).forEach((x) => {
+          const url = trimSlash(String(x.Url || ''));
+          if (url && !webs.some((o) => o.url.toLowerCase() === url.toLowerCase())) {
+            webs.push({ url, title: String(x.Title || '') || url, object: 'Subsite', unique: x.HasUniqueRoleAssignments === true ? 'Yes' : 'No', collection: root });
+          }
+        });
+      } catch (e) {
+        if (e instanceof CancelledError) {
+          throw e;
+        }
+        unread.push([ALL_SUBJECTS, w.url, w.title, 'Subsites', statusOf(e), messageOf(e)]);
+      }
+    }
+    return webs;
+  }
+
+  /** Everything the subjects can reach in one site collection, subsites included. Only a cancelled scan throws. */
   public async scanSite(site: ISite, subjects: ISubject[], includeLibraries: boolean): Promise<ISiteResult> {
+    const out: ISiteResult = { rows: [], unread: [] };
+    for (const w of await this.webs(site, out.unread)) {
+      const r = await this.scanWeb(w, subjects, includeLibraries);
+      r.rows.forEach((x) => out.rows.push(x));
+      r.unread.forEach((x) => out.unread.push(x));
+    }
+    return out;
+  }
+
+  /** Everything the subjects can reach on one web (a site or a subsite) and its libraries. */
+  public async scanWeb(site: IWeb, subjects: ISubject[], includeLibraries: boolean): Promise<ISiteResult> {
     const web = trimSlash(site.url);
     const out: ISiteResult = { rows: [], unread: [] };
     const unread = (who: string, step: string, e: unknown): void => {
@@ -145,8 +198,10 @@ export class AccessScanner {
       }
     }
 
+    // A row about the web itself says Site or Subsite, and for a subsite whether it has its own permissions.
     const row = (who: string, object: 'Site' | 'Library', name: string, url: string, level: string, how: string, unique: string): void => {
-      out.rows.push([who, web, site.title, object, name, url, level, how, unique]);
+      const self = object === 'Site';
+      out.rows.push([who, web, site.title, self ? site.object : object, name, url, level, how, self ? site.unique : unique, site.collection]);
     };
 
     // People first, then groups - the order the flow works in.
