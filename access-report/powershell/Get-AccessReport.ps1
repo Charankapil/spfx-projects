@@ -34,10 +34,15 @@
     Leave it out if you already ran Connect-SPOService in this session.
 
 .PARAMETER Subject
-    Who to report on: e-mail addresses (people) or SharePoint claims, e.g.
-    c:0t.c|tenant|<security group object id> or
-    c:0o.c|federateddirectoryclaimprovider|<Microsoft 365 group object id>.
-    Use "Label=login" to choose the name shown in the report.
+    Who to report on, any mix of:
+      - a person's e-mail address:          ann@contoso.com
+      - a group's display name:             Finance Auditors
+        (security or Microsoft 365 group; looked up in each site's user list, so no
+        directory access is needed - the name must match exactly, case aside)
+      - a SharePoint claim (exact, never ambiguous):
+                                             c:0t.c|tenant|<security group object id>
+                                             c:0o.c|federateddirectoryclaimprovider|<Microsoft 365 group object id>
+    Use "Label=value" to choose the name shown in the report.
 
 .PARAMETER SiteUrl
     Site collections to cover, instead of all of them.
@@ -55,6 +60,12 @@
     ./Get-AccessReport.ps1 -AdminUrl https://contoso-admin.sharepoint.com `
         -Subject 'Auditors=c:0t.c|tenant|11111111-1111-1111-1111-111111111111', 'pat@fabrikam.com' `
         -SiteFilter finance -OutputPath C:\Reports
+
+.EXAMPLE
+    ./Get-AccessReport.ps1 -AdminUrl https://contoso-admin.sharepoint.com -Subject 'Finance Auditors', 'Marketing'
+
+    Groups by name: a security group called "Finance Auditors" and a Microsoft 365 group called
+    "Marketing" (its members and its owners).
 #>
 [CmdletBinding()]
 param(
@@ -107,8 +118,13 @@ function ConvertTo-Login([string]$Value) {
 }
 
 $subjects = foreach ($x in $Subject) {
-    if ($x -match '^([^=|]+)=(.+)$') { $label = $Matches[1].Trim(); $value = $Matches[2] }
-    else { $label = $x.Trim(); $value = $x }
+    if ($x -match '^([^=|]+)=(.+)$') { $label = $Matches[1].Trim(); $value = $Matches[2].Trim() }
+    else { $label = $x.Trim(); $value = $x.Trim() }
+    if (-not $value.Contains('@') -and -not $value.Contains('|')) {
+        # A group's display name: resolved in each site's user list.
+        New-Object PSObject -Property @{ Label = $label; Name = $value; Login = ''; IsPerson = $false; IsGuest = $false; Claims = @() }
+        continue
+    }
     $login = ConvertTo-Login $value
     $lower = $login.ToLowerInvariant()
     $isPerson = $lower.StartsWith('i:')
@@ -116,7 +132,7 @@ $subjects = foreach ($x in $Subject) {
     # The logins this subject can appear under in a site: a Microsoft 365 group has members and owners.
     $claims = @(@{ Login = $login; Who = $label })
     if ($isM365) { $claims += @{ Login = $login + '_o'; Who = "$label (owners)" } }
-    New-Object PSObject -Property @{ Label = $label; Login = $login; IsPerson = $isPerson; IsGuest = ($isPerson -and $lower.Contains('#ext#')); Claims = $claims }
+    New-Object PSObject -Property @{ Label = $label; Name = ''; Login = $login; IsPerson = $isPerson; IsGuest = ($isPerson -and $lower.Contains('#ext#')); Claims = $claims }
 }
 $subjects = @($subjects)
 
@@ -199,6 +215,31 @@ function Add-Unread($Who, $Site, $Step, $ErrorRecord) {
     [void]$unread.Add(@($Who, $url, $title, $Step, (Get-StatusOf $ErrorRecord), (Get-MessageOf $ErrorRecord)))
 }
 
+# A group's entries in a site's user list, by display name. SharePoint shows a Microsoft 365
+# group's two claims as "<name> Members" and "<name> Owners"; a security group under its name.
+function Find-GroupClaims($SiteUsers, [string]$Name) {
+    $n = $Name.Trim()
+    foreach ($u in $SiteUsers) {
+        $login = [string]$u.LoginName
+        if (-not $login.ToLowerInvariant().StartsWith('c:')) { continue }
+        $shown = ([string]$u.DisplayName).Trim()
+        $m365 = $login.ToLowerInvariant().Contains('|federateddirectoryclaimprovider|')
+        $owners = $m365 -and $login.EndsWith('_o', [StringComparison]::OrdinalIgnoreCase)
+        $names = @($n)
+        if ($m365) { $names += $(if ($owners) { "$n Owners" } else { "$n Members" }) }
+        foreach ($candidate in $names) {
+            if ([string]::Equals($shown, $candidate, [StringComparison]::OrdinalIgnoreCase)) {
+                New-Object PSObject -Property @{ Login = $login; Owners = $owners; IsSiteAdmin = [bool]$u.IsSiteAdmin }
+                break
+            }
+        }
+    }
+}
+
+# Group names: which claims each name matched anywhere (to warn about typos and duplicates).
+$nameMatches = @{}
+foreach ($s in $subjects) { if ($s.Name -and -not $nameMatches.ContainsKey($s.Name)) { $nameMatches[$s.Name] = @{} } }
+
 function Test-Contains([string[]]$Logins, [string]$Login) {
     foreach ($l in $Logins) { if ([string]::Equals([string]$l, $Login, [StringComparison]::OrdinalIgnoreCase)) { return $true } }
     return $false
@@ -224,17 +265,37 @@ foreach ($site in $sites) {
             New-Object PSObject -Property @{ Title = [string]$_.Title; Users = @($_.Users); Level = ($levels -join ', ') }
         } | Where-Object { $_.Level })
 
+    # Group names are looked up in the site's user list: one more call, only when a name was given.
+    $siteUsers = $null
+    if ($nameMatches.Count) {
+        try { $siteUsers = @(Invoke-WithRetry { Get-SPOUser -Site $url -Limit All }) }
+        catch { foreach ($s in $subjects) { if ($s.Name) { Add-Unread $s.Label $site 'Site users (group name)' $_ } } }
+    }
+
     foreach ($s in $subjects) {
-        foreach ($c in $s.Claims) {
-            # Site collection administrator?
-            try {
-                $user = Invoke-WithRetry { Get-SPOUser -Site $url -LoginName $c.Login }
-                if ($user -and $user.IsSiteAdmin) { Add-Row $c.Who $site 'Full control' 'Site collection administrator' }
+        $claims = $s.Claims
+        if ($s.Name) {
+            if ($null -eq $siteUsers) { continue }
+            $claims = @(Find-GroupClaims $siteUsers $s.Name | ForEach-Object {
+                    $nameMatches[$s.Name][$_.Login.ToLowerInvariant() -replace '_o$', ''] = $true
+                    @{ Login = $_.Login; Who = $(if ($_.Owners) { "$($s.Label) (owners)" } else { $s.Label }); IsSiteAdmin = $_.IsSiteAdmin }
+                })
+        }
+        foreach ($c in $claims) {
+            # Site collection administrator? Known already for a group found by name.
+            if ($c.ContainsKey('IsSiteAdmin')) {
+                if ($c.IsSiteAdmin) { Add-Row $c.Who $site 'Full control' 'Site collection administrator' }
             }
-            catch {
-                # Not in the site's user list: not an administrator. Anything else could not be read.
-                if ([string]$_.Exception.Message -notmatch 'be found|not found|does not exist') {
-                    Add-Unread $c.Who $site 'Site collection administrators' $_
+            else {
+                try {
+                    $user = Invoke-WithRetry { Get-SPOUser -Site $url -LoginName $c.Login }
+                    if ($user -and $user.IsSiteAdmin) { Add-Row $c.Who $site 'Full control' 'Site collection administrator' }
+                }
+                catch {
+                    # Not in the site's user list: not an administrator. Anything else could not be read.
+                    if ([string]$_.Exception.Message -notmatch 'be found|not found|does not exist') {
+                        Add-Unread $c.Who $site 'Site collection administrators' $_
+                    }
                 }
             }
             # SharePoint groups it is a member of.
@@ -257,6 +318,16 @@ foreach ($site in $sites) {
     }
 }
 Write-Progress -Activity 'Access report' -Completed
+
+foreach ($name in @($nameMatches.Keys)) {
+    $found = @($nameMatches[$name].Keys)
+    if (-not $found.Count) {
+        Write-Warning "No group named '$name' was found in any site collection checked. Check the spelling, or pass the group's claim (c:0t.c|tenant|<object id>)."
+    }
+    elseif ($found.Count -gt 1) {
+        Write-Warning "'$name' matched $($found.Count) different groups ($($found -join ', ')); the report lists them all under that name. Pass the claim of the one you mean to tell them apart."
+    }
+}
 
 # ---------------------------------------------------------------------------------------
 # Files

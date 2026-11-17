@@ -121,9 +121,14 @@ format as the web part and the flow.
 Install-Module Microsoft.Online.SharePoint.PowerShell -Scope CurrentUser
 
 ./Get-AccessReport.ps1 -AdminUrl https://contoso-admin.sharepoint.com `
-    -Subject 'Ann=ann@contoso.com', 'Auditors=c:0t.c|tenant|<group object id>' `
+    -Subject 'Ann=ann@contoso.com', 'Finance Auditors', 'Marketing' `
     -SiteFilter finance -OutputPath C:\Reports
 ```
+
+A subject is a person's e-mail address, a group's **display name** (security or Microsoft 365;
+looked up in each site's own user list, so no directory access is needed), or a SharePoint
+claim such as `c:0t.c|tenant|<object id>` when a name is not unique. The script warns about
+names it never found and names that matched more than one group.
 
 For each site collection it reports where each person or group gets in as a **site collection
 administrator** or through the site's **SharePoint groups** (with their permission levels),
