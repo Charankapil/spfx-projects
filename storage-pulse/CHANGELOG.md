@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.4.0
+
+### Fixed
+- **Very large libraries no longer start over.** Until now a library was
+  the smallest piece a scan could save. When a scan paused for throttling,
+  the page was closed or the connection dropped, a library part-way
+  through was saved as unread, and **Resume scan** read it again from its
+  first file. On a library of a million files this meant the scan could
+  keep starting over and never get to the end. Now the position of every
+  ID range is saved with the scan's progress, every minute and inside the
+  library, and a resume carries on from there.
+- The automatic second try, and **Retry failed**, read only the batches
+  that failed, not the whole library again.
+
+### Added
+- **Instant estimate** on the map: figures for the ticked libraries in
+  about twenty requests each, whatever their size, without reading files.
+  Counts by age band and file type come from SharePoint search. Sizes are
+  estimated from search's size ranges and scaled to SharePoint's storage
+  figures. The largest old files come with their exact sizes. Estimated
+  libraries show on the dashboard marked *estimated from search*, with the
+  share of files search found, until they are read file by file.
+- **Biggest folders.** Libraries over 5,000 items get SharePoint's own
+  figures for their biggest folders: size, version history, file count and
+  last change, opened biggest first within a fixed request budget. Whole
+  folders with no change for the chosen period are reported as inactive,
+  exactly. The folders can be exported to CSV.
+- The libraries CSV says where each library's figures come from (read file
+  by file, measured as a whole, or a search estimate).
+
+
 ## 2.3.0
 
 ### Added

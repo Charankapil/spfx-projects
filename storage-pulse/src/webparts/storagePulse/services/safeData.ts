@@ -2,8 +2,11 @@ import {
   AGE_BUCKET_COUNT,
   IAgeHistogram,
   IFileTypeStat,
+  IFolderStat,
   ILargeFile,
+  ILibraryReadState,
   ILibraryResult,
+  ISearchEstimate,
   IScanResult,
   IWebResult,
   MAX_AGE_MONTHS
@@ -22,6 +25,9 @@ const MAX_WEBS = 20000;
 const MAX_FILE_TYPES = 400;
 const MAX_LARGE_FILES = 200;
 const MAX_TEXT = 1000;
+const MAX_RANGES = 2000;
+const MAX_GAPS = 2000;
+const MAX_FOLDERS = 300;
 
 /**
  * Percent-encodes each segment of a server-relative path, so names with
@@ -105,6 +111,95 @@ function fileTypes(value: unknown): IFileTypeStat[] | undefined {
   return out;
 }
 
+function whole(value: unknown): number | undefined {
+  return typeof value === 'number' && isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
+}
+
+function readState(raw: ILibraryReadState | undefined): ILibraryReadState | undefined {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.ranges) || !Array.isArray(raw.gaps)) {
+    return undefined;
+  }
+  const state: ILibraryReadState = { ranges: [], seen: whole(raw.seen) || 0, gaps: [] };
+  for (const r of raw.ranges.slice(0, MAX_RANGES)) {
+    const from = whole(r && r.from);
+    const cursor = whole(r && r.cursor);
+    const to = r && r.to !== undefined ? whole(r.to) : undefined;
+    if (from === undefined || cursor === undefined || cursor < from || (r.to !== undefined && (to === undefined || to < from))) {
+      return undefined;
+    }
+    state.ranges.push(to === undefined ? { from, cursor, done: r.done === true } : { from, to, cursor, done: r.done === true });
+  }
+  for (const g of raw.gaps.slice(0, MAX_GAPS)) {
+    const from = whole(g && g.from);
+    const to = g && g.to !== undefined ? whole(g.to) : undefined;
+    if (from === undefined || (g.to !== undefined && to === undefined)) {
+      return undefined;
+    }
+    state.gaps.push(to === undefined ? { from } : { from, to });
+  }
+  return state;
+}
+
+function folders(value: unknown): IFolderStat[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const out: IFolderStat[] = [];
+  for (const raw of value.slice(0, MAX_FOLDERS)) {
+    const path = text(raw && raw.path);
+    if (!path || path.charAt(0) === '/' || path.indexOf('..') >= 0) {
+      continue;
+    }
+    const f: IFolderStat = {
+      path,
+      depth: Math.min(10, whole(raw.depth) || 1),
+      files: count(raw.files),
+      bytes: count(raw.bytes),
+      totalSize: count(raw.totalSize)
+    };
+    if (isDate(raw.lastModified)) {
+      f.lastModified = raw.lastModified;
+    }
+    if (raw.childrenUnavailable === true) {
+      f.childrenUnavailable = true;
+    }
+    out.push(f);
+  }
+  return out;
+}
+
+function estimate(raw: ISearchEstimate | undefined): ISearchEstimate | undefined {
+  if (!raw || typeof raw !== 'object' || !isDate(raw.at)) {
+    return undefined;
+  }
+  const h = histogram(raw.histogram);
+  if (!h) {
+    return undefined;
+  }
+  const largest: ILargeFile[] = [];
+  for (const f of Array.isArray(raw.largest) ? raw.largest.slice(0, MAX_LARGE_FILES) : []) {
+    const clean = largeFile(f);
+    if (clean) {
+      largest.push(clean);
+    }
+  }
+  const e: ISearchEstimate = {
+    at: raw.at,
+    files: count(raw.files),
+    bytes: count(raw.bytes),
+    histogram: h,
+    fileTypes: fileTypes(raw.fileTypes) || [],
+    largest
+  };
+  if (typeof raw.indexCoverage === 'number' && isFinite(raw.indexCoverage) && raw.indexCoverage >= 0) {
+    e.indexCoverage = raw.indexCoverage;
+  }
+  if (raw.error) {
+    e.error = text(raw.error);
+  }
+  return e;
+}
+
 function library(raw: ILibraryResult, origin: string): ILibraryResult | undefined {
   const h = raw && typeof raw === 'object' ? histogram(raw.histogram) : undefined;
   if (!h) {
@@ -155,6 +250,24 @@ function library(raw: ILibraryResult, origin: string): ILibraryResult | undefine
   }
   if (raw.unreadItems) {
     lib.unreadItems = count(raw.unreadItems);
+  }
+  const state = readState(raw.readState);
+  if (state) {
+    lib.readState = state;
+  }
+  const f = folders(raw.folders);
+  if (f) {
+    lib.folders = f;
+    if (raw.foldersNote) {
+      lib.foldersNote = text(raw.foldersNote);
+    }
+    if (isDate(raw.foldersAt)) {
+      lib.foldersAt = raw.foldersAt;
+    }
+  }
+  const e = estimate(raw.estimate);
+  if (e) {
+    lib.estimate = e;
   }
   return lib;
 }

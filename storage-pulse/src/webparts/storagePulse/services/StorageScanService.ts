@@ -5,8 +5,10 @@ import {
   IAgeHistogram,
   IFileTypeStat,
   ILargeFile,
+  ILibraryReadState,
   ILibraryResult,
   ILibraryStorageMetrics,
+  IReadRange,
   IScanProgress,
   IScanResult,
   IWebResult,
@@ -24,6 +26,8 @@ import {
   SPEED_PROFILES
 } from './RequestGovernor';
 import { encodePath } from './safeData';
+import { walkFolders } from './folderWalk';
+import { estimateFromSearch } from './searchEstimate';
 
 export { HttpError, ScanCancelledError, ScanPausedError };
 
@@ -151,6 +155,12 @@ const LARGEST_FILES_KEPT = 200;
  * result without limit; anything past this is counted as "(other)".
  */
 const MAX_FILE_TYPES_PER_LIBRARY = 300;
+/** Libraries with at least this many items (SharePoint's list view threshold) get a folder breakdown from storage metrics. */
+export const FOLDER_WALK_MIN_ITEMS = 5000;
+/** Requests the folder breakdown may use per library: a few for mid-sized libraries, more for very large ones. */
+function folderBudget(itemCount: number): number {
+  return itemCount >= 100000 ? 60 : 15;
+}
 
 type FileTypeMap = Map<string, IFileTypeStat>;
 
@@ -196,12 +206,6 @@ function toNumber(value: number | string | undefined | null): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
-/** One ID window of a library: items with from < Id <= to (to undefined = open-ended). */
-interface IIdRange {
-  from: number;
-  to?: number;
-}
-
 interface IRun {
   scope: ScanScope;
   rootUrl: string;
@@ -230,6 +234,8 @@ export class StorageScanService {
   private inProgress: ILibraryResult[] = [];
   /** Libraries that failed for a reason worth one more automatic try (server error, timeout, network). */
   private transient = new Set<ILibraryResult>();
+  /** Each library's file types by extension, kept in step with library.fileTypes so checkpoints always see them. */
+  private typeMaps = new WeakMap<ILibraryResult, FileTypeMap>();
   private onCheckpoint: ((snapshot: IScanResult) => Promise<void> | void) | undefined;
   private lastCheckpointAt = 0;
   private checkpointing = false;
@@ -581,15 +587,48 @@ export class StorageScanService {
    * libraries of any size. The last range is open-ended so files added during
    * the scan are not missed.
    */
-  private planRanges(library: ILibraryResult, maxId: number | undefined): IIdRange[] {
+  private planRanges(library: ILibraryResult, maxId: number | undefined): IReadRange[] {
     if (library.itemCount <= PARALLEL_ITEM_THRESHOLD || !maxId || maxId <= IDS_PER_RANGE) {
-      return [{ from: 0 }];
+      return [{ from: 0, cursor: 0 }];
     }
-    const ranges: IIdRange[] = [];
+    const ranges: IReadRange[] = [];
     for (let from = 0; from < maxId; from += IDS_PER_RANGE) {
-      ranges.push(from + IDS_PER_RANGE >= maxId ? { from } : { from, to: from + IDS_PER_RANGE });
+      ranges.push(from + IDS_PER_RANGE >= maxId ? { from, cursor: from } : { from, to: from + IDS_PER_RANGE, cursor: from });
     }
     return ranges;
+  }
+
+  private typesOf(library: ILibraryResult): FileTypeMap {
+    let map = this.typeMaps.get(library);
+    if (!map) {
+      map = new Map<string, IFileTypeStat>();
+      if (!library.fileTypes) {
+        library.fileTypes = [];
+      }
+      for (const stat of library.fileTypes) {
+        map.set(stat.extension, stat);
+      }
+      this.typeMaps.set(library, map);
+    }
+    return map;
+  }
+
+  /** SharePoint's figures for the biggest folders of a large library (no files are read). */
+  private async addFolders(library: ILibraryResult): Promise<void> {
+    const { folders, note } = await walkFolders(<T>(url: string) => this.getJson<T>(url), library, folderBudget(library.itemCount));
+    library.folders = folders;
+    library.foldersNote = note;
+    library.foldersAt = new Date().toISOString();
+  }
+
+  /** Turns ID windows that were skipped into ranges to read again; the rest of the library stays as read. */
+  private reopenGaps(library: ILibraryResult): void {
+    const state = library.readState as ILibraryReadState;
+    state.ranges = state.gaps.map((g) => ({ from: g.from, to: g.to, cursor: g.from }));
+    state.gaps = [];
+    delete library.error;
+    delete library.partial;
+    delete library.unreadItems;
   }
 
   /**
@@ -629,8 +668,11 @@ export class StorageScanService {
   /**
    * Reads every item in the library, keeping only each file's size and last
    * modified date. Large libraries are read by several readers in parallel,
-   * one ID range each. A batch that keeps failing is skipped and recorded;
-   * the rest of the library is still read.
+   * one ID range each. Where each range has got to is kept in
+   * library.readState, which checkpoints save: a scan that pauses or is
+   * interrupted carries on from there instead of starting the library again.
+   * A batch that keeps failing is skipped and recorded as a gap, so a retry
+   * reads only the gaps.
    */
   private async readLibrary(
     library: ILibraryResult,
@@ -640,31 +682,33 @@ export class StorageScanService {
     onProgress: (p: IScanProgress) => void
   ): Promise<void> {
     // The highest ID is only needed to split big libraries, or to skip past a bad batch.
-    let maxId: Promise<number | undefined> | undefined =
-      library.itemCount > PARALLEL_ITEM_THRESHOLD ? this.getMaxId(library) : undefined;
+    let maxId: Promise<number | undefined> | undefined;
     const lastId = (): Promise<number | undefined> => {
       if (!maxId) {
         maxId = this.getMaxId(library);
       }
       return maxId;
     };
-    const ranges = this.planRanges(library, maxId ? await maxId : undefined);
-    const types: FileTypeMap = new Map<string, IFileTypeStat>();
+    if (!library.readState) {
+      const top = library.itemCount > PARALLEL_ITEM_THRESHOLD ? await lastId() : undefined;
+      library.fileTypes = [];
+      library.readState = { ranges: this.planRanges(library, top), seen: 0, gaps: [] };
+    } else {
+      progress.itemsRead += library.readState.seen;
+    }
+    this.typesOf(library);
+    const state = library.readState;
+    const queue = state.ranges.filter((r) => !r.done);
     const errors: string[] = [];
     // Shared by all readers of this library: once one range learns a form SharePoint accepts, the others use it too.
     const paging = { level: this.pagingFloor };
-    let itemsSeen = 0;
-    let skippedBatches = 0;
     let anyTransient = false;
     let nextRange = 0;
 
     const reader = async (): Promise<void> => {
-      while (nextRange < ranges.length) {
-        const range = ranges[nextRange++];
-        // Not "itemsSeen += await ...": that reads itemsSeen before the await and loses other readers' counts.
-        const outcome = await this.readRange(library, range, lastId, paging, scanStart, types, largest, progress, onProgress);
-        itemsSeen += outcome.seen;
-        skippedBatches += outcome.skipped;
+      while (nextRange < queue.length) {
+        const range = queue[nextRange++];
+        const outcome = await this.readRange(library, range, lastId, paging, scanStart, largest, progress, onProgress);
         anyTransient = anyTransient || outcome.transient;
         outcome.errors.forEach((e) => {
           if (errors.indexOf(e) < 0) {
@@ -674,7 +718,7 @@ export class StorageScanService {
       }
     };
     const readers: Promise<void>[] = [];
-    for (let i = 0; i < Math.min(this.profile.rangeReaders, ranges.length); i++) {
+    for (let i = 0; i < Math.min(this.profile.rangeReaders, queue.length); i++) {
       readers.push(reader());
     }
     await Promise.all(readers);
@@ -687,24 +731,29 @@ export class StorageScanService {
         this.pagingFloor = Math.max(this.pagingFloor, this.highestLevelUsed);
       }
     }
+    this.finishRead(library, errors, anyTransient);
+  }
 
-    const fileTypes: IFileTypeStat[] = [];
-    types.forEach((stat) => fileTypes.push(stat));
-    fileTypes.sort((a, b) => b.bytes.reduce((x, y) => x + y, 0) - a.bytes.reduce((x, y) => x + y, 0));
-    library.fileTypes = fileTypes;
-
-    if (errors.length > 0) {
+  /** Records the outcome of reading a library: errors and gaps, hidden items, and drops the read state once nothing is left to read. */
+  private finishRead(library: ILibraryResult, errors: string[], transient: boolean): void {
+    const state = library.readState as ILibraryReadState;
+    state.ranges = state.ranges.filter((r) => !r.done);
+    (library.fileTypes || []).sort((a, b) => b.bytes.reduce((x, y) => x + y, 0) - a.bytes.reduce((x, y) => x + y, 0));
+    if (state.gaps.length > 0 || errors.length > 0) {
       library.error =
-        (skippedBatches > 0 ? `${skippedBatches} batch(es) of up to ${MIN_PAGE_SIZE} items could not be read. ` : '') +
-        errors.join(' | ');
+        (state.gaps.length > 0 ? `${state.gaps.length} batch(es) of items could not be read. ` : '') + errors.join(' | ');
       library.partial = library.files > 0;
-      if (anyTransient) {
+      if (transient) {
         this.transient.add(library);
       }
     }
+    const seen = state.seen;
+    if (state.gaps.length === 0 && state.ranges.length === 0) {
+      delete library.readState;
+    }
     // ItemCount counts every item, including ones the user cannot see. A
     // shortfall beyond normal churn during the scan is reported, not hidden.
-    const missing = library.itemCount - itemsSeen;
+    const missing = library.itemCount - seen;
     if (!library.error && missing > Math.max(10, library.itemCount * 0.001)) {
       library.unreadItems = missing;
     }
@@ -712,34 +761,35 @@ export class StorageScanService {
 
   /**
    * Pages through one ID range in ID order, using the last ID of each page as
-   * the cursor for the next (no reliance on next links). A page that fails is
-   * retried with fewer items; if even the smallest batch fails, that batch of
-   * IDs is skipped and recorded so one bad item cannot stop the library.
+   * the cursor for the next (no reliance on next links). The range's cursor
+   * moves with every page, so a checkpoint taken at any moment records
+   * exactly what has been counted. A page that fails is retried with fewer
+   * items; if even the smallest batch fails, that batch of IDs is recorded as
+   * a gap and skipped, so one bad item cannot stop the library.
    */
   private async readRange(
     library: ILibraryResult,
-    range: IIdRange,
+    range: IReadRange,
     lastId: () => Promise<number | undefined>,
     paging: { level: number },
     scanStart: Date,
-    types: FileTypeMap,
     largest: ILargeFile[],
     progress: IScanProgress,
     onProgress: (p: IScanProgress) => void
-  ): Promise<{ seen: number; skipped: number; errors: string[]; transient: boolean }> {
+  ): Promise<{ errors: string[]; transient: boolean }> {
     const histogram: IAgeHistogram = library.histogram;
+    const state = library.readState as ILibraryReadState;
+    const types = this.typesOf(library);
     const itemsUrl = `${library.webUrl}/_api/web/lists(guid'${library.id}')/items`;
     const errors: string[] = [];
-    let cursor = range.from;
     let pageSize = MAX_PAGE_SIZE;
-    let seen = 0;
     let skipped = 0;
     let successes = 0;
     let transient = false;
 
     for (;;) {
       this.throwIfCancelled();
-      const filter = `Id gt ${cursor}${range.to !== undefined ? ` and Id le ${range.to}` : ''}`;
+      const filter = `Id gt ${range.cursor}${range.to !== undefined ? ` and Id le ${range.to}` : ''}`;
       const level = paging.level;
       const url =
         `${itemsUrl}?$select=Id,FSObjType,Modified,FileRef,File/Length&$expand=File` +
@@ -773,14 +823,18 @@ export class StorageScanService {
         // Skip this batch of IDs and carry on, unless it keeps happening or there is nothing left.
         skipped++;
         const end = range.to !== undefined ? range.to : await lastId();
-        if (!retryable || skipped >= MAX_SKIPPED_BATCHES || end === undefined || cursor + MIN_PAGE_SIZE >= end) {
+        if (!retryable || skipped >= MAX_SKIPPED_BATCHES || end === undefined || range.cursor + MIN_PAGE_SIZE >= end) {
+          // The rest of the range is left unread, as one gap.
+          state.gaps.push({ from: range.cursor, to: range.to });
+          range.done = true;
           break;
         }
-        cursor += MIN_PAGE_SIZE;
+        state.gaps.push({ from: range.cursor, to: range.cursor + MIN_PAGE_SIZE });
+        range.cursor += MIN_PAGE_SIZE;
         continue;
       }
 
-      seen += items.length;
+      state.seen += items.length;
       progress.itemsRead += items.length;
       const fullPage = items.length >= pageSize;
       // One slow page should not slow the rest of the library: after a few
@@ -791,8 +845,8 @@ export class StorageScanService {
       }
       for (const item of items) {
         const id = Number(item.Id !== undefined ? item.Id : item.ID) || 0;
-        if (id > cursor) {
-          cursor = id;
+        if (id > range.cursor) {
+          range.cursor = id;
         }
         const type = item.FSObjType !== undefined ? Number(item.FSObjType) : item.FileSystemObjectType;
         // Folders have FSObjType 1; if the type is missing, a folder is the item without a File.
@@ -821,6 +875,7 @@ export class StorageScanService {
           if (!typeStat) {
             typeStat = emptyFileTypeStat(ext);
             types.set(ext, typeStat);
+            (library.fileTypes as IFileTypeStat[]).push(typeStat);
           }
         }
         const band = bandIndex(age);
@@ -846,10 +901,13 @@ export class StorageScanService {
       onProgress({ ...progress });
 
       if (!fullPage) {
+        range.done = true;
         break;
       }
+      // A library with a million files takes hours: save progress inside it, not only between libraries.
+      this.checkpoint(false);
     }
-    return { seen, skipped, errors, transient };
+    return { errors, transient };
   }
 
   /** Reads a set of libraries, `workers` at a time (the speed profile's library workers by default). */
@@ -869,8 +927,11 @@ export class StorageScanService {
         this.throwIfCancelled();
         progress.currentItem = library.url;
         onProgress({ ...progress });
-        library.metrics = await this.getStorageMetrics(library.webUrl, library.id);
-        if (this.measureAsWhole(library, library.metrics, scanStart, options.quickAfterMonths)) {
+        library.metrics = (await this.getStorageMetrics(library.webUrl, library.id)) || library.metrics;
+        if (library.itemCount >= FOLDER_WALK_MIN_ITEMS && !library.folders) {
+          await this.addFolders(library);
+        }
+        if (!library.readState && this.measureAsWhole(library, library.metrics, scanStart, options.quickAfterMonths)) {
           progress.itemsRead += library.itemCount;
           progress.filesRead += library.files;
           progress.bytesRead += library.bytes;
@@ -883,10 +944,21 @@ export class StorageScanService {
             }
             library.error = describeFailure(err);
             library.partial = library.files > 0;
-            if (!(err instanceof HttpError) || (err.status >= 500 && err.status !== 503)) {
+            const transient = !(err instanceof HttpError) || (err.status >= 500 && err.status !== 503);
+            if (transient) {
               this.transient.add(library);
             }
+            // Keep what was read: the unread ranges become gaps, so a retry carries on from there.
+            const state = library.readState;
+            if (state) {
+              state.ranges.filter((r) => !r.done).forEach((r) => state.gaps.push({ from: r.cursor, to: r.to }));
+              state.ranges = [];
+            }
           }
+        }
+        if (!library.error) {
+          // Read file by file now: the search estimate is out of date.
+          delete library.estimate;
         }
         // Done (successfully or with a recorded error): a checkpoint taken from here on counts it as read.
         delete library.pending;
@@ -927,6 +999,13 @@ export class StorageScanService {
     await this.delay(options.autoRetryDelayMs !== undefined ? options.autoRetryDelayMs : DEFAULT_AUTO_RETRY_MS);
     const roots: string[] = [];
     for (const lib of failed) {
+      this.transient.delete(lib);
+      if (lib.readState && lib.readState.gaps.length > 0) {
+        // Only the batches that failed are read again; everything else stays as read.
+        this.reopenGaps(lib);
+        continue;
+      }
+      delete lib.readState;
       roots.push(pathPrefix(lib.url));
       lib.files = 0;
       lib.bytes = 0;
@@ -936,7 +1015,6 @@ export class StorageScanService {
       delete lib.partial;
       delete lib.unreadItems;
       delete lib.measuredAsWhole;
-      this.transient.delete(lib);
     }
     // Drop what the failed attempt contributed to the largest-files list; the retry adds it again.
     for (let i = largest.length - 1; i >= 0; i--) {
@@ -976,7 +1054,8 @@ export class StorageScanService {
     const run = this.run as IRun;
     const pendingRoots: string[] = [];
     const libraries = run.libraries.map((lib) => {
-      if (!lib.pending) {
+      // A library part-way through keeps what has been read: its read state says where to carry on.
+      if (!lib.pending || lib.readState) {
         return lib;
       }
       pendingRoots.push(pathPrefix(lib.url));
@@ -989,7 +1068,8 @@ export class StorageScanService {
         error: undefined,
         partial: undefined,
         unreadItems: undefined,
-        measuredAsWhole: undefined
+        measuredAsWhole: undefined,
+        readState: undefined
       } as ILibraryResult;
     });
     const largest = run.largest
@@ -1338,10 +1418,82 @@ export class StorageScanService {
       delete lib.unreadItems;
       delete lib.measuredAsWhole;
       delete lib.scannedAt;
+      delete lib.readState;
+      delete lib.folders;
+      delete lib.foldersNote;
       lib.pending = true;
     }
     copy.largestOldFiles = copy.largestOldFiles.filter((f) => !restart.some((root) => f.serverRelativeUrl.indexOf(root) === 0));
     return this.resume(copy, options, onProgress, onCheckpoint);
+  }
+
+  /**
+   * Instant figures for the chosen libraries (keys are `webUrl|libraryId`)
+   * without reading their files: SharePoint's storage metrics, a breakdown of
+   * the biggest folders, and counts by age and type from SharePoint search.
+   * About twenty requests per library whatever its size. A library already
+   * read file by file keeps its exact figures; the estimate only shows for
+   * libraries not read yet.
+   */
+  public async estimateSelected(
+    previous: IScanResult,
+    keys: string[],
+    options: IScanOptions,
+    onProgress: (p: IScanProgress) => void
+  ): Promise<IScanResult> {
+    this.begin(options);
+    const emit = this.makeEmitter(onProgress);
+    const chosen = new Set(keys);
+    const copy = JSON.parse(JSON.stringify(previous)) as IScanResult;
+    const libraries = copy.libraries.filter((l) => chosen.has(`${l.webUrl}|${l.id}`));
+    const progress = this.newProgress(copy.rootUrl);
+    progress.phase = 'estimating';
+    progress.librariesFound = libraries.length;
+    this.governor.onChange = () => emit(progress);
+    emit(progress);
+
+    // If search rejects the lean response format (406), it is asked with SharePoint's default one from then on.
+    let lean = true;
+    const get = async <T>(url: string): Promise<T> => {
+      try {
+        return await this.getJson<T>(url, 0, lean);
+      } catch (err) {
+        if (!lean || !(err instanceof HttpError) || err.status !== 406) {
+          throw err;
+        }
+        lean = false;
+        return this.getJson<T>(url, 0, false);
+      }
+    };
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < libraries.length) {
+        const lib = libraries[next++];
+        this.throwIfCancelled();
+        progress.currentItem = lib.url;
+        emit(progress);
+        lib.metrics = (await this.getStorageMetrics(lib.webUrl, lib.id)) || lib.metrics;
+        if (lib.itemCount >= FOLDER_WALK_MIN_ITEMS) {
+          await this.addFolders(lib);
+        }
+        lib.estimate = await estimateFromSearch(get, lib, new Date());
+        if (lib.estimate.error) {
+          console.warn(`[Storage Pulse] No search estimate for "${lib.title}": ${lib.estimate.error}`);
+        }
+        progress.librariesDone++;
+        progress.filesRead += lib.estimate.files;
+        progress.bytesRead += lib.estimate.bytes;
+        emit(progress);
+      }
+    };
+    const pool: Promise<void>[] = [];
+    for (let i = 0; i < Math.min(this.profile.libraryWorkers, libraries.length); i++) {
+      pool.push(worker());
+    }
+    await Promise.all(pool);
+    progress.phase = 'completed';
+    emit(progress);
+    return { ...copy, scannedBy: this.context.pageContext.user.displayName };
   }
 
   /** How many libraries needed a more conservative query form, for the dashboard note. */
@@ -1376,7 +1528,17 @@ export class StorageScanService {
     // Failed libraries start again from scratch.
     const failedKeys = new Set(previous.libraries.filter((l) => l.error).map((l) => `${l.webUrl}|${l.id}`));
     const kept = previous.libraries.filter((l) => !failedKeys.has(`${l.webUrl}|${l.id}`));
+    const gapRoots: string[] = [];
     for (const lib of previous.libraries.filter((l) => failedKeys.has(`${l.webUrl}|${l.id}`))) {
+      if (lib.readState && lib.readState.gaps.length > 0) {
+        // Read only the batches that failed; the rest of the library stays as read.
+        const copy = JSON.parse(JSON.stringify(lib)) as ILibraryResult;
+        this.reopenGaps(copy);
+        gapRoots.push(pathPrefix(lib.url));
+        toRead.push(copy);
+        progress.itemsExpected += lib.itemCount;
+        continue;
+      }
       toRead.push({
         id: lib.id,
         title: lib.title,
@@ -1430,7 +1592,7 @@ export class StorageScanService {
     progress.librariesFound = toRead.length;
 
     progress.phase = 'reading-files';
-    const retriedRoots = toRead.map((l) => pathPrefix(l.url));
+    const retriedRoots = toRead.map((l) => pathPrefix(l.url)).filter((root) => gapRoots.indexOf(root) < 0);
     const largest = previous.largestOldFiles.filter((f) => !retriedRoots.some((root) => f.serverRelativeUrl.indexOf(root) === 0));
     await this.readLibraries(toRead, quick, scanStart, largest, progress, emit);
     await this.autoRetryTransient(toRead, quick, scanStart, largest, progress, emit);

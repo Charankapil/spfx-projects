@@ -1,7 +1,9 @@
-import { IScanResult } from '../models/IScanResult';
+import { ILibraryResult, IScanResult } from '../models/IScanResult';
 import { describeAge, thresholdLabel } from '../components/text';
 import { AGE_BANDS, bandTotals, newestFileAge, splitByThreshold, splitFileType } from './activity';
-import { serverRelativeHref } from './safeData';
+import { folderRows } from './folders';
+import { forDisplay } from './siteMap';
+import { encodePath, safeHref, serverRelativeHref } from './safeData';
 
 function csvEscape(value: string): string {
   // Titles and file names come from the site, so a leading = + - @ must not run as a formula in Excel.
@@ -50,10 +52,14 @@ export function exportLibrariesCsv(result: IScanResult, thresholdMonths: number)
     'Measured as a whole (quick scan)',
     'Last change in library',
     ...AGE_BANDS.map((b) => `Size ${b.label} (bytes)`),
+    'Figures from',
     'Error'
   ];
   const lines: string[][] = [header];
-  for (const lib of result.libraries) {
+  // Libraries not read yet but estimated from search are exported with the estimate.
+  const shown = new Map(forDisplay(result).libraries.map((l) => [`${l.webUrl}|${l.id}`, l] as [string, ILibraryResult]));
+  for (const original of result.libraries) {
+    const lib = shown.get(`${original.webUrl}|${original.id}`) || original;
     const split = splitByThreshold(lib.histogram, thresholdMonths);
     const newest = newestFileAge(lib.histogram);
     lines.push([
@@ -73,6 +79,13 @@ export function exportLibrariesCsv(result: IScanResult, thresholdMonths: number)
       lib.measuredAsWhole ? 'Yes' : 'No',
       lib.measuredAsWhole ? lib.measuredAsWhole.lastChange : lib.metrics && lib.metrics.lastModified ? lib.metrics.lastModified : '',
       ...AGE_BANDS.map((b) => String(bandTotals(lib.histogram, b).bytes)),
+      lib.fromEstimate
+        ? 'SharePoint search (estimate)'
+        : lib.unscanned
+        ? 'Not read yet'
+        : lib.measuredAsWhole
+        ? 'Storage metrics (library measured as a whole)'
+        : 'Read file by file',
       lib.unscanned
         ? 'Not scanned yet'
         : lib.error
@@ -84,7 +97,7 @@ export function exportLibrariesCsv(result: IScanResult, thresholdMonths: number)
   }
   for (const web of result.webs) {
     if (web.error) {
-      lines.push([web.title, web.url, '', '', '', '', '', '', '', '', '', '', '', '', '', ...AGE_BANDS.map(() => ''), web.error]);
+      lines.push([web.title, web.url, '', '', '', '', '', '', '', '', '', '', '', '', '', ...AGE_BANDS.map(() => ''), '', web.error]);
     }
   }
   download(lines, `storage-pulse-libraries-${stamp(result)}.csv`);
@@ -141,4 +154,41 @@ export function exportFileTypesCsv(result: IScanResult, thresholdMonths: number)
     }
   }
   download(lines, `storage-pulse-file-types-${stamp(result)}.csv`);
+}
+
+/** The folder breakdowns of large libraries, from SharePoint's storage metrics. */
+export function exportFoldersCsv(result: IScanResult, thresholdMonths: number): void {
+  const label = thresholdLabel(thresholdMonths);
+  const origin = new URL(result.rootUrl).origin;
+  const lines: string[][] = [
+    [
+      'Site',
+      'Library',
+      'Folder',
+      'Depth',
+      'Files',
+      'Size of current files (bytes)',
+      'Version history (bytes)',
+      'Size incl. version history (bytes)',
+      'Last change in folder',
+      `No change for ${label}+`,
+      'URL'
+    ]
+  ];
+  for (const row of folderRows(result, thresholdMonths)) {
+    lines.push([
+      row.webTitle,
+      row.libraryTitle,
+      row.path,
+      String(row.depth),
+      String(row.files),
+      String(row.bytes),
+      String(row.versionBytes),
+      String(row.totalSize),
+      row.lastModified || '',
+      row.inactive ? 'Yes' : 'No',
+      safeHref(`${row.libraryUrl}/${encodePath(row.path)}`, origin) || ''
+    ]);
+  }
+  download(lines, `storage-pulse-folders-${stamp(result)}.csv`);
 }

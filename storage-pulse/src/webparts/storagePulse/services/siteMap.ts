@@ -1,4 +1,4 @@
-import { ILibraryResult, IScanResult, IWebResult } from '../models/IScanResult';
+import { ILargeFile, ILibraryResult, IScanResult, IWebResult } from '../models/IScanResult';
 
 /** Libraries at or above either figure are flagged as large on the map. */
 export const LARGE_LIBRARY_FILES = 250000;
@@ -47,6 +47,58 @@ export function coverage(result: IScanResult): ICoverage {
 
 export function isPartialCoverage(result: IScanResult): boolean {
   return result.libraries.some((l) => l.unscanned);
+}
+
+/** A search estimate the dashboard can show: present, without an error, and for a library not read file by file yet. */
+export function hasUsableEstimate(lib: ILibraryResult): boolean {
+  return !!lib.unscanned && !!lib.estimate && !lib.estimate.error && lib.estimate.files > 0;
+}
+
+export function estimatedCount(result: IScanResult): number {
+  return result.libraries.filter(hasUsableEstimate).length;
+}
+
+const LARGEST_SHOWN = 200;
+
+/**
+ * What the dashboard shows: libraries read file by file, plus libraries not
+ * read yet that have a search estimate (flagged fromEstimate). Libraries with
+ * neither are left out, and so is the site storage breakdown, which only adds
+ * up once every library is covered.
+ */
+export function forDisplay(result: IScanResult): IScanResult {
+  if (!isPartialCoverage(result)) {
+    return result;
+  }
+  const libraries: ILibraryResult[] = [];
+  let largest: ILargeFile[] = result.largestOldFiles.slice();
+  let uncovered = false;
+  for (const lib of result.libraries) {
+    if (!lib.unscanned) {
+      libraries.push(lib);
+    } else if (hasUsableEstimate(lib) && lib.estimate) {
+      const e = lib.estimate;
+      libraries.push({
+        ...lib,
+        files: e.files,
+        bytes: e.bytes,
+        histogram: e.histogram,
+        fileTypes: e.fileTypes,
+        unscanned: undefined,
+        fromEstimate: true
+      });
+      largest = largest.concat(e.largest);
+    } else {
+      uncovered = true;
+    }
+  }
+  largest.sort((a, b) => b.bytes - a.bytes);
+  return {
+    ...result,
+    libraries,
+    largestOldFiles: largest.slice(0, LARGEST_SHOWN),
+    siteStorageBytes: uncovered ? undefined : result.siteStorageBytes
+  };
 }
 
 export interface IMapWeb {

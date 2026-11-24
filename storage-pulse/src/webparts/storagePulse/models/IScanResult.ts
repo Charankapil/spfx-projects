@@ -43,6 +43,70 @@ export interface IFileTypeStat {
   bytes: number[];
 }
 
+/**
+ * One ID window of a large library and how far reading it has got. Saved in
+ * checkpoints, so a paused or interrupted scan carries on from `cursor`
+ * instead of reading the library again from the start.
+ */
+export interface IReadRange {
+  /** Items with from < Id <= to; `to` undefined = open-ended (the last range). */
+  from: number;
+  to?: number;
+  /** Highest ID read so far in this range (starts at `from`). */
+  cursor: number;
+  done?: boolean;
+}
+
+/** How far a large library has been read; present only while it is unfinished, or when ID windows were left unread. */
+export interface ILibraryReadState {
+  ranges: IReadRange[];
+  /** Items (files and folders) seen so far, for the hidden-items check at the end. */
+  seen: number;
+  /** ID windows that kept failing and were skipped; a retry reads only these. */
+  gaps: { from: number; to?: number }[];
+}
+
+/**
+ * SharePoint's storage metrics for one folder of a large library (its whole
+ * subtree): exact sizes and counts without reading a single file.
+ */
+export interface IFolderStat {
+  /** Path inside the library, e.g. "Projects/2019". */
+  path: string;
+  /** 1 = directly in the library. */
+  depth: number;
+  files: number;
+  /** Current versions only. */
+  bytes: number;
+  /** Including version history. */
+  totalSize: number;
+  /** Most recent change anywhere in the folder (ISO). */
+  lastModified?: string;
+  /** Its subfolders could not be listed (for example SharePoint's list view threshold). */
+  childrenUnavailable?: boolean;
+}
+
+/**
+ * Instant figures for a library from SharePoint search: file counts per age
+ * band and file type are search's own counts; bytes are estimated from
+ * search's size ranges and scaled to SharePoint's storage metrics.
+ */
+export interface ISearchEstimate {
+  at: string;
+  /** Files search found (current versions, security trimmed). */
+  files: number;
+  bytes: number;
+  /** Counts and bytes per age band, stored at each band's first month so every threshold split is exact. */
+  histogram: IAgeHistogram;
+  fileTypes: IFileTypeStat[];
+  /** Largest files at least MIN_THRESHOLD_MONTHS old, exact sizes from search. */
+  largest: ILargeFile[];
+  /** Files search found divided by SharePoint's file count; below 1 means some files are not in the search index. */
+  indexCoverage?: number;
+  /** Set when search could not give figures for this library. */
+  error?: string;
+}
+
 export interface ILibraryResult {
   id: string;
   title: string;
@@ -88,6 +152,18 @@ export interface ILibraryResult {
   unscanned?: boolean;
   /** When this library was last read (ISO). Missing on scans saved before v2.3. */
   scannedAt?: string;
+  /** Large libraries: reading progress while unfinished, and ID windows left unread (v2.4). */
+  readState?: ILibraryReadState;
+  /** Large libraries: the biggest folders with SharePoint's own figures (v2.4). */
+  folders?: IFolderStat[];
+  /** Why the folder breakdown is missing or incomplete. */
+  foldersNote?: string;
+  /** When the folder figures were taken (ISO). */
+  foldersAt?: string;
+  /** Instant figures from SharePoint search (v2.4), shown until the library has been read file by file. */
+  estimate?: ISearchEstimate;
+  /** Display only, never saved: the dashboard is showing `estimate` for this library. */
+  fromEstimate?: boolean;
 }
 
 export interface IWebResult {
@@ -144,7 +220,7 @@ export interface IScanResult {
 }
 
 export interface IScanProgress {
-  phase: 'idle' | 'starting' | 'discovering' | 'reading-files' | 'completed';
+  phase: 'idle' | 'starting' | 'discovering' | 'reading-files' | 'estimating' | 'completed';
   currentItem: string;
   websFound: number;
   librariesFound: number;

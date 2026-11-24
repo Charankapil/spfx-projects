@@ -39,7 +39,8 @@ function makeItems(count, seed, opts, now) {
     const size = Math.floor(opts.size(hash(id * 13 + seed)));
     const ext = opts.ext[id % opts.ext.length];
     const name = ext ? `${opts.prefix}-${id}.${ext}` : `${opts.prefix}-${id}`;
-    items.push({ id, folder: false, modified: monthsBefore(now, age, Math.floor(hash(id * 7 + seed) * 20)).toISOString(), size, name });
+    const dir = opts.dir ? opts.dir(id) : '';
+    items.push({ id, folder: false, modified: monthsBefore(now, age, Math.floor(hash(id * 7 + seed) * 20)).toISOString(), size, name, dir });
   }
   return items;
 }
@@ -62,6 +63,15 @@ function makeItems(count, seed, opts, now) {
  *   latencyMs       simulated time per request
  *   savedFiles      initial Site Assets files { path: text }
  *   owner           whether the current user manages the web
+ *   noFolderExpand  folder collections answer 400 to $expand=StorageMetrics (each folder is asked separately)
+ *   folderListLimit folders with more direct children than this answer 500 (list view threshold) when listed
+ *   searchShape     'verbose': search answers in the odata=verbose shape (d.query, results arrays)
+ *   searchOff       library ids search finds nothing in (excluded from search)
+ *   searchIndexed   share of files in the search index (default 1)
+ *   failAfter       { libraryId, requests, failures }: after this many item reads of that library succeeded, the next
+ *                   `failures` (default: all) answer 500, then it recovers
+ *   listIdUnsupported search does not match ListId: (only path: works)
+ *   notAcceptable 'search': search answers 406 to the lean Accept header
  */
 export function createMockSharePoint(options = {}) {
   const now = new Date();
@@ -77,6 +87,13 @@ export function createMockSharePoint(options = {}) {
     notAcceptable: '',
     savedFiles: {},
     owner: true,
+    noFolderExpand: false,
+    folderListLimit: Infinity,
+    searchShape: 'nometadata',
+    searchOff: [],
+    searchIndexed: 1,
+    failAfter: null,
+    listIdUnsupported: false,
     ...options
   };
   let rng = 42;
@@ -97,14 +114,15 @@ export function createMockSharePoint(options = {}) {
       modified: monthsBefore(now, age, Math.floor(hash(id * 7) * 20)).toISOString(),
       size: Math.floor(hash(id * 11) * 4 * MB),
       name: `Scan-${id}.pdf`,
+      dir: id % 5 === 0 ? `Year ${2016 + (id % 8)}` : `Year ${2016 + (id % 8)}/Box ${id % 40}`,
       hidden: id % 401 === 0 // item-level permissions hide it from this user
     };
   };
 
   const libs = {
-    docs: { id: 'aaaaaaaa-0000-0000-0000-000000000001', title: 'Documents', url: `${SITE}/Shared Documents`, items: makeItems(12400, 1, { age: oldHeavy, size: (r) => (r < 0.02 ? 200 * MB + r * 50 * 2 * GB : r * 30 * MB), prefix: 'Report', ext: ['docx', 'xlsx', 'pdf', 'pptx'] }, now) },
+    docs: { id: 'aaaaaaaa-0000-0000-0000-000000000001', title: 'Documents', url: `${SITE}/Shared Documents`, items: makeItems(12400, 1, { age: oldHeavy, size: (r) => (r < 0.02 ? 200 * MB + r * 50 * 2 * GB : r * 30 * MB), prefix: 'Report', ext: ['docx', 'xlsx', 'pdf', 'pptx'], dir: (id) => (id % 3 === 0 ? '' : `Team ${id % 4}/${id % 2 ? 'Archive' : 'Current'}`) }, now) },
     assets: { id: 'aaaaaaaa-0000-0000-0000-000000000002', title: 'Site Assets', url: `${SITE}/SiteAssets`, items: makeItems(40, 2, { age: recent, size: (r) => r * 2 * MB, prefix: 'asset', ext: ['png', 'json'] }, now), noMetrics: true },
-    audit: { id: 'aaaaaaaa-0000-0000-0000-000000000003', title: 'Audit Archive 2016', url: `${SITE}/Audit Archive 2016`, items: makeItems(6200, 3, { age: dormant, size: (r) => r * 60 * MB, prefix: 'Audit #1 100%', ext: ['pdf', 'zip'] }, now), failBigPages: true },
+    audit: { id: 'aaaaaaaa-0000-0000-0000-000000000003', title: 'Audit Archive 2016', url: `${SITE}/Audit Archive 2016`, items: makeItems(6200, 3, { age: dormant, size: (r) => r * 60 * MB, prefix: 'Audit #1 100%', ext: ['pdf', 'zip'], dir: (id) => `Box ${id % 3}` }, now), failBigPages: true },
     empty: { id: 'aaaaaaaa-0000-0000-0000-000000000004', title: 'Empty Library', url: `${SITE}/Empty Library`, items: [] },
     pages: { id: 'aaaaaaaa-0000-0000-0000-000000000005', title: 'Site Pages', url: `${SITE}/SitePages`, baseTemplate: 119, items: makeItems(30, 5, { age: recent, size: (r) => r * MB, prefix: 'Page', ext: ['aspx'] }, now) },
     hold: { id: 'aaaaaaaa-0000-0000-0000-000000000006', title: 'Preservation Hold Library', url: `${SITE}/PreservationHoldLibrary`, hidden: true, items: makeItems(300, 6, { age: oldHeavy, size: (r) => r * 20 * MB, prefix: 'Held', ext: ['docx', ''] }, now) },
@@ -222,6 +240,164 @@ export function createMockSharePoint(options = {}) {
     return undefined;
   }
 
+  /** Every file item of a library, hidden ones included (what SharePoint's own figures count). */
+  function allFiles(l) {
+    if (!l.big) return l.items.filter((i) => !i.folder);
+    if (!l.fileCache) {
+      l.fileCache = [];
+      for (let id = 1; id <= BIG; id++) {
+        const i = bigItem(id);
+        if (i && !i.folder) l.fileCache.push(i);
+      }
+    }
+    return l.fileCache;
+  }
+
+  /** Storage figures per folder path inside a library ('' = the root), and each folder's direct subfolders. */
+  function folderStats(l) {
+    if (l.folderCache) return l.folderCache;
+    const stats = new Map();
+    const get = (path) => {
+      let s = stats.get(path);
+      if (!s) {
+        s = { files: 0, bytes: 0, last: 0, children: new Set(), direct: 0 };
+        stats.set(path, s);
+      }
+      return s;
+    };
+    get('');
+    for (const f of allFiles(l)) {
+      const parts = f.dir ? f.dir.split('/') : [];
+      get(f.dir || '').direct++;
+      for (let d = 0; d <= parts.length; d++) {
+        const path = parts.slice(0, d).join('/');
+        const s = get(path);
+        s.files++;
+        s.bytes += f.size;
+        s.last = Math.max(s.last, new Date(f.modified).getTime());
+        if (d < parts.length) s.children.add(parts.slice(0, d + 1).join('/'));
+      }
+    }
+    // The library's own Forms folder, with its view pages.
+    get('').children.add('Forms');
+    const forms = get('Forms');
+    forms.files = 2;
+    forms.bytes = 4096;
+    forms.last = now.getTime();
+    l.folderCache = stats;
+    return stats;
+  }
+
+  function metricsBody(stat) {
+    return {
+      TotalSize: String(Math.round(stat.bytes * 1.6)),
+      TotalFileStreamSize: String(stat.bytes),
+      TotalFileCount: String(stat.files),
+      LastModified: new Date(stat.last || now.getTime()).toISOString()
+    };
+  }
+
+  function listFolders(lib, path, q) {
+    const stats = folderStats(lib);
+    const rel = path === lib.url ? '' : path.substring(lib.url.length + 1);
+    const here = stats.get(rel);
+    if (!here) return resp(404, 'no folder');
+    if (here.children.size + here.direct > opts.folderListLimit) {
+      return resp(500, { 'odata.error': { message: { value: 'The attempted operation is prohibited because it exceeds the list view threshold.' } } });
+    }
+    const expand = (q.get('$expand') || '').indexOf('StorageMetrics') >= 0;
+    if (expand && opts.noFolderExpand) return resp(400, { 'odata.error': { message: { value: 'The expression "StorageMetrics" is not valid.' } } });
+    const value = [];
+    for (const child of here.children) {
+      const s = stats.get(child);
+      const row = {
+        Name: child.substring(child.lastIndexOf('/') + 1),
+        ServerRelativeUrl: `${lib.url}/${child}`,
+        ItemCount: s.children.size + s.direct
+      };
+      if (expand) row.StorageMetrics = metricsBody(s);
+      value.push(row);
+    }
+    return resp(200, { value });
+  }
+
+  /** Enough of SharePoint search for the estimates: ListId / path scope, LastModifiedTime and FileType restrictions, FileType and Size refiners, sorting by Size. */
+  function searchQuery(web, q) {
+    const unquote = (v) => (v || '').replace(/^'|'$/g, '').replace(/''/g, "'");
+    const kql = unquote(q.get('querytext'));
+    let lib;
+    const byId = /ListId:"?([0-9a-f-]{36})"?/i.exec(kql);
+    const byPath = /path:"([^"]+)"/i.exec(kql);
+    for (const w of Object.values(webs)) {
+      for (const l of w.libraries || []) {
+        if (byId && l.id === byId[1] && !opts.listIdUnsupported) lib = l;
+        if (byPath && `${ORIGIN}${l.url}` === byPath[1]) lib = l;
+      }
+    }
+    if (!lib && byId) return resp(200, { PrimaryQueryResult: { RelevantResults: { TotalRows: 0, Table: { Rows: [] } }, RefinementResults: null } });
+    if (!lib) return resp(400, 'unsupported query');
+    let docs = opts.searchOff.indexOf(lib.id) >= 0 ? [] : allFiles(lib).filter((f) => !f.hidden && hash(f.id * 101 + 7) < opts.searchIndexed);
+    const re = /LastModifiedTime(<=|>=|<|>)(\S+)/g;
+    const compare = { '<=': (a, b) => a <= b, '>=': (a, b) => a >= b, '<': (a, b) => a < b, '>': (a, b) => a > b };
+    let r;
+    while ((r = re.exec(kql))) {
+      const t = new Date(r[2]).getTime();
+      const op = compare[r[1]];
+      docs = docs.filter((f) => op(new Date(f.modified).getTime(), t));
+    }
+    const extOf = (f) => (f.name.indexOf('.') > 0 ? f.name.substring(f.name.lastIndexOf('.') + 1).toLowerCase() : '');
+    const typeMatch = /FileType:"?([^"\s]+)"?/.exec(kql);
+    if (typeMatch) docs = docs.filter((f) => extOf(f) === typeMatch[1]);
+
+    const refiners = [];
+    const refinerSpec = unquote(q.get('refiners'));
+    if (refinerSpec.indexOf('FileType') >= 0) {
+      const counts = new Map();
+      docs.forEach((f) => counts.set(extOf(f), (counts.get(extOf(f)) || 0) + 1));
+      refiners.push({
+        Name: 'FileType',
+        Entries: Array.from(counts.entries()).map(([ext, n]) => ({ RefinementCount: String(n), RefinementName: ext, RefinementToken: `"ǂǂ${Array.from(ext).map((c) => c.charCodeAt(0).toString(16)).join('')}"`, RefinementValue: ext }))
+      });
+    }
+    const sizeSpec = /Size\(discretize=manual\/([\d/]+)\)/.exec(refinerSpec);
+    if (sizeSpec) {
+      const bounds = sizeSpec[1].split('/').map(Number);
+      const edges = [-Infinity, ...bounds, Infinity];
+      const entries = [];
+      for (let i = 0; i < edges.length - 1; i++) {
+        const n = docs.filter((f) => f.size >= edges[i] && f.size < edges[i + 1]).length;
+        const lo = i === 0 ? 'min' : String(edges[i]);
+        const hi = i === edges.length - 2 ? 'max' : String(edges[i + 1]);
+        if (n > 0) entries.push({ RefinementCount: String(n), RefinementName: `${lo} - ${hi}`, RefinementToken: `range(${lo}, ${hi})`, RefinementValue: `${lo}-${hi}` });
+      }
+      refiners.push({ Name: 'Size', Entries: entries });
+    }
+    const rowlimit = parseInt(q.get('rowlimit') || '10', 10);
+    let rows = [];
+    if (rowlimit > 0) {
+      const sorted = docs.slice().sort((a, b) => b.size - a.size).slice(0, rowlimit);
+      rows = sorted.map((f) => ({
+        Cells: [
+          { Key: 'Path', Value: `${ORIGIN}${encodeURI(`${lib.url}/${f.dir ? f.dir + '/' : ''}${f.name}`)}` },
+          { Key: 'Size', Value: String(f.size) },
+          { Key: 'LastModifiedTime', Value: f.modified },
+          { Key: 'Filename', Value: f.name }
+        ]
+      }));
+    }
+    const primary = {
+      RelevantResults: { TotalRows: docs.length, Table: { Rows: rows } },
+      RefinementResults: refiners.length ? { Refiners: refiners } : null
+    };
+    if (opts.searchShape === 'verbose') {
+      const wrap = (a) => ({ results: a });
+      primary.RelevantResults.Table.Rows = wrap(rows.map((row) => ({ Cells: wrap(row.Cells) })));
+      if (primary.RefinementResults) primary.RefinementResults = { Refiners: wrap(refiners.map((x) => ({ ...x, Entries: wrap(x.Entries) }))) };
+      return resp(200, { d: { query: { PrimaryQueryResult: primary } } });
+    }
+    return resp(200, { PrimaryQueryResult: primary });
+  }
+
   function handle(url, method, options, sentAt) {
     log.push(`${method} ${decodeURIComponent(url)}`);
     if (method === 'GET') {
@@ -283,6 +459,13 @@ export function createMockSharePoint(options = {}) {
         return resp(429, 'slow down', { 'Retry-After': '1' });
       }
       if (lib.big && rand() < opts.throttleRate) return resp(429, 'slow down', { 'Retry-After': '0' });
+      if (opts.failAfter && opts.failAfter.libraryId === lib.id) {
+        lib.reads = (lib.reads || 0) + 1;
+        const failures = opts.failAfter.failures === undefined ? Infinity : opts.failAfter.failures;
+        if (lib.reads > opts.failAfter.requests && lib.reads <= opts.failAfter.requests + failures) {
+          return resp(500, { 'odata.error': { message: { value: 'The operation has timed out.' } } });
+        }
+      }
       if (lib.failBigPages && top > 2500) return resp(500, { 'odata.error': { message: { value: 'The operation has timed out.' } } });
       if (q.get('$expand') !== 'File') return resp(400, 'expected $expand=File');
       if (top > 5000) return resp(400, '$top above 5000');
@@ -306,7 +489,7 @@ export function createMockSharePoint(options = {}) {
           Id: i.id,
           FSObjType: i.folder ? 1 : 0,
           Modified: i.folder ? now.toISOString() : i.modified,
-          FileRef: `${lib.url}/${i.name}`,
+          FileRef: `${lib.url}/${i.dir ? i.dir + '/' : ''}${i.name}`,
           File: i.folder ? null : { Length: String(i.size) }
         }))
       };
@@ -324,19 +507,28 @@ export function createMockSharePoint(options = {}) {
     if (m) {
       const lib = web.libraries.find((l) => l.id === m[1]);
       if (lib.noMetrics) return resp(403, 'denied');
-      if (lib.big) {
-        return resp(200, { StorageMetrics: { TotalSize: String(900 * GB), TotalFileStreamSize: String(700 * GB), TotalFileCount: String(lib.itemCount), LastModified: now.toISOString() } });
+      const root = folderStats(lib).get('');
+      return resp(200, { StorageMetrics: { ...metricsBody(root), LastModified: lib.big ? now.toISOString() : lastChange(lib) } });
+    }
+    if (api === 'search/query') {
+      if (opts.notAcceptable === 'search' && options && options.headers && options.headers.Accept) return resp(406, '');
+      return searchQuery(web, q);
+    }
+    m = api.match(/^web\/lists\(guid'([^']+)'\)\/RootFolder\/Folders$/);
+    if (m) {
+      const lib = web.libraries.find((l) => l.id === m[1]);
+      return listFolders(lib, lib.url, q);
+    }
+    m = api.match(/^web\/GetFolderByServerRelativePath\(decodedurl='(.+)'\)\/(Folders|StorageMetrics)$/);
+    if (m) {
+      const path = m[1].replace(/''/g, "'");
+      const lib = web.libraries.find((l) => path === l.url || path.indexOf(l.url + '/') === 0);
+      if (!lib) return resp(404, 'no folder');
+      if (m[2] === 'StorageMetrics') {
+        const stat = folderStats(lib).get(path.substring(lib.url.length + 1));
+        return stat ? resp(200, metricsBody(stat)) : resp(404, 'no folder');
       }
-      const fileItems = lib.items.filter((i) => !i.folder);
-      const cur = fileItems.reduce((s, i) => s + (i.size || 0), 0);
-      return resp(200, {
-        StorageMetrics: {
-          TotalSize: String(Math.round(cur * 1.6)),
-          TotalFileStreamSize: String(cur),
-          TotalFileCount: String(fileItems.length),
-          LastModified: lastChange(lib)
-        }
-      });
+      return listFolders(lib, path, q);
     }
     m = api.match(/^web\/GetFileByServerRelativeUrl\('(.+)'\)\/\$value$/);
     if (m) {

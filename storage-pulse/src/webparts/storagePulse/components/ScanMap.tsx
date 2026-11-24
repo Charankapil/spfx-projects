@@ -8,6 +8,7 @@ import { formatBytes } from '../services/formatBytes';
 import {
   buildMap,
   coverage,
+  hasUsableEstimate,
   isLarge,
   libraryFiles,
   libraryKey,
@@ -23,6 +24,8 @@ export interface IScanMapProps {
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
   onScan: () => void;
+  /** Instant figures for the selected libraries from storage metrics and SharePoint search, without reading files. */
+  onEstimate: () => void;
   onRefresh: () => void;
   onClose: () => void;
   canScan: boolean;
@@ -36,9 +39,16 @@ function copy(source: Set<string>): Set<string> {
   return next;
 }
 
-function status(lib: ILibraryResult): { text: string; kind: 'todo' | 'done' | 'failed' } {
+function status(lib: ILibraryResult): { text: string; kind: 'todo' | 'done' | 'failed' | 'estimate'; title?: string } {
+  if (lib.unscanned && hasUsableEstimate(lib) && lib.estimate) {
+    return {
+      text: format(strings.MapEstimated, { date: formatDate(new Date(lib.estimate.at)) }),
+      kind: 'estimate',
+      title: strings.MapEstimatedHint
+    };
+  }
   if (lib.unscanned || lib.pending) {
-    return { text: strings.MapNotScanned, kind: 'todo' };
+    return { text: strings.MapNotScanned, kind: 'todo', title: lib.estimate && lib.estimate.error };
   }
   if (lib.error) {
     return { text: strings.MapFailed, kind: 'failed' };
@@ -54,7 +64,7 @@ function status(lib: ILibraryResult): { text: string; kind: 'todo' | 'done' | 'f
  * and file count for each, where the owner ticks what to read now. Whatever is
  * left unticked stays on the map for a later visit.
  */
-export const ScanMap: React.FC<IScanMapProps> = ({ result, selected, onChange, onScan, onRefresh, onClose, canScan }) => {
+export const ScanMap: React.FC<IScanMapProps> = ({ result, selected, onChange, onScan, onEstimate, onRefresh, onClose, canScan }) => {
   const [filter, setFilter] = useState('');
   const map = useMemo(() => buildMap(result), [result]);
   const cover = useMemo(() => coverage(result), [result]);
@@ -207,8 +217,15 @@ export const ScanMap: React.FC<IScanMapProps> = ({ result, selected, onChange, o
                         {lib.title}{' '}
                         <span
                           className={`${styles.mapBadge} ${
-                            st.kind === 'done' ? styles.mapBadgeDone : st.kind === 'failed' ? styles.mapBadgeFailed : ''
+                            st.kind === 'done'
+                              ? styles.mapBadgeDone
+                              : st.kind === 'failed'
+                              ? styles.mapBadgeFailed
+                              : st.kind === 'estimate'
+                              ? styles.mapBadgeEstimate
+                              : ''
                           }`}
+                          title={st.title}
                         >
                           {st.text}
                         </span>
@@ -244,12 +261,21 @@ export const ScanMap: React.FC<IScanMapProps> = ({ result, selected, onChange, o
               })}
         </span>
         {canScan && (
-          <PrimaryButton
-            text={format(strings.MapScanSelected, { count: totals.count })}
-            iconProps={{ iconName: 'Search' }}
-            disabled={totals.count === 0}
-            onClick={onScan}
-          />
+          <div className={styles.mapActions}>
+            <DefaultButton
+              text={strings.MapEstimate}
+              title={strings.MapEstimateHint}
+              iconProps={{ iconName: 'Lightning' }}
+              disabled={totals.count === 0}
+              onClick={onEstimate}
+            />
+            <PrimaryButton
+              text={format(strings.MapScanSelected, { count: totals.count })}
+              iconProps={{ iconName: 'Search' }}
+              disabled={totals.count === 0}
+              onClick={onScan}
+            />
+          </div>
         )}
       </div>
     </section>

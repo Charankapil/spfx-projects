@@ -50,13 +50,18 @@ export const ScanPanel: React.FC<IScanPanelProps> = ({ progress, isSaving }) => 
     step = 3;
   } else if (progress.phase === 'completed') {
     step = 2;
-  } else if (progress.phase === 'reading-files') {
+  } else if (progress.phase === 'reading-files' || progress.phase === 'estimating') {
     step = 1;
   }
 
   const reading = progress.phase === 'reading-files';
+  const estimating = progress.phase === 'estimating';
   const fraction =
-    reading && progress.itemsExpected > 0 ? Math.min(1, progress.itemsRead / progress.itemsExpected) : undefined;
+    reading && progress.itemsExpected > 0
+      ? Math.min(1, progress.itemsRead / progress.itemsExpected)
+      : estimating && progress.librariesFound > 0
+      ? progress.librariesDone / progress.librariesFound
+      : undefined;
   // Speed over the last minute, not the whole run: the first libraries are
   // mostly per-library overhead and would make the estimate far too long.
   const samples = rateSamples.current;
@@ -90,7 +95,17 @@ export const ScanPanel: React.FC<IScanPanelProps> = ({ progress, isSaving }) => 
   const secondsLeft = throttle ? Math.max(0, Math.ceil((throttle.pausedUntil - now) / 1000)) : 0;
   const throttledNow = !!throttle && secondsLeft > 0;
 
-  const stats: { label: string; value: string }[] = reading
+  const stats: { label: string; value: string }[] = estimating
+    ? [
+        {
+          label: strings.StatLibraries,
+          value: format(strings.LibrariesValue, { done: progress.librariesDone, total: progress.librariesFound })
+        },
+        { label: strings.StatFilesFound, value: formatCompact(progress.filesRead) },
+        { label: strings.StatData, value: formatBytes(progress.bytesRead) },
+        { label: strings.StatElapsed, value: formatDuration(now - startedAt.current) }
+      ]
+    : reading
     ? [
         { label: strings.StatFiles, value: formatCompact(progress.itemsRead) },
         { label: strings.StatData, value: formatBytes(progress.bytesRead) },
@@ -169,7 +184,7 @@ export const ScanPanel: React.FC<IScanPanelProps> = ({ progress, isSaving }) => 
         <div className={styles.currentItem} title={readable(progress.currentItem)}>
           {readable(progress.currentItem)}
         </div>
-        <div className={styles.scanHint}>{strings.ScanHint}</div>
+        <div className={styles.scanHint}>{estimating ? strings.EstimateHint : strings.ScanHint}</div>
         <div className={styles.srOnly} aria-live="polite">
           {announcement}
         </div>

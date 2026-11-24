@@ -263,6 +263,30 @@ test('site map: scan a few libraries now, the rest on a later visit, and the tot
   await page.close();
 });
 
+test('instant estimate: a large library is on the dashboard in seconds, from search, with its biggest folders', async () => {
+  const { page, errors } = await open({ mock: { bigItems: 60000 } });
+  await page.getByRole('button', { name: 'Choose what to scan' }).first().click();
+  await page.getByRole('heading', { name: 'Choose what to scan' }).waitFor({ timeout: 60000 });
+  await page.getByRole('checkbox', { name: 'Select Scanned Records' }).first().click({ force: true });
+  await page.getByRole('button', { name: 'Instant estimate' }).click();
+  await page.getByText(/shown from SharePoint search estimates/).first().waitFor({ timeout: 60000 });
+  await page.getByRole('heading', { name: 'Biggest folders' }).waitFor();
+  await page.getByText('Year 2016', { exact: true }).waitFor();
+  await page.getByText(/estimated from search/).first().waitFor();
+  // Nothing was read file by file.
+  assert.equal(await page.evaluate(() => window.__sp.log.filter((l) => l.indexOf('/items') >= 0).length), 0);
+  if (shots) {
+    await page.locator('section[aria-label="Biggest folders"]').screenshot({ path: path.join(shots, 'folders.png') });
+  }
+  // The map marks it as estimated, and the estimate was saved for everyone.
+  await page.getByRole('button', { name: 'Choose what to scan' }).first().click();
+  await page.getByText(/^Estimated /).first().waitFor();
+  const saved = await page.evaluate((k) => JSON.parse(window.__sp.files[k]), savedFileKey);
+  assert.ok(saved.result.libraries.some((l) => l.estimate && l.estimate.files > 0));
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 test('naming the people who may scan replaces site ownership', async () => {
   const listed = await open({ mock: { owner: false }, props: { scanPermission: 'people', scanAllowedPeople: ['ALEX@contoso.com'] } });
   await listed.page.getByRole('button', { name: 'Start scan' }).first().waitFor({ timeout: 15000 });

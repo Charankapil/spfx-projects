@@ -269,7 +269,12 @@ map instead of starting one all-or-nothing scan.
    metrics request per library. No files are read.
 2. **Select.** Tick libraries, or a whole site (it covers its subsites).
    Very large libraries (250,000+ files or 200 GB+) are flagged.
-3. **Scan selected.** Only those libraries are read and merged into the
+3. **Instant estimate** (optional). For the ticked libraries, in seconds
+   whatever their size: SharePoint's storage figures, the biggest folders,
+   and counts by age and file type from SharePoint search. No files are
+   read. The dashboard shows these libraries marked *estimated from search*
+   until they are read file by file. See *Instant estimates* below.
+4. **Scan selected.** Only those libraries are read and merged into the
    saved result. Come back later for the rest; the header shows coverage.
 
 Ages are always measured from the first scan's start, so libraries read on
@@ -285,6 +290,25 @@ avoids), so list your admins by name.
 
 ### Very large libraries (a million files and more)
 
+- **Never starts over.** Where each ID range has got to is saved with the
+  scan's progress, every minute and inside the library, not only between
+  libraries. If SharePoint keeps throttling, the page is closed or the
+  connection drops, **Resume scan** carries on from those positions. A
+  million-file library can be read over several sessions without losing
+  what was already read. (Before 2.4, a library still being read was
+  started again from its first file on resume.)
+- **Retries only what failed.** A batch that keeps failing is recorded as a
+  gap. The automatic second try and **Retry failed** read only the gaps,
+  not the whole library again.
+- **Folder breakdown.** Libraries over 5,000 items also get SharePoint's own
+  figures for their biggest folders: exact size, version history, file
+  count and the last change anywhere in each folder. Folders are opened
+  biggest first, within a fixed request budget (15 per library, 60 above
+  100,000 items). A folder SharePoint won't list (too many items) keeps its
+  own exact figures and is marked. Whole folders with no change for the
+  chosen period are reported as inactive, exactly. Works for flat
+  libraries (it says there are no folders), a few huge folders, or deep
+  trees.
 - **Paging by ID.** Each request asks for `Id gt <last ID read>`, ordered by
   ID, 5,000 at a time. If a batch still fails at 500 items (for example
   because of one damaged item), that batch is skipped and recorded, and
@@ -305,10 +329,44 @@ avoids), so list your admins by name.
     `ItemCount`, and any shortfall is reported.
 
 **How long it takes.** It's about one request per 5,000 files. A
-million-file library is about 200 requests over three parallel readers.
-Expect anywhere from several minutes to around half an hour, depending on
-tenant load and throttling. The scan panel shows items read, data read,
-speed and time left. Keep the page open until the scan finishes.
+million-file library is about 220 requests over three parallel readers.
+Expect anywhere from half an hour to a few hours, depending on tenant load
+and throttling. The scan panel shows items read, data read, speed and time
+left. Progress is saved as it goes (for owners and named people), so the
+page does not have to stay open in one go. Use **Instant estimate** for
+figures straight away.
+
+**Size with and without version history.** The map, and SharePoint's own
+storage figures, count every version of every file. A file-by-file read
+counts the current version of each file only, with version history shown
+in its own column. In a library with heavy versioning the two can differ
+many times over (for example 15 TB on the map, 2 TB of current files).
+
+### Instant estimates from SharePoint search
+
+**Instant estimate** on the map gives figures for any library in about
+twenty requests, whatever its size:
+
+- **Files by age band and by file type.** These are SharePoint search's own
+  counts: one query per age band (the bands match every *Inactive after*
+  choice, so each split is a real count, not an interpolation).
+- **Sizes.** These are estimated. Search reports how many files fall in
+  each size range; these give the shape, which is then scaled so the
+  library's average file size matches SharePoint's storage figures.
+- **Largest old files.** These come with their exact sizes.
+- **Folder breakdown.** The same as above.
+
+Limits, all shown on the dashboard:
+
+- Search only sees files that are in the search index, and only those the
+  person can open. If search finds fewer files than SharePoint counts, the
+  dashboard says what share it found.
+- A library excluded from search (library settings, *Allow items from this
+  document library to appear in search results* = No) gets no estimate.
+  Its folder breakdown is still shown.
+- New and changed files reach the index after a short delay.
+
+Reading a library file by file later replaces its estimate.
 
 ## What the numbers mean
 
@@ -381,10 +439,21 @@ npm run e2e       # browser tests of the built web part; run `gulp bundle` first
   - link and saved-file sanitising, including `javascript:` and
     other-domain URLs;
   - exact totals from a 130,000-item parallel scan;
+  - a large library paused part-way that resumes from its saved positions
+    (no range read twice) to exact totals, and a failing batch retried on
+    its own;
+  - folder breakdowns: exact per-folder figures, Forms skipped, flat
+    libraries, tenants that won't expand metrics, and folders too big to
+    list;
+  - search estimates: counts by age band and type equal to a full read,
+    bytes scaled to storage metrics, verbose answers, an index without
+    ListId, partial indexing, and libraries excluded from search;
   - hidden-item reporting, library exclusion and smaller-page retries;
   - Cancel during a 2-minute throttle wait.
 - **Browser tests** cover:
   - the owner scan and save, and "saved by" taken from SharePoint;
+  - the site map, scanning in steps, and an instant estimate with the
+    folder breakdown (no files read);
   - a tampered results file (no script links rendered) and a corrupt one
     (a warning, no crash);
   - visitor permissions, the stale-results banner and Cancel;
@@ -409,6 +478,10 @@ src/webparts/storagePulse/
     dashboard/                         Summary + gauge, age chart, file types, tables
   services/
     StorageScanService.ts              All SharePoint REST calls and the scan
+    folderWalk.ts                      Folder breakdown from storage metrics
+    searchEstimate.ts                  Instant estimates from SharePoint search
+    folders.ts                         Folder rows and inactive folders for the dashboard
+    siteMap.ts                         Map, coverage, and what the dashboard shows
     activity.ts                        Age buckets, thresholds, active / inactive maths
     safeData.ts                        Link safety and saved-file sanitising
     ResultsStore.ts                    Save / load the last scan in Site Assets

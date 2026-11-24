@@ -650,6 +650,18 @@
   border-color: transparent;
 }
 
+.mapBadgeEstimate {
+  color: var(--sp-text);
+  border-style: dashed;
+  border-color: var(--sp-accent, #0078d4);
+}
+
+.mapActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .mapFooter {
   display: flex;
   flex-wrap: wrap;

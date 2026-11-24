@@ -209,7 +209,7 @@ test('one unreadable item skips its batch, not the rest of the library', async (
   const { result } = await scan({ poisonItem: true });
   const lib = result.libraries.find((l) => l.title === 'Poisoned Library')!;
   assert.ok(lib.partial, 'library should be partly read');
-  assert.match(lib.error || '', /1 batch\(es\) of up to 500 items could not be read/);
+  assert.match(lib.error || '', /1 batch\(es\) of items could not be read/);
   // 3,000 items with a folder every 25th: 2,880 files. At most one 500-ID batch is lost.
   assert.ok(lib.files >= 2880 - 500 && lib.files < 2880, `files ${lib.files}`);
 });
@@ -260,8 +260,8 @@ test('long throttling pauses the scan with its progress saved, and it resumes to
   assert.ok(snapshot.partial!.librariesDone > 0 && snapshot.partial!.librariesDone < snapshot.partial!.librariesTotal);
   assert.ok(checkpoints.length >= 1, 'no checkpoint was handed out');
   assert.equal(snapshot.libraries.filter((l) => l.pending).length, snapshot.partial!.librariesTotal - snapshot.partial!.librariesDone);
-  // Nothing half-read leaks into the snapshot: pending libraries are empty.
-  assert.ok(snapshot.libraries.filter((l) => l.pending).every((l) => l.files === 0 && l.bytes === 0));
+  // A pending library is either empty (not started) or carries the read state that says exactly what its figures cover.
+  assert.ok(snapshot.libraries.filter((l) => l.pending).every((l) => l.readState || (l.files === 0 && l.bytes === 0)));
 
   // Saved to Site Assets and loaded back the way a later visit would: through the sanitiser.
   const restored = sanitizeResult(JSON.parse(JSON.stringify(snapshot)), 'https://contoso.sharepoint.com')!;

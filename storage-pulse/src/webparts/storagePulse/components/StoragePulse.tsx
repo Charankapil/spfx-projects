@@ -15,6 +15,7 @@ import * as strings from 'StoragePulseWebPartStrings';
 import { IStoragePulseProps } from './IStoragePulseProps';
 import styles from './StoragePulse.module.scss';
 import { Dashboard } from './dashboard/Dashboard';
+import { FolderBreakdown } from './dashboard/FolderBreakdown';
 import { formatDate, formatDuration } from './dashboard/format';
 import { ErrorBoundary } from './ErrorBoundary';
 import { PulseMark } from './PulseMark';
@@ -26,7 +27,7 @@ import { THRESHOLD_OPTIONS } from '../services/activity';
 import { exportLibrariesCsv } from '../services/ExportService';
 import { canRunScan, isAllowedPerson } from '../services/access';
 import { ResultsStore } from '../services/ResultsStore';
-import { coverage, isPartialCoverage } from '../services/siteMap';
+import { coverage, estimatedCount, forDisplay, isPartialCoverage } from '../services/siteMap';
 import { ScanCancelledError, ScanPausedError, StorageScanService } from '../services/StorageScanService';
 
 const INITIAL_PROGRESS: IScanProgress = {
@@ -57,6 +58,16 @@ function toKeys(selected: Set<string>): string[] {
   const keys: string[] = [];
   selected.forEach((k) => keys.push(k));
   return keys;
+}
+
+/** What the estimate run found, for the notice after it. */
+function estimateNotice(result: IScanResult, keys: Set<string>): string {
+  const chosen = result.libraries.filter((l) => keys.has(`${l.webUrl}|${l.id}`) && l.estimate);
+  const failed = chosen.filter((l) => l.estimate && l.estimate.error);
+  const text = format(strings.EstimateDone, { count: chosen.length - failed.length });
+  return failed.length > 0
+    ? `${text} ${format(strings.EstimateSomeFailed, { count: failed.length, error: (failed[0].estimate && failed[0].estimate.error) || '' })}`
+    : text;
 }
 
 function errorText(err: unknown): string {
@@ -172,13 +183,14 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
    * failed in the current result; then saves the result for owners.
    */
   const runScan = useCallback(
-    (kind: 'full' | 'retry' | 'resume' | 'map' | 'selected') => {
+    (kind: 'full' | 'retry' | 'resume' | 'map' | 'selected' | 'estimate') => {
       const retry = kind === 'retry';
       const map = kind === 'map';
       const service = serviceRef.current as StorageScanService;
       const store = storeRef.current as ResultsStore;
       const previous = resultRef.current;
       const unfinished = partialRef.current;
+      const chosen = selectedRef.current;
       setError(undefined);
       setNotice(undefined);
       setIsScanning(true);
@@ -211,7 +223,9 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
               : map
               ? await service.mapSite(options, previous, onProgress)
               : kind === 'selected' && previous
-              ? await service.scanSelected(previous, toKeys(selectedRef.current), options, onProgress, checkpoint)
+              ? await service.scanSelected(previous, toKeys(chosen), options, onProgress, checkpoint)
+              : kind === 'estimate' && previous
+              ? await service.estimateSelected(previous, toKeys(chosen), options, onProgress)
               : retry && previous
               ? await service.retryFailed(previous, options, onProgress)
               : await service.scan(options, onProgress, checkpoint);
@@ -244,14 +258,14 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
         }
         setResult(scanned);
         setSavedBy(undefined);
-        // Retrying and refreshing the map leave an unfinished scan alone; every other run replaces it.
-        const keepPartial = retry || map;
+        // Retrying, refreshing the map and estimating leave an unfinished scan alone; every other run replaces it.
+        const keepPartial = retry || map || kind === 'estimate';
         if (!keepPartial) {
           setPartial(undefined);
         }
         if (map) {
           setShowMap(true);
-        } else if (kind === 'selected') {
+        } else if (kind === 'selected' || kind === 'estimate') {
           setShowMap(false);
           setSelected(new Set());
         }
@@ -264,6 +278,8 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
           ? strings.MapDone
           : kind === 'selected'
           ? format(strings.ScanSelectedSaved, { done: cover.scanned, total: cover.total })
+          : kind === 'estimate'
+          ? estimateNotice(scanned, chosen)
           : undefined;
 
         if (!savesForEveryone) {
@@ -301,6 +317,7 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
   const resumeScan = useCallback(() => runScan('resume'), [runScan]);
   const refreshMap = useCallback(() => runScan('map'), [runScan]);
   const scanSelected = useCallback(() => runScan('selected'), [runScan]);
+  const estimateSelected = useCallback(() => runScan('estimate'), [runScan]);
   const openMap = useCallback(() => (resultRef.current ? setShowMap(true) : runScan('map')), [runScan]);
   const discardPartial = useCallback(() => {
     setPartial(undefined);
@@ -329,14 +346,9 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
   const failures = result ? countFailures(result) : 0;
   const cover = result ? coverage(result) : undefined;
   const partialCover = !!result && isPartialCoverage(result);
-  // Libraries still on the map are left out of the dashboard; the site storage breakdown only makes sense once all are read.
-  const view = useMemo(
-    () =>
-      result && isPartialCoverage(result)
-        ? { ...result, libraries: result.libraries.filter((l) => !l.unscanned), siteStorageBytes: undefined }
-        : result,
-    [result]
-  );
+  const estimated = result ? estimatedCount(result) : 0;
+  // Libraries still on the map are left out of the dashboard unless SharePoint search gave an estimate for them.
+  const view = useMemo(() => (result ? forDisplay(result) : undefined), [result]);
 
   const scopeShort = props.scope === 'currentWeb' ? strings.ScopeCurrentWebShort : strings.ScopeSiteCollectionShort;
   const scopePhrase = props.scope === 'currentWeb' ? strings.ScopeCurrentWebPhrase : strings.ScopeSiteCollectionPhrase;
@@ -474,13 +486,14 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
           selected={selected}
           onChange={setSelected}
           onScan={scanSelected}
+          onEstimate={estimateSelected}
           onRefresh={refreshMap}
           onClose={() => setShowMap(false)}
           canScan={canScan}
         />
       )}
 
-      {!isScanning && result && view && partialCover && cover && cover.scanned > 0 && (
+      {!isScanning && result && view && partialCover && cover && (cover.scanned > 0 || estimated > 0) && (
         <MessageBar messageBarType={MessageBarType.info}>
           {format(strings.PartialCoverage, {
             done: cover.scanned,
@@ -490,15 +503,21 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
                 ? ` (${format(strings.MapCoverageShare, { percent: `${Math.round((cover.scannedBytes / cover.totalBytes) * 100)}%` })})`
                 : ''
           })}
+          {estimated > 0 && ` ${format(strings.PartialCoverageEstimated, { count: estimated })}`}
         </MessageBar>
       )}
-      {!isScanning && result && cover && cover.scanned === 0 && !showMap && (
+      {!isScanning && result && cover && cover.scanned === 0 && estimated === 0 && !showMap && (
         <MessageBar messageBarType={MessageBarType.info}>{strings.NothingScannedYet}</MessageBar>
       )}
 
-      {!isScanning && result && view && cover && cover.scanned > 0 && (
+      {!isScanning && result && view && view.libraries.length > 0 && (
         <ErrorBoundary resetKey={view}>
-          <Dashboard result={view} thresholdMonths={threshold} />
+          <Dashboard result={view} thresholdMonths={threshold} foldersFrom={result} />
+        </ErrorBoundary>
+      )}
+      {!isScanning && result && view && view.libraries.length === 0 && result.libraries.some((l) => l.folders && l.folders.length) && (
+        <ErrorBoundary resetKey={result}>
+          <FolderBreakdown result={result} thresholdMonths={threshold} />
         </ErrorBoundary>
       )}
 
