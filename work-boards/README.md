@@ -19,8 +19,8 @@ all apply as they do to any other list.
 > **Status: Phase 1 (core).** See [the plan](docs/PLAN.md) for what comes next and
 > [the wireframes](docs/wireframes.html) for the design.
 
-> **New to Work Boards?** Read the plain-language [user guide](../user-guide.html)
-> (it also covers File Type Analyser). Inside the app, press **?** for help.
+> **New to Work Boards?** Read the plain-language [user guide](user-guide.html).
+> Inside the app, press **?** for help.
 
 ## What you can do
 

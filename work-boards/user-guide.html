@@ -1,0 +1,465 @@
+<meta charset="utf-8">
+<title>Work Boards Guide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one calm reading column with a sticky contents list on wide screens; every task is a numbered,
+   expandable card so readers go one step at a time. Colours come from the Work Boards logo (indigo to violet). */
+:root {
+  --bg: #f7f7fb;
+  --paper: #ffffff;
+  --ink: #23253a;
+  --muted: #5d6178;
+  --line: #e1e2ec;
+  --soft: #eef0fb;
+  --accent: #3a4fd3;
+  --accent-2: #6a3fd6;
+  --accent-ink: #ffffff;
+  --good: #0b8a55;
+  --warn: #b26a00;
+  --tip-bg: #eaf6ef;
+  --note-bg: #fff6e6;
+  --shadow: 0 1px 2px rgba(30, 32, 60, .06), 0 6px 20px rgba(30, 32, 60, .06);
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #14151f; --paper: #1c1e2b; --ink: #e8e9f3; --muted: #a3a7bf; --line: #30334a; --soft: #242845;
+  --accent: #8d9cff; --accent-2: #b08cff; --accent-ink: #14151f; --good: #4fd19a; --warn: #f2b45a;
+  --tip-bg: #17302a; --note-bg: #33291a; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #14151f; --paper: #1c1e2b; --ink: #e8e9f3; --muted: #a3a7bf; --line: #30334a; --soft: #242845;
+  --accent: #8d9cff; --accent-2: #b08cff; --accent-ink: #14151f; --good: #4fd19a; --warn: #f2b45a;
+  --tip-bg: #17302a; --note-bg: #33291a; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.6; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 0 80px; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(34px, 6vw, 56px); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: clamp(26px, 4vw, 34px); font-weight: 800; letter-spacing: -0.01em; }
+h3 { font-size: 21px; font-weight: 600; }
+p { margin: 0; }
+a { color: var(--accent); }
+img { max-width: 100%; height: auto; display: block; }
+kbd { font-family: var(--body); font-size: .82em; padding: 2px 7px; border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 6px; background: var(--paper); white-space: nowrap; }
+b, strong { font-weight: 700; }
+.ui { font-weight: 700; color: var(--ink); background: var(--soft); padding: 1px 7px; border-radius: 6px; white-space: nowrap; }
+
+/* Hero */
+.hero { padding-block: 56px 36px; display: grid; gap: 18px; }
+.heroTop { display: flex; align-items: center; gap: 18px; }
+.heroTop .mark, .heroTop .mark svg { width: 64px; height: 64px; }
+.eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.lede { font-size: 20px; color: var(--muted); max-width: 62ch; }
+.mark { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; flex: none; }
+.mark svg { width: 56px; height: 56px; }
+
+/* Layout with contents */
+.layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 40px; align-items: start; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); font-size: 15px; display: grid; gap: 2px; max-height: calc(100vh - 40px); overflow-y: auto; padding-bottom: 20px; }
+.toc .tocHead { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 14px 0 4px; }
+.toc a { color: var(--ink); text-decoration: none; padding: 5px 10px; border-radius: 8px; }
+.toc a:hover, .toc a:focus-visible { background: var(--soft); outline: none; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .toc { position: static; max-height: none; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 12px; } }
+
+main { display: grid; gap: 56px; min-width: 0; }
+section { display: grid; gap: 18px; scroll-margin-top: 20px; }
+.chapter { padding: 28px; border-radius: 20px; color: var(--accent-ink); background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: grid; gap: 8px; }
+.chapter p { opacity: .92; max-width: 60ch; font-size: 18px; }
+.chapter .eyebrow { color: inherit; opacity: .85; }
+
+.prose { display: grid; gap: 12px; max-width: 72ch; }
+.prose p, .prose li { color: var(--ink); }
+.muted { color: var(--muted); }
+
+/* Glossary */
+.terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.term { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: grid; gap: 4px; }
+.term b { font-size: 18px; }
+.term span { color: var(--muted); font-size: 15.5px; }
+
+/* Figures */
+figure { margin: 0; display: grid; gap: 8px; }
+.shot { border-radius: 14px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: var(--paper); position: relative; }
+figcaption { font-size: 14.5px; color: var(--muted); }
+.pin { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 15px; display: grid; place-items: center; box-shadow: 0 0 0 4px rgba(255,255,255,.85), 0 2px 8px rgba(0,0,0,.3); }
+@media (max-width: 560px) { .pin { width: 22px; height: 22px; margin: -11px 0 0 -11px; font-size: 12px; box-shadow: 0 0 0 2px rgba(255,255,255,.85); } }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.legend li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; }
+.legend .n { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 15px; display: grid; place-items: center; }
+
+/* Steps */
+.steps { list-style: none; margin: 0; padding: 0; counter-reset: s; display: grid; gap: 12px; }
+.steps > li { counter-increment: s; display: grid; grid-template-columns: 38px 1fr; gap: 14px; align-items: start; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.steps > li::before { content: counter(s); width: 38px; height: 38px; border-radius: 50%; background: var(--soft); color: var(--accent); font-weight: 800; font-family: var(--display); font-size: 18px; display: grid; place-items: center; }
+.steps > li > div { display: grid; gap: 4px; min-width: 0; }
+.steps .who { font-size: 13px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+
+/* How-to cards */
+.howtos { display: grid; gap: 10px; }
+details.how { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+details.how[open] { border-color: var(--accent); box-shadow: var(--shadow); }
+details.how summary { cursor: pointer; list-style: none; padding: 14px 18px; display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center; font-weight: 700; font-size: 18px; }
+details.how summary::-webkit-details-marker { display: none; }
+details.how summary .ico { width: 34px; height: 34px; border-radius: 10px; background: var(--soft); display: grid; place-items: center; font-size: 18px; }
+details.how summary .chev { color: var(--muted); transition: transform .15s; }
+details.how[open] summary .chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { details.how summary .chev { transition: none; } }
+details.how summary:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.howBody { padding: 0 18px 18px 64px; display: grid; gap: 12px; }
+@media (max-width: 560px) { .howBody { padding: 0 14px 16px 14px; } }
+.howBody ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+
+.tip, .note { border-radius: 12px; padding: 12px 16px; font-size: 16px; display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+.tip { background: var(--tip-bg); }
+.note { background: var(--note-bg); }
+.tip b:first-child { color: var(--good); }
+.note b:first-child { color: var(--warn); }
+
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+
+table.keys { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; font-size: 16px; }
+table.keys td { padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.keys tr:last-child td { border-bottom: 0; }
+table.keys td:first-child { white-space: nowrap; width: 1%; }
+.tableWrap { overflow-x: auto; }
+
+.faq { display: grid; gap: 10px; }
+.faq details { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+.faq summary { cursor: pointer; font-weight: 700; }
+.faq details p { margin-top: 8px; color: var(--ink); }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.fact { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: grid; gap: 2px; }
+.fact b { font-size: 17px; }
+.fact span { color: var(--muted); font-size: 15px; }
+
+footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; display: grid; gap: 6px; }
+.toTop { font-size: 14px; font-weight: 600; text-decoration: none; justify-self: start; }
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <span class="eyebrow">User guide · for everyone</span>
+  <div class="heroTop"><span class="mark" aria-hidden="true"><svg viewBox="0 0 96 96"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f4bd0"/><stop offset="1" stop-color="#6a3fd6"/></linearGradient></defs><rect width="96" height="96" rx="22" fill="url(#g1)"/><g fill="#fff"><rect x="17" y="18" width="18" height="24" rx="5"/><rect x="17" y="46" width="18" height="16" rx="5" fill-opacity=".55"/><rect x="39" y="18" width="18" height="38" rx="5"/><rect x="61" y="18" width="18" height="14" rx="5"/><rect x="61" y="36" width="18" height="22" rx="5" fill-opacity=".55"/><rect x="17" y="68" width="62" height="10" rx="5" fill-opacity=".25"/></g><rect x="17" y="68" width="40" height="10" rx="5" fill="#00c875"/></svg></span><h1>Work Boards</h1></div>
+  <p class="lede">A shared to-do list for a project or a team, with owners, status colours and dates, much like monday.com, but inside SharePoint. This guide walks you through it in short, plain steps with pictures. You don't need any technical knowledge.</p>
+  <div class="facts">
+    <div class="fact"><b>New here?</b><span>Read <a href="#wb-words">Words you'll see</a>, then <a href="#wb-around">Finding your way around</a>. Ten minutes is plenty.</span></div>
+    <div class="fact"><b>Need to do something?</b><span>Jump to <a href="#wb-tasks">Everyday tasks</a> and open the one you need.</span></div>
+    <div class="fact"><b>Inside the app</b><span>Press <kbd>?</kbd> for help, or <kbd>Ctrl</kbd> + <kbd>K</kbd> to find any board.</span></div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <span class="tocHead">Start here</span>
+    <a href="#before">Before you begin</a>
+    <span class="tocHead">Using Work Boards</span>
+    <a href="#wb">What a board looks like</a>
+    <a href="#wb-words">Words you'll see</a>
+    <a href="#wb-setup">First-time setup</a>
+    <a href="#wb-around">Finding your way around</a>
+    <a href="#wb-tasks">Everyday tasks</a>
+    <a href="#wb-views">Three ways to look at work</a>
+    <a href="#wb-people">My Work, projects and team</a>
+    <a href="#wb-keys">Keyboard shortcuts</a>
+    <a href="#wb-faq">Questions and fixes</a>
+  </nav>
+
+  <main>
+
+    <!-- ============ BEFORE YOU BEGIN ============ -->
+    <section id="before">
+      <h2>Before you begin</h2>
+      <p class="prose muted">Work Boards is added to SharePoint once, by the right people. Find your row below.</p>
+      <ol class="steps">
+        <li><div><span class="who">IT or a SharePoint admin · once</span><b>Add the app to SharePoint.</b><span class="muted">Upload the app file (<code>.sppkg</code>) to the App Catalog and click <span class="ui">Deploy</span>. There is nothing else to approve: no app registration and no extra permissions.</span></div></li>
+        <li><div><span class="who">Site owner · once per site</span><b>Add it to your site.</b><span class="muted">On your site, open the gear menu ⚙ and choose <span class="ui">Add an app</span>, then pick <b>Work Boards</b>.</span></div></li>
+        <li><div><span class="who">Site owner · once per site</span><b>Put it on a page.</b><span class="muted">Create a page, choose a <b>full-width</b> section, click <b>+</b>, add the <b>Work Boards</b> web part and click <span class="ui">Publish</span>. Add the page to the site's menu so people can find it.</span></div></li>
+        <li><div><span class="who">Everyone</span><b>Open the page and start.</b><span class="muted">The rest of this guide is about using it.</span></div></li>
+      </ol>
+      <div class="tip"><b>Good to know</b><span>Everything stays inside your SharePoint site. People only ever see what their normal SharePoint access already allows them to see.</span></div>
+    </section>
+
+    <!-- ============ WORK BOARDS ============ -->
+    <section id="wb">
+      <div class="chapter">
+        <span class="eyebrow">The big picture</span>
+        <h2>What a board looks like</h2>
+        <p>Each row is a piece of work. Each column holds one detail about it: who owns it, how it's going, and when it's due.</p>
+      </div>
+      <figure>
+        <div class="shot"><img src="docs/images/guide/table.png" alt="A Work Boards board in table view, with groups of items, owners, coloured status cells and timeline bars" width="1440" height="900" loading="lazy"></div>
+        <figcaption>A board in the table view. Each row is a piece of work; each column holds one detail about it. Sample data.</figcaption>
+      </figure>
+    </section>
+
+    <section id="wb-words">
+      <h3>Words you'll see</h3>
+      <div class="terms">
+        <div class="term"><b>Board</b><span>One project, or one team's list of work. For example <i>Website relaunch</i>.</span></div>
+        <div class="term"><b>Group</b><span>A coloured section of a board, such as <i>Planning</i>, <i>This week</i> or <i>Done</i>.</span></div>
+        <div class="term"><b>Item</b><span>One row: a task or piece of work. It can have smaller <b>subitems</b> under it.</span></div>
+        <div class="term"><b>Column</b><span>One kind of detail for every item: Owner, Status, Due date, Budget, and so on.</span></div>
+        <div class="term"><b>Status</b><span>A coloured label that shows progress: <i>Not started</i>, <i>Working on it</i>, <i>Stuck</i>, <i>Done</i>.</span></div>
+        <div class="term"><b>Update</b><span>A comment on an item. Type <b>@</b> and a name to get someone's attention.</span></div>
+        <div class="term"><b>View</b><span>A way of looking at the same board: as a table, as cards (Kanban) or on a timeline.</span></div>
+        <div class="term"><b>Private board</b><span>A board only the people added to it can see. It shows a 🔒 lock.</span></div>
+      </div>
+    </section>
+
+    <section id="wb-setup">
+      <h3>First-time setup (site owners only)</h3>
+      <div class="grid2">
+        <ol class="steps">
+          <li><div><b>Open the Work Boards page.</b><span class="muted">The first time, you'll see <b>Set up Work Boards</b>.</span></div></li>
+          <li><div><b>Click <span class="ui">Set up</span>.</b><span class="muted">It takes under a minute and creates a few hidden lists that store boards and settings.</span></div></li>
+          <li><div><b>That's it.</b><span class="muted">Everyone with access to the site can now use Work Boards. If an update ever needs your help, the same screen shows an <span class="ui">Update now</span> button.</span></div></li>
+        </ol>
+        <figure>
+          <div class="shot"><img src="docs/images/guide/setup.png" alt="The Set up Work Boards screen with a list of steps and a Set up button" width="1440" height="900" loading="lazy"></div>
+          <figcaption>Anyone who isn't a site owner sees a short message asking them to contact one.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="wb-around">
+      <h3>Finding your way around</h3>
+      <p class="prose muted">Every screen has the same frame, so once you know these five places, you can't get lost.</p>
+      <figure>
+        <div class="shot">
+          <img src="docs/images/guide/home.png" alt="The Work Boards home page with the left menu, top bar, getting-started steps and quick actions" width="1440" height="900" loading="lazy">
+          <span class="pin" style="left:14%;top:10.6%" aria-hidden="true">1</span>
+          <span class="pin" style="left:27%;top:4.6%" aria-hidden="true">2</span>
+          <span class="pin" style="left:76%;top:11.5%" aria-hidden="true">3</span>
+          <span class="pin" style="left:90.5%;top:11.5%" aria-hidden="true">4</span>
+          <span class="pin" style="left:97.6%;top:11.5%" aria-hidden="true">5</span>
+          <span class="pin" style="left:57.5%;top:18%" aria-hidden="true">6</span>
+        </div>
+        <figcaption>The Home page. The numbers match the list below.</figcaption>
+      </figure>
+      <ol class="legend">
+        <li><span class="n">1</span><span><b>The left menu.</b> At the top, pages that are about <i>you</i>: Home, My Work, My projects and My team. Each one has a one-line description. Below are all the boards. Click <b>«</b> to make the menu narrow. On a phone, tap <b>☰</b> to open it.</span></li>
+        <li><span class="n">2</span><span><b>You are here.</b> A trail like <i>Home › Marketing › Website relaunch</i>. Click any part of it to step back.</span></li>
+        <li><span class="n">3</span><span><b>Search or jump to.</b> Click it (or press <kbd>Ctrl</kbd> + <kbd>K</kbd>), type a few letters of a board or page, and press <kbd>Enter</kbd>. This is the quickest way around.</span></li>
+        <li><span class="n">4</span><span><b>New board.</b> Always in the same place, on every page.</span></li>
+        <li><span class="n">5</span><span><b>Help (?).</b> Short how-to steps and the keyboard shortcuts, without leaving the page.</span></li>
+        <li><span class="n">6</span><span><b>Getting started.</b> Three steps for your first visit. Click <b>Hide</b> when you're done. Help can bring them back.</span></li>
+      </ol>
+      <div class="grid2">
+        <figure>
+          <div class="shot"><img src="docs/images/guide/switcher.png" alt="The Search or jump to box with 'my w' typed and My Work highlighted" width="1440" height="900" loading="lazy"></div>
+          <figcaption><b>Search or jump to:</b> typing "my w" finds My Work. Use the arrow keys and <kbd>Enter</kbd>.</figcaption>
+        </figure>
+        <figure>
+          <div class="shot" style="max-width:320px"><img src="docs/images/guide/phone-menu.png" alt="Work Boards on a phone with the menu slid open" width="400" height="860" loading="lazy"></div>
+          <figcaption>On a phone the menu slides in from <b>☰</b> and closes when you pick something.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="wb-tasks">
+      <h3>Everyday tasks</h3>
+      <p class="prose muted">Open the one you need. Each is a few short steps.</p>
+      <div class="howtos">
+
+        <details class="how" open>
+          <summary><span class="ico" aria-hidden="true">＋</span><span>Create a board</span><span class="chev" aria-hidden="true">›</span></summary>
+          <div class="howBody">
+            <ol>
+              <li>Click <span class="ui">+ New board</span> at the top right.</li>
+              <li>Pick a starting point: <b>Project plan</b>, <b>Team tasks</b>, <b>Team requests</b> or <b>Blank board</b>. You can change everything later.</li>
+              <li>Type a <b>Board name</b>. The other boxes are optional.</li>
+              <li>Choose who can see it: <b>Everyone on this site</b>, or <b>Only people I choose</b> (site owners only).</li>
+              <li>Click <span class="ui">Create board</span>. Tick <b>Add a few example items</b> first if you'd like something to try things out on.</li>
+            </ol>
+            <figure><div class="shot"><img src="docs/images/guide/new-board.png" alt="The New board window with templates, board name, key, colour and privacy choices" width="1440" height="900" loading="lazy"></div></figure>
+          </div>
+        </details>
+
+        <details class="how">
+          <summary><span class="ico" aria-hidden="true">✎</span><span>Add an item and fill in its details</span><span class="chev" aria-hidden="true">›</span></summary>
+          <div class="howBody">
+            <ol>
+              <li>At the bottom of a group, click <b>+ Add item</b>, type a name and press <kbd>Enter</kbd>.</li>
+              <li><b>Assign someone:</b> click the round <b>Owner</b> cell and type a name.</li>
+              <li><b>Show progress:</b> click the <b>Status</b> cell and pick a colour, such as <i>Working on it</i>.</li>
+              <li><b>Set dates:</b> click the <b>Timeline</b> or <b>Due date</b> cell and pick days on the calendar.</li>
+              <li>Everything saves by itself. There is no Save button.</li>
+            </ol>
+            <div class="tip"><b>Tip</b><span>Break big work into steps: click <b>⋯</b> on an item and choose <b>Add subitem</b>.</span></div>
+          </div>
+        </details>
+
+        <details class="how">
+          <summary><span class="ico" aria-hidden="true">💬</span><span>Open an item, post an update, mention someone</span><span class="chev" aria-hidden="true">›</span></summary>
+          <div class="howBody">
+            <ol>
+              <li>Click the <b>speech bubble</b> at the end of an item's name. A panel opens on the right.</li>
+              <li>The top shows all of the item's details. You can change them here too.</li>
+              <li>In <b>Updates</b>, type a message. Type <b>@</b> and the start of a name to mention a colleague, then pick them from the list.</li>
+              <li>Click <span class="ui">Update</span> (or press <kbd>Ctrl</kbd> + <kbd>Enter</kbd>). Others can reply and like it.</li>
+              <li><b>Activity</b> shows the history: who changed what, from what, to what.</li>
+            </ol>
+            <figure><div class="shot"><img src="docs/images/guide/item-panel.png" alt="An open item showing its fields, subitems and an update that mentions Maya Rao" width="1440" height="900" loading="lazy"></div></figure>
+          </div>
+        </details>
+
+        <details class="how">
+          <summary><span class="ico" aria-hidden="true">📎</span><span>Add files: upload, or link a file from a library</span><span class="chev" aria-hidden="true">›</span></summary>
+          <div class="howBody">
+            <ol>
+              <li>Open the item and choose the <b>Files</b> tab.</li>
+              <li><b>To upload a copy:</b> drag files onto the dashed box, or click <b>browse</b>.</li>
+              <li><b>To link a file that already lives in SharePoint</b> (recommended, so there's only one copy): click <span class="ui">Link a file</span>.</li>
+              <li>In <b>Browse this site</b>, open a library and folder, tick the files, and click <span class="ui">Link</span>.</li>
+              <li>For a file elsewhere (another site, OneDrive or Teams), use <b>Paste a link</b>: in SharePoint, use <i>Copy link</i> on the file, then paste it here.</li>
+            </ol>
+            <figure><div class="shot"><img src="docs/images/guide/link-file.png" alt="The Link a file window browsing a Plans folder with Launch plan.docx ticked" width="1440" height="900" loading="lazy"></div></figure>
+            <div class="note"><b>Note</b><span>Linking never copies or moves the file. People open it with their own access, so they need permission to the file itself.</span></div>
+          </div>
+        </details>
+
+        <details class="how">
+          <summary><span class="ico" aria-hidden="true">↕</span><span>Move, reorder or tidy items</span><span class="chev" aria-hidden="true">›</span></summary>
+          <div class="howBody">
+            <ol>
+              <li><b>Reorder:</b> drag an item by its name and drop it where you want it.</li>
+              <li><b>Move to another group:</b> drag it there, or click <b>⋯</b> › <b>Move to group</b>.</li>
+              <li><b>Do several at once:</b> tick the boxes on the left. A bar appears at the bottom to move or delete them together.</li>
+              <li><b>Add or rename a group:</b> click <span class="ui">+ Add new group</span>, or click a group's name to rename it. Its <b>⋯</b> menu changes the colour or the order.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="how">
+          <summary><span class="ico" aria-hidden="true">▦</span><span>Add, rename or change columns</span><span class="chev" aria-hidden="true">›</span></summary>
+          <div class="howBody">
+            <ol>
+              <li>Click <b>+</b> at the right end of the column titles and pick a type: Status, People, Timeline, Date, Text, Numbers, Dropdown, Checkbox or Link.</li>
+              <li>Under <b>Project roles</b> you'll find ready-made <i>Project lead</i>, <i>Project head</i> and <i>Project sponsor</i> people columns.</li>
+              <li>Point at a column title and click its small <b>▾</b> to rename, sort, hide, move or delete it.</li>
+              <li>For Status and Dropdown columns, choose <b>Edit labels</b> to change the words and colours. Items using a renamed label update by themselves.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="how">
+          <summary><span class="ico" aria-hidden="true">🔍</span><span>Find just what you need: search, filter, sort</span><span class="chev" aria-hidden="true">›</span></summary>
+          <div class="howBody">
+            <ol>
+              <li><b>Search</b> finds items by any word in them.</li>
+              <li><b>Person</b> shows only one person's items.</li>
+              <li><b>Filter</b> narrows by status, by dropdown option, or by date (<i>Overdue</i>, <i>Due in the next 7 days</i>, <i>No date</i>).</li>
+              <li><b>Sort</b> orders by any column. <b>Hide</b> tucks away columns you don't need.</li>
+              <li><b>Clear all</b> brings everything back. Your choices are remembered on your own computer.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="how">
+          <summary><span class="ico" aria-hidden="true">⚙</span><span>Board settings: owners, project roles, privacy</span><span class="chev" aria-hidden="true">›</span></summary>
+          <div class="howBody">
+            <ol>
+              <li>On a board, click <span class="ui">Settings</span> at the top right.</li>
+              <li><b>General:</b> name, description, folder, colour and <b>board owners</b> (the people who can change columns and settings).</li>
+              <li><b>Project roles:</b> optionally pick a <b>Project head</b>, <b>Project lead</b> and <b>Project sponsor</b>. They see the board under <i>My projects</i>, and their names show under the board title.</li>
+              <li><b>Access:</b> make a board private, and choose who can see it (site owners only).</li>
+              <li><b>Archive or delete:</b> archive hides a finished board without deleting it. Delete sends it to the site's recycle bin.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="how">
+          <summary><span class="ico" aria-hidden="true">⭐</span><span>Keep favourite boards at the top, and export to Excel</span><span class="chev" aria-hidden="true">›</span></summary>
+          <div class="howBody">
+            <ol>
+              <li>Click the <b>☆ star</b> next to a board's name. It appears under <b>Favourites</b> in the left menu.</li>
+              <li>Click <span class="ui">Export</span> on a board to download it as a file that opens in Excel.</li>
+            </ol>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section id="wb-views">
+      <h3>Three ways to look at the same work</h3>
+      <p class="prose muted">Use the tabs under the board's name. They show the same items, so a change in one shows in all three.</p>
+      <div class="grid2">
+        <figure>
+          <div class="shot"><img src="docs/images/guide/kanban.png" alt="Kanban view with columns of cards for Not started, Working on it, Stuck and Done" width="1440" height="900" loading="lazy"></div>
+          <figcaption><b>Kanban:</b> a card for each item, in columns by status. Drag a card into another column to change its status.</figcaption>
+        </figure>
+        <figure>
+          <div class="shot"><img src="docs/images/guide/timeline.png" alt="Timeline view with coloured bars across weeks and a red line for today" width="1440" height="900" loading="lazy"></div>
+          <figcaption><b>Timeline:</b> a bar for each item across the calendar. Drag a bar to move it, or drag its ends to change the dates. The red line is today.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="wb-people">
+      <h3>My Work, My projects and My team</h3>
+      <p class="prose muted">Three pages in the left menu that gather things from every board for you, so you never have to hunt.</p>
+      <div class="facts">
+        <div class="fact"><b>My Work</b><span>Everything where you're the Owner, on every board, sorted into Overdue, Today, Next 7 days and Later.</span></div>
+        <div class="fact"><b>My projects</b><span>Every board where you're project head, lead, sponsor or board owner, with how far along each one is.</span></div>
+        <div class="fact"><b>My team</b><span>What the people who report to you are working on, from your organisation chart. Add anyone else under <i>Also follow</i>.</span></div>
+      </div>
+      <div class="grid2">
+        <figure>
+          <div class="shot"><img src="docs/images/guide/my-work.png" alt="My Work page listing items grouped by due date" width="1440" height="900" loading="lazy"></div>
+          <figcaption><b>My Work.</b> Click any row to open that item on its board.</figcaption>
+        </figure>
+        <figure>
+          <div class="shot"><img src="docs/images/guide/my-team.png" alt="My team page showing cards for Maya Rao and Ahmed Khan and a table of their open items" width="1440" height="900" loading="lazy"></div>
+          <figcaption><b>My team.</b> Click a person's card to see only their work. Switch on <i>Include their teams</i> for reports of reports.</figcaption>
+        </figure>
+      </div>
+      <div class="note"><b>Privacy</b><span>These pages only ever show boards you're allowed to open. A private board appears only for its members and the people in its project roles.</span></div>
+    </section>
+
+    <section id="wb-keys">
+      <h3>Keyboard shortcuts</h3>
+      <div class="tableWrap">
+        <table class="keys">
+          <tbody>
+            <tr><td><kbd>Ctrl</kbd> + <kbd>K</kbd></td><td>Search or jump to any board or page (<kbd>⌘</kbd> + <kbd>K</kbd> on a Mac)</td></tr>
+            <tr><td><kbd>?</kbd></td><td>Open help</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Save what you typed in a cell, or add the item you typed</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Cancel typing, or close a window or panel</td></tr>
+            <tr><td><kbd>Ctrl</kbd> + <kbd>Enter</kbd></td><td>Post an update</td></tr>
+            <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move through search results and @mention suggestions</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="wb-faq">
+      <h3>Questions and fixes</h3>
+      <div class="faq">
+        <details><summary>It says "Work Boards isn't set up on this site yet".</summary><p>A site owner needs to open the page once and click <b>Set up</b>. If it says an update is needed, they click <b>Update now</b>.</p></details>
+        <details><summary>I can see a board but can't change anything.</summary><p>You have read-only access to it. A note at the top of the board says so. Ask a board owner or site owner for edit access.</p></details>
+        <details><summary>I deleted something by mistake.</summary><p>Items, files and boards go to the site's <b>recycle bin</b>. A site owner can restore them from <i>Site contents › Recycle bin</i>.</p></details>
+        <details><summary>Someone else changed the same item at the same time.</summary><p>Both changes are kept, and you'll see a short message. Other people's changes appear on your screen within about 20 seconds.</p></details>
+        <details><summary>My team is empty.</summary><p>It uses the reporting lines in your organisation's directory. If those aren't filled in, add people yourself under <b>Also follow</b>.</p></details>
+        <details><summary>"Link a file" says linked files aren't turned on for this board.</summary><p>Boards made before this feature existed need a board owner to link one file. That turns it on for everyone on that board.</p></details>
+        <details><summary>Something else went wrong.</summary><p>Note the message in the red box, and the <b>version</b> shown at the bottom of the left menu, and send both to whoever looks after your SharePoint.</p></details>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <span>Work Boards 0.3. Runs inside SharePoint with your own access. No app registration, no extra permissions, no data leaves your site.</span>
+  <a class="toTop" href="#before">↑ Back to the top</a>
+</footer>
+</div>
