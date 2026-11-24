@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { PrimaryButton, MessageBar } from '@fluentui/react';
+import { PrimaryButton, MessageBar, Icon } from '@fluentui/react';
 import styles from '../WorkBoards.module.scss';
 import { useApp } from '../AppContext';
 import { IBoard } from '../../models/types';
@@ -37,7 +37,65 @@ function BoardCard(props: { board: IBoard }): JSX.Element {
   );
 }
 
-export function Home(props: { onNewBoard: () => void }): JSX.Element {
+const TOUR_KEY = 'wb.tourDismissed';
+
+function tourDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(TOUR_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Three plain steps for someone new. Dismissed per browser; Help can bring it back. */
+function GettingStarted(props: { hasBoards: boolean; onNewBoard: () => void; onSearch: () => void; onHelp: () => void; onDismiss: () => void }): JSX.Element {
+  const steps = [
+    {
+      done: props.hasBoards,
+      title: props.hasBoards ? 'Open a board' : 'Create your first board',
+      text: props.hasBoards
+        ? 'Pick a board in the left menu, or press Ctrl + K and type part of its name.'
+        : 'A board is one project or one team\'s list of work. Start from a ready-made template.',
+      action: props.hasBoards ? { label: 'Find a board', run: props.onSearch } : { label: 'Create a board', run: props.onNewBoard }
+    },
+    {
+      done: false,
+      title: 'Add work and assign people',
+      text: 'Type in "+ Add item" at the bottom of a group. Click the Owner cell to assign someone, and the Status cell to set progress.',
+      action: undefined
+    },
+    {
+      done: false,
+      title: 'Keep track without searching',
+      text: 'My Work collects everything assigned to you. Mention colleagues with @ in an item\'s updates so they see it too.',
+      action: { label: 'How it works', run: props.onHelp }
+    }
+  ];
+  return (
+    <section className={styles.tour} aria-label="Getting started">
+      <div className={styles.row}>
+        <h2 className={styles.sectionTitle} style={{ margin: 0 }}>Getting started</h2>
+        <span className={styles.muted}>Three steps. You can come back to this from Help.</span>
+        <span className={styles.spacer} />
+        <button type="button" className={styles.linkBtn} onClick={props.onDismiss}>Hide</button>
+      </div>
+      <ol className={styles.tourSteps}>
+        {steps.map((s, i) => (
+          <li key={s.title} className={`${styles.tourStep} ${s.done ? styles.tourStepDone : ''}`}>
+            <span className={styles.tourNum} aria-hidden="true">{s.done ? <Icon iconName="CheckMark" /> : i + 1}</span>
+            <div className={styles.tourBody}>
+              <strong>{s.title}</strong>
+              <span className={styles.muted}>{s.text}</span>
+              {s.action && <button type="button" className={styles.linkBtn} style={{ alignSelf: 'flex-start', padding: 0 }} onClick={s.action.run}>{s.action.label} →</button>}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+export function Home(props: { onNewBoard: () => void; onHelp: () => void; onSearch: () => void }): JSX.Element {
   const app = useApp();
   const { rows, error } = useMyWork();
   const b = rows ? bucketMyWork(rows) : null;
@@ -45,14 +103,40 @@ export function Home(props: { onNewBoard: () => void }): JSX.Element {
   const recent = app.prefs.recent.map(id => active.filter(x => x.id === id)[0]).filter(x => !!x).slice(0, 6);
   const shown = recent.length > 0 ? recent : active.slice(0, 6);
   const firstName = app.me.title.split(' ')[0];
+  const [showTour, setShowTour] = React.useState(() => !tourDismissed());
+  const hideTour = (): void => {
+    setShowTour(false);
+    try {
+      window.localStorage.setItem(TOUR_KEY, '1');
+    } catch {
+      // Hidden for this visit only.
+    }
+  };
+  const quick: { label: string; icon: string; run: () => void }[] = [
+    { label: 'New board', icon: 'Add', run: props.onNewBoard },
+    { label: 'My Work', icon: 'CheckList', run: () => app.navigate({ page: 'mywork' }) },
+    { label: 'My projects', icon: 'ProjectCollection', run: () => app.navigate({ page: 'projects' }) },
+    { label: 'My team', icon: 'People', run: () => app.navigate({ page: 'team' }) },
+    { label: 'Find a board', icon: 'Search', run: props.onSearch },
+    { label: 'Help', icon: 'Help', run: props.onHelp }
+  ];
 
   return (
     <div className={styles.page}>
       <div className={styles.row}>
         <h1 className={styles.pageTitle}>{greeting(new Date())}, {firstName}</h1>
-        <span className={styles.spacer} />
-        <PrimaryButton text="New board" iconProps={{ iconName: 'Add' }} onClick={props.onNewBoard} />
       </div>
+
+      {showTour && <GettingStarted hasBoards={active.length > 0} onNewBoard={props.onNewBoard} onSearch={props.onSearch} onHelp={props.onHelp} onDismiss={hideTour} />}
+
+      <nav className={styles.quickActions} aria-label="Quick actions">
+        {quick.map(q => (
+          <button key={q.label} type="button" className={styles.quickAction} onClick={q.run}>
+            <span className={styles.quickIcon}><Icon iconName={q.icon} /></span>
+            <span>{q.label}</span>
+          </button>
+        ))}
+      </nav>
 
       {active.length === 0 ? (
         <div className={styles.center} style={{ border: '1px dashed var(--wb-border)', borderRadius: 8 }}>

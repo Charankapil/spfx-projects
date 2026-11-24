@@ -2,6 +2,7 @@ import { keyBetween, keyForIndex, needsRebalance, rebalance, ORDER_STEP } from '
 import { toSpDate, fromSpDate, addDays, diffDays, formatDay, formatRange, relativeDay, todayIso } from '../dates';
 import { fieldXml, readItem, writeCell, cellText, itemQueryParts, xmlEscape, F, peopleIdsIn, readIds, readLinks, nameFromUrl } from '../fieldMap';
 import { teamTotals, sortTeamRows } from '../team';
+import { rankMatch, crumbsFor, PAGES } from '../navigation';
 import { diffVersions, versionField } from '../activity';
 import { parseSegments, mentionIds, mentionToken, plainText } from '../mentions';
 import { boardToCsv, csvEscape } from '../csv';
@@ -328,5 +329,26 @@ describe('team totals and links', () => {
     expect(parseRoute('#/projects')).toEqual({ page: 'projects' });
     expect(parseRoute('#/team')).toEqual({ page: 'team' });
     expect(routeToHash({ page: 'team' })).toBe('#/team');
+  });
+});
+
+describe('navigation', () => {
+  it('ranks names that start with the query first', () => {
+    expect(rankMatch('Power Platform Cleanup', 'pow')).toBe(3);
+    expect(rankMatch('Power Platform Cleanup', 'clean')).toBe(2);
+    expect(rankMatch('Power Platform Cleanup', 'latf')).toBe(1);
+    expect(rankMatch('Power Platform Cleanup', 'xyz')).toBe(0);
+    expect(rankMatch('Anything', '  ')).toBe(1);
+  });
+
+  it('builds "you are here" crumbs', () => {
+    const boards = [{ id: 3, title: 'Q4 Campaign', folder: 'Marketing' }];
+    expect(crumbsFor({ page: 'home' }, boards)).toEqual([{ label: 'Home' }]);
+    expect(crumbsFor({ page: 'mywork' }, boards).map(c => c.label)).toEqual(['Home', 'My Work']);
+    expect(crumbsFor({ page: 'board', boardId: 3 }, boards).map(c => c.label)).toEqual(['Home', 'Marketing', 'Q4 Campaign']);
+    const withItem = crumbsFor({ page: 'board', boardId: 3, view: 'kanban', itemId: 9 }, boards);
+    expect(withItem.map(c => c.label)).toEqual(['Home', 'Marketing', 'Q4 Campaign', 'Item']);
+    expect(withItem[2].route).toEqual({ page: 'board', boardId: 3, view: 'kanban' });
+    expect(PAGES.map(p => p.label)).toEqual(['Home', 'My Work', 'My projects', 'My team']);
   });
 });

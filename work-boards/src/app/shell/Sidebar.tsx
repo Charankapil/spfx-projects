@@ -5,8 +5,15 @@ import { useApp } from '../AppContext';
 import { Route } from '../router';
 import { IBoard } from '../../models/types';
 import { Logo } from '../common/Logo';
+import { PAGES } from '../../engine/navigation';
 
-export function Sidebar(props: { route: Route; version?: string; onNewBoard: () => void }): JSX.Element {
+export function Sidebar(props: {
+  route: Route; version?: string; onNewBoard: () => void;
+  /** Narrow, icons-only menu (desktop). */
+  collapsed: boolean; onToggleCollapsed: () => void;
+  /** Phones: the menu slides in over the page. */
+  open: boolean; onClose: () => void;
+}): JSX.Element {
   const app = useApp();
   const [filter, setFilter] = React.useState('');
   const [showArchived, setShowArchived] = React.useState(false);
@@ -19,9 +26,15 @@ export function Sidebar(props: { route: Route; version?: string; onNewBoard: () 
   const folders = visible.map(b => b.folder).filter((f, i, a) => f && a.indexOf(f) === i).sort();
   const loose = visible.filter(b => !b.folder);
 
+  const go = (r: Route): void => {
+    app.navigate(r);
+    props.onClose();
+  };
+
   const boardLink = (b: IBoard, indent: boolean): JSX.Element => (
-    <button key={b.id} type="button" className={`${styles.navItem} ${active(b) ? styles.navItemActive : ''}`} style={indent ? { paddingLeft: 26 } : undefined}
-      onClick={() => app.navigate({ page: 'board', boardId: b.id })} aria-current={active(b) ? 'page' : undefined}>
+    <button key={b.id} type="button" className={`${styles.navItem} ${active(b) ? styles.navItemActive : ''}`} style={indent && !props.collapsed ? { paddingLeft: 26 } : undefined}
+      title={props.collapsed ? b.title : undefined}
+      onClick={() => go({ page: 'board', boardId: b.id })} aria-current={active(b) ? 'page' : undefined}>
       <span className={styles.boardDot} style={{ background: b.color }} />
       <span className={styles.navLabel}>{b.title}</span>
       {b.privacy === 'Private' && <Icon iconName="Lock" style={{ fontSize: 11, color: 'var(--wb-subtle)' }} aria-label="Private" />}
@@ -29,23 +42,34 @@ export function Sidebar(props: { route: Route; version?: string; onNewBoard: () 
   );
 
   return (
-    <nav className={styles.sidebar} aria-label="Work Boards">
+    <>
+    {props.open && <div className={styles.backdrop} onClick={props.onClose} aria-hidden="true" />}
+    <nav className={`${styles.sidebar} ${props.collapsed ? styles.sidebarCollapsed : ''} ${props.open ? styles.sidebarOpen : ''}`} aria-label="Work Boards">
       <div className={styles.brand}>
         <Logo size={24} />
         <span className={styles.navLabel}>{app.siteTitle}</span>
+        <button type="button" className={`${styles.iconBtn} ${styles.collapseBtn}`} onClick={props.onToggleCollapsed}
+          aria-label={props.collapsed ? 'Expand menu' : 'Collapse menu'} title={props.collapsed ? 'Expand menu' : 'Collapse menu'}>
+          <Icon iconName={props.collapsed ? 'DoubleChevronRight' : 'DoubleChevronLeft'} />
+        </button>
+        <button type="button" className={`${styles.iconBtn} ${styles.closeMenuBtn}`} onClick={props.onClose} aria-label="Close menu">
+          <Icon iconName="Cancel" />
+        </button>
       </div>
-      <button type="button" className={`${styles.navItem} ${props.route.page === 'home' ? styles.navItemActive : ''}`} onClick={() => app.navigate({ page: 'home' })}>
-        <Icon iconName="Home" /> <span className={styles.navLabel}>Home</span>
-      </button>
-      <button type="button" className={`${styles.navItem} ${props.route.page === 'mywork' ? styles.navItemActive : ''}`} onClick={() => app.navigate({ page: 'mywork' })}>
-        <Icon iconName="CheckList" /> <span className={styles.navLabel}>My Work</span>
-      </button>
-      <button type="button" className={`${styles.navItem} ${props.route.page === 'projects' ? styles.navItemActive : ''}`} onClick={() => app.navigate({ page: 'projects' })}>
-        <Icon iconName="ProjectCollection" /> <span className={styles.navLabel}>My projects</span>
-      </button>
-      <button type="button" className={`${styles.navItem} ${props.route.page === 'team' ? styles.navItemActive : ''}`} onClick={() => app.navigate({ page: 'team' })}>
-        <Icon iconName="People" /> <span className={styles.navLabel}>My team</span>
-      </button>
+      <div className={styles.navSection}>For me</div>
+      {PAGES.map(p => {
+        const on = props.route.page === p.route.page;
+        return (
+          <button key={p.label} type="button" className={`${styles.navItem} ${styles.navItemTall} ${on ? styles.navItemActive : ''}`}
+            onClick={() => go(p.route)} aria-current={on ? 'page' : undefined} title={props.collapsed ? `${p.label}: ${p.hint}` : p.hint}>
+            <Icon iconName={p.icon} />
+            <span className={styles.navText}>
+              <span className={styles.navLabel}>{p.label}</span>
+              <span className={styles.navHint}>{p.hint}</span>
+            </span>
+          </button>
+        );
+      })}
 
       {favourites.length > 0 && (
         <>
@@ -55,12 +79,12 @@ export function Sidebar(props: { route: Route; version?: string; onNewBoard: () 
       )}
 
       <div className={styles.navSection}>
-        <span>{showArchived ? 'Archived boards' : 'Boards'}</span>
+        <span>{showArchived ? 'Archived boards' : `Boards (${visible.length})`}</span>
         <button type="button" className={styles.iconBtn} style={{ width: 24, height: 24 }} onClick={props.onNewBoard} aria-label="New board" title="New board">
           <Icon iconName="Add" />
         </button>
       </div>
-      {app.boards.length > 6 && (
+      {app.boards.length > 6 && !props.collapsed && (
         <SearchBox className={styles.sidebarSearch} placeholder="Find a board" value={filter} onChange={(_, v) => setFilter(v || '')} underlined />
       )}
       {folders.map(f => {
@@ -87,7 +111,8 @@ export function Sidebar(props: { route: Route; version?: string; onNewBoard: () 
           <Icon iconName="Archive" /> <span className={styles.navLabel}>{showArchived ? 'Show active boards' : 'Show archived boards'}</span>
         </button>
       )}
-      {props.version && <span className={`${styles.small} ${styles.muted}`} style={{ padding: '8px 8px 0' }}>Work Boards v{props.version}</span>}
+      {props.version && <span className={`${styles.small} ${styles.muted} ${styles.navVersion}`}>Work Boards v{props.version}</span>}
     </nav>
+    </>
   );
 }

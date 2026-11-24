@@ -2,6 +2,9 @@
 
 A collection of SharePoint Framework (SPFx) web part solutions.
 
+**New here?** Start with the [user guide](./user-guide.html): plain-language,
+step-by-step help for both web parts, with pictures.
+
 ## Projects
 
 - [`filetype-analyser`](./filetype-analyser) — Scans a SharePoint site

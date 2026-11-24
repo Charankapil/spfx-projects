@@ -19,6 +19,37 @@ import { Home } from './shell/Home';
 import { MyWork } from './shell/MyWork';
 import { MyProjects } from './shell/MyProjects';
 import { MyTeam } from './shell/MyTeam';
+import { TopBar } from './shell/TopBar';
+import { QuickSwitcher } from './shell/QuickSwitcher';
+import { HelpPanel } from './shell/HelpPanel';
+
+const COLLAPSED_KEY = 'wb.sidebarCollapsed';
+
+function readFlag(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key: string, on: boolean): void {
+  try {
+    window.localStorage.setItem(key, on ? '1' : '0');
+  } catch {
+    // Storage may be blocked; the setting then lasts for this visit only.
+  }
+}
+
+/** True when focus is in a text field, so single-key shortcuts don't fire while typing. */
+function typing(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || !el.tagName) {
+    return false;
+  }
+  const tag = el.tagName.toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+}
 import { NewBoardDialog } from './shell/NewBoardDialog';
 import { BoardPage } from './board/BoardPage';
 import { Loading } from './common/Common';
@@ -66,6 +97,26 @@ export function App(props: IAppProps): JSX.Element {
     return r.page === 'home' && props.startBoardId ? { page: 'board', boardId: props.startBoardId } : r;
   });
   const [newBoardOpen, setNewBoardOpen] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => readFlag(COLLAPSED_KEY));
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [switcherOpen, setSwitcherOpen] = React.useState(false);
+  const [helpOpen, setHelpOpen] = React.useState(false);
+  const [tourKey, setTourKey] = React.useState(0);
+
+  // Ctrl/Cmd+K: search or jump to. "?": help (not while typing).
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setSwitcherOpen(true);
+      } else if (e.key === '?' && !e.ctrlKey && !e.metaKey && !typing(e.target)) {
+        e.preventDefault();
+        setHelpOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const rootRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -175,12 +226,27 @@ export function App(props: IAppProps): JSX.Element {
   return (
     <AppContext.Provider value={ctx}>
       <div className={rootClass} ref={rootRef} style={props.themeVars as React.CSSProperties}>
-        <Sidebar route={route} version={props.version} onNewBoard={() => setNewBoardOpen(true)} />
-        {route.page === 'home' && <div className={styles.main}><Home onNewBoard={() => setNewBoardOpen(true)} /></div>}
-        {route.page === 'mywork' && <div className={styles.main}><MyWork /></div>}
-        {route.page === 'projects' && <div className={styles.main}><MyProjects /></div>}
-        {route.page === 'team' && <div className={styles.main}><MyTeam /></div>}
-        {route.page === 'board' && <BoardPage key={route.boardId} boardId={route.boardId} view={route.view} itemId={route.itemId} />}
+        <Sidebar route={route} version={props.version} onNewBoard={() => { setMenuOpen(false); setNewBoardOpen(true); }}
+          collapsed={collapsed} onToggleCollapsed={() => { setCollapsed(c => { writeFlag(COLLAPSED_KEY, !c); return !c; }); }}
+          open={menuOpen} onClose={() => setMenuOpen(false)} />
+        <div className={styles.column}>
+          <TopBar route={route} onMenu={() => setMenuOpen(true)} onSearch={() => setSwitcherOpen(true)}
+            onNewBoard={() => setNewBoardOpen(true)} onHelp={() => setHelpOpen(true)} />
+          {route.page === 'home' && <div className={styles.main}><Home key={tourKey} onNewBoard={() => setNewBoardOpen(true)} onHelp={() => setHelpOpen(true)} onSearch={() => setSwitcherOpen(true)} /></div>}
+          {route.page === 'mywork' && <div className={styles.main}><MyWork /></div>}
+          {route.page === 'projects' && <div className={styles.main}><MyProjects /></div>}
+          {route.page === 'team' && <div className={styles.main}><MyTeam /></div>}
+          {route.page === 'board' && <BoardPage key={route.boardId} boardId={route.boardId} view={route.view} itemId={route.itemId} />}
+        </div>
+        {switcherOpen && <QuickSwitcher onClose={() => setSwitcherOpen(false)} onNewBoard={() => setNewBoardOpen(true)} />}
+        {helpOpen && (
+          <HelpPanel onClose={() => setHelpOpen(false)} onTour={() => {
+            writeFlag('wb.tourDismissed', false);
+            setHelpOpen(false);
+            setTourKey(k => k + 1);
+            ctx.navigate({ page: 'home' });
+          }} />
+        )}
         {newBoardOpen && (
           <NewBoardDialog onClose={() => setNewBoardOpen(false)} onCreated={b => {
             setNewBoardOpen(false);

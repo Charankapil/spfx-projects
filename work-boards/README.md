@@ -19,8 +19,17 @@ all apply as they do to any other list.
 > **Status: Phase 1 (core).** See [the plan](docs/PLAN.md) for what comes next and
 > [the wireframes](docs/wireframes.html) for the design.
 
+> **New to Work Boards?** Read the plain-language [user guide](../user-guide.html)
+> (it also covers File Type Analyser). Inside the app, press **?** for help.
+
 ## What you can do
 
+- **Easy to find your way around.** A left menu with your own pages (Home, My
+  Work, My projects, My team, each with a one-line description) and every board;
+  a "You are here" trail above every page; **Search or jump to** (**Ctrl+K**) to
+  open any board or page by typing part of its name; **New board** and **Help**
+  always in the same place; a getting-started card and quick-action tiles on
+  Home. The menu can be narrowed, and on phones it slides in from a menu button.
 - **Boards, groups, items and subitems.** Start from a template (Project plan, Team
   tasks, Team requests or Blank), rename and colour groups, drag items to reorder
   them or move them between groups, and break items into subitems.
@@ -121,6 +130,9 @@ Read), because the Work Boards page lives there.
 Deleted items, boards and files go to the site recycle bin and can be restored.
 
 ### Upgrading from an earlier version
+
+Version 0.3 changes only the screens (navigation, search, help), so upgrading
+from 0.2 needs no update step: replace the package and reload the page.
 
 Version 0.2 adds project roles to the board registry. After you replace the
 package, the first site owner to open the Work Boards page sees **Update Work
