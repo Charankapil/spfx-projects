@@ -14,8 +14,12 @@ export interface IStoragePulseTheme {
   text?: string;
 }
 
+/** 'site': scans the site it is on. 'central': scans any site collection on the tenant, picked from an overview. */
+export type PulseMode = 'site' | 'central';
+
 export interface IStoragePulseProps {
   title: string;
+  mode?: PulseMode;
   scope: ScanScope;
   thresholdMonths: number;
   scanPermission: ScanPermission;
@@ -36,4 +40,10 @@ export interface IStoragePulseProps {
     profileOverride?: Partial<ISpeedProfile>;
   };
   context: WebPartContext;
+  /** Central mode: the site collection this view is about, when it is not the page's own. */
+  targetSite?: { url: string; title: string };
+  /** Central mode: back to the overview. */
+  onBack?: () => void;
+  /** Called after results have been saved, so the overview can refresh. */
+  onSaved?: () => void;
 }

@@ -70,6 +70,14 @@ function estimateNotice(result: IScanResult, keys: Set<string>): string {
     : text;
 }
 
+function readableUrl(url: string): string {
+  try {
+    return decodeURI(url);
+  } catch {
+    return url;
+  }
+}
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -77,11 +85,11 @@ function errorText(err: unknown): string {
 export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
   const serviceRef = useRef<StorageScanService>();
   if (!serviceRef.current) {
-    serviceRef.current = new StorageScanService(props.context);
+    serviceRef.current = new StorageScanService(props.context, props.targetSite && props.targetSite.url);
   }
   const storeRef = useRef<ResultsStore>();
   if (!storeRef.current) {
-    storeRef.current = new ResultsStore(props.context);
+    storeRef.current = new ResultsStore(props.context, props.targetSite && props.targetSite.url);
   }
 
   // People who manage the site save scans for everyone. Whether anyone else
@@ -177,7 +185,7 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
   const selectedRef = useRef<Set<string>>(selected);
   selectedRef.current = selected;
 
-  const { scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, scanSpeed, tuning } = props;
+  const { scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, scanSpeed, tuning, onSaved } = props;
   /**
    * Runs a full scan, resumes an unfinished one, or (retry) re-reads only what
    * failed in the current result; then saves the result for owners.
@@ -297,6 +305,9 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
           if (mounted.current) {
             setNotice({ type: MessageBarType.success, text: retryNotice || strings.ScanSaved });
           }
+          if (onSaved) {
+            onSaved();
+          }
         } catch (err) {
           if (mounted.current) {
             setNotice({ type: MessageBarType.warning, text: format(strings.SaveFailed, { error: errorText(err) }) });
@@ -310,7 +321,7 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
       };
       run().catch(() => undefined);
     },
-    [scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, scanSpeed, tuning, threshold, savesForEveryone]
+    [scope, includeHidden, excludeSystemLibraries, excludedLibraries, scanMode, scanSpeed, tuning, threshold, savesForEveryone, onSaved]
   );
   const startScan = useCallback(() => runScan('full'), [runScan]);
   const retryFailed = useCallback(() => runScan('retry'), [runScan]);
@@ -350,7 +361,12 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
   // Libraries still on the map are left out of the dashboard unless SharePoint search gave an estimate for them.
   const view = useMemo(() => (result ? forDisplay(result) : undefined), [result]);
 
-  const scopeShort = props.scope === 'currentWeb' ? strings.ScopeCurrentWebShort : strings.ScopeSiteCollectionShort;
+  const target = props.targetSite;
+  const scopeShort = target
+    ? strings.CentralEyebrow
+    : props.scope === 'currentWeb'
+    ? strings.ScopeCurrentWebShort
+    : strings.ScopeSiteCollectionShort;
   const scopePhrase = props.scope === 'currentWeb' ? strings.ScopeCurrentWebPhrase : strings.ScopeSiteCollectionPhrase;
 
   let lastScanLine: string | undefined;
@@ -384,7 +400,8 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
             <div className={styles.heroEyebrow}>
               {strings.DefaultTitle} · {scopeShort}
             </div>
-            <h2 className={styles.heroTitle}>{props.title || strings.DefaultTitle}</h2>
+            <h2 className={styles.heroTitle}>{target ? target.title : props.title || strings.DefaultTitle}</h2>
+            {target && <div className={styles.heroMeta}>{readableUrl(target.url)}</div>}
             <div className={styles.heroMeta}>
               {lastScanLine || (isLoadingSaved ? strings.LoadingLastScan : strings.NoScanYet)}
               {isSaving && ` · ${strings.Saving}`}
@@ -392,6 +409,9 @@ export const StoragePulse: React.FC<IStoragePulseProps> = (props) => {
           </div>
         </div>
         <Stack horizontal wrap verticalAlign="end" tokens={{ childrenGap: 8 }} className={styles.heroActions}>
+          {props.onBack && !isScanning && (
+            <DefaultButton text={strings.CentralBack} iconProps={{ iconName: 'Back' }} onClick={props.onBack} />
+          )}
           <Dropdown
             label={strings.InactiveAfterLabel}
             ariaLabel={strings.InactiveAfterAria}

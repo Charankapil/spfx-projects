@@ -288,6 +288,37 @@ the page, not SharePoint permissions, and it cannot check tenant admin
 roles (that would need a Microsoft Graph permission, which this web part
 avoids), so list your admins by name.
 
+### Central mode: every site collection from one page
+
+Set *What it scans* to **Any site collection (central overview)** and the
+web part becomes a control centre. Put it on a site only your admins can
+open.
+
+- **Scan a site collection** lists the site collections you can open, from
+  SharePoint search (OneDrive is not included). You can also paste the
+  address of a site, or of any page or library in it. Access is checked
+  before anything is scanned.
+- **Each site opens in the full view.** Scan, *Choose what to scan*,
+  *Instant estimate*, *Resume scan* and *Retry failed* all work exactly as
+  on the site itself. **All site collections** goes back to the overview.
+- **The overview** has one row per site collection scanned from this page:
+  storage used, files read, inactive size and share for the chosen period,
+  libraries read or estimated, and when it was last scanned and by whom.
+  It can be sorted and exported to CSV.
+- **Results are kept on the central site,** in its Site Assets: one file
+  per site collection (`storage-pulse-sc-<site>-<hash>.json`) plus
+  `storage-pulse-central-index.json` for the overview. Nothing is written to
+  the sites being scanned.
+
+**Access.** Scans use the signed-in person's own access, as everywhere else
+in Storage Pulse; there is no app registration and no admin consent. A
+SharePoint or tenant admin role alone does not open a site's files. To scan
+a site collection, be a site collection admin of it, or at least able to
+read its libraries. Sites you can't open say so instead of being scanned.
+Use *Who can run a scan* (for example *Only the people I name*) to control
+who can scan from the central page. Anyone who can open the page can see
+the saved results.
+
 ### Very large libraries (a million files and more)
 
 - **Never starts over.** Where each ID range has got to is saved with the
@@ -471,6 +502,7 @@ src/webparts/storagePulse/
   assets/                              Toolbox icon
   components/
     StoragePulse.tsx                   Header, scan / cancel / export, load and save, banners
+    CentralPulse.tsx                   Central mode: site picker and overview of all site collections
     ScanPanel.tsx                      Live scan view: radar, steps, speed, time left
     PulseMark.tsx                      The logo as animated inline SVG
     ErrorBoundary.tsx                  Keeps a rendering error from breaking the page
@@ -482,6 +514,8 @@ src/webparts/storagePulse/
     searchEstimate.ts                  Instant estimates from SharePoint search
     folders.ts                         Folder rows and inactive folders for the dashboard
     siteMap.ts                         Map, coverage, and what the dashboard shows
+    centralIndex.ts                    Central overview: one summary per site collection
+    siteDirectory.ts                   Finding site collections, checking access to one
     activity.ts                        Age buckets, thresholds, active / inactive maths
     safeData.ts                        Link safety and saved-file sanitising
     ResultsStore.ts                    Save / load the last scan in Site Assets

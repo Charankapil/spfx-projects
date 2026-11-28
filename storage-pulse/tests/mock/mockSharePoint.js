@@ -152,8 +152,20 @@ export function createMockSharePoint(options = {}) {
   const webs = {
     [SITE]: { title: 'Finance', subwebs: [`${SITE}/projects`, `${SITE}/hr`], libraries: [libs.docs, libs.assets, libs.audit, libs.empty, libs.pages, libs.hold, libs.catalog, libs.flaky, libs.poison, libs.stuck].filter(Boolean) },
     [`${SITE}/projects`]: { title: 'Projects', subwebs: [], libraries: [libs.projects, libs.big, ...extra].filter(Boolean) },
-    [`${SITE}/hr`]: { title: 'HR (restricted)', subwebs: [], libraries: null }
+    [`${SITE}/hr`]: { title: 'HR (restricted)', subwebs: [], libraries: null },
+    // Other site collections on the tenant, for the central overview.
+    '/sites/legal': {
+      title: 'Legal',
+      subwebs: [],
+      libraries: [
+        { id: '11111111-0000-0000-0000-000000000001', title: 'Documents', url: '/sites/legal/Shared Documents', items: makeItems(2600, 21, { age: oldHeavy, size: (r) => r * 12 * MB, prefix: 'Contract', ext: ['pdf', 'docx'], dir: (id) => `Matter ${id % 6}` }, now) },
+        { id: '11111111-0000-0000-0000-000000000002', title: 'Closed Matters', url: '/sites/legal/Closed Matters', items: makeItems(900, 22, { age: dormant, size: (r) => r * 30 * MB, prefix: 'Closed', ext: ['pdf'] }, now) }
+      ]
+    },
+    '/sites/board': { title: 'Board', subwebs: [], libraries: [], noAccess: true }
   };
+  const SITE_COLLECTIONS = [SITE, '/sites/legal', '/sites/board'];
+  const siteRootOf = (webPath) => SITE_COLLECTIONS.find((r) => webPath === r || webPath.indexOf(r + '/') === 0);
 
   const itemCount = (l) => (l.big ? l.itemCount : l.items.length);
   const visibleItems = (l, gt, le, top) => {
@@ -325,6 +337,19 @@ export function createMockSharePoint(options = {}) {
   function searchQuery(web, q) {
     const unquote = (v) => (v || '').replace(/^'|'$/g, '').replace(/''/g, "'");
     const kql = unquote(q.get('querytext'));
+    if (kql.indexOf('contentclass:STS_Site') >= 0) {
+      const all = [
+        { Title: 'Finance', SPSiteUrl: `${ORIGIN}${SITE}` },
+        { Title: 'Legal', SPSiteUrl: `${ORIGIN}/sites/legal/` },
+        { Title: 'Board', SPSiteUrl: `${ORIGIN}/sites/board` },
+        { Title: 'Finance', SPSiteUrl: `${ORIGIN}${SITE}/` },
+        { Title: 'Alex Wilber', SPSiteUrl: 'https://contoso-my.sharepoint.com/personal/alex_contoso_com' }
+      ];
+      const start = parseInt(q.get('startrow') || '0', 10);
+      const limit = parseInt(q.get('rowlimit') || '10', 10);
+      const page = all.slice(start, start + limit).map((r) => ({ Cells: Object.keys(r).map((k) => ({ Key: k, Value: r[k] })) }));
+      return resp(200, { PrimaryQueryResult: { RelevantResults: { TotalRows: all.length, Table: { Rows: page } }, RefinementResults: null } });
+    }
     let lib;
     const byId = /ListId:"?([0-9a-f-]{36})"?/i.exec(kql);
     const byPath = /path:"([^"]+)"/i.exec(kql);
@@ -411,8 +436,12 @@ export function createMockSharePoint(options = {}) {
     const q = new URLSearchParams(u.search);
     const web = webs[webPath];
     if (!web) return resp(404, `no web ${webPath}`);
+    if (web.noAccess) return resp(403, { 'odata.error': { code: '-2147024891', message: { lang: 'en-US', value: 'Access denied.' } } });
 
-    if (api === 'site') return resp(200, { Usage: { Storage: String(Math.round(3.4 * 1024 * GB)) } });
+    if (api === 'site') {
+      const root = siteRootOf(webPath);
+      return resp(200, { Url: `${ORIGIN}${encodeURI(root)}`, Usage: { Storage: String(Math.round((root === SITE ? 3.4 * 1024 : 180) * GB)) } });
+    }
     if (api === 'web') return resp(200, { Title: web.title });
     if (api.startsWith('web/getsubwebsfilteredforcurrentuser')) {
       return resp(200, { value: web.subwebs.map((s) => ({ Title: webs[s].title, ServerRelativeUrl: s, WebTemplate: 'STS' })) });
@@ -557,7 +586,9 @@ export function createMockSharePoint(options = {}) {
     let bytes = 0;
     let hidden = 0;
     const excluded = (scanOpts.excludedLibraries || []).map((n) => n.toLowerCase());
-    for (const w of Object.values(webs)) {
+    const site = scanOpts.site || SITE;
+    for (const [path, w] of Object.entries(webs)) {
+      if (path !== site && path.indexOf(site + '/') !== 0) continue;
       for (const l of w.libraries || []) {
         if (l.isCatalog || l.alwaysThrottle || l.poisonId) continue;
         if (l.hidden && !scanOpts.includeHidden) continue;

@@ -1,6 +1,7 @@
 import { ILibraryResult, IScanResult } from '../models/IScanResult';
 import { describeAge, thresholdLabel } from '../components/text';
 import { AGE_BANDS, bandTotals, newestFileAge, splitByThreshold, splitFileType } from './activity';
+import { ICentralIndex } from './centralIndex';
 import { folderRows } from './folders';
 import { forDisplay } from './siteMap';
 import { encodePath, safeHref, serverRelativeHref } from './safeData';
@@ -191,4 +192,47 @@ export function exportFoldersCsv(result: IScanResult, thresholdMonths: number): 
     ]);
   }
   download(lines, `storage-pulse-folders-${stamp(result)}.csv`);
+}
+
+/** The central overview: one row per site collection scanned from the central page. */
+export function exportSitesCsv(index: ICentralIndex, thresholdMonths: number): void {
+  const label = thresholdLabel(thresholdMonths);
+  const lines: string[][] = [
+    [
+      'Site collection',
+      'URL',
+      'Storage used (bytes)',
+      'Files',
+      'Size of current files (bytes)',
+      `Inactive size (not changed for ${label}+) (bytes)`,
+      'Inactive share of size (%)',
+      'Version history (bytes)',
+      'Libraries',
+      'Libraries read',
+      'Libraries estimated from search',
+      'Could not be read',
+      'Last scan',
+      'Scanned by'
+    ]
+  ];
+  for (const site of index.sites) {
+    const split = splitByThreshold(site.histogram, thresholdMonths);
+    lines.push([
+      site.title,
+      site.url,
+      site.siteStorageBytes === undefined ? '' : String(site.siteStorageBytes),
+      String(split.totalFiles),
+      String(split.totalBytes),
+      String(split.inactiveBytes),
+      split.totalBytes ? ((split.inactiveBytes / split.totalBytes) * 100).toFixed(1) : '0',
+      String(site.versionBytes),
+      String(site.libraries),
+      String(site.librariesRead),
+      String(site.librariesEstimated),
+      String(site.failures),
+      site.scanCompletedAt,
+      site.scannedBy
+    ]);
+  }
+  download(lines, `storage-pulse-site-collections-${new Date().toISOString().substring(0, 10)}.csv`);
 }

@@ -13,8 +13,9 @@ import {
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 
 import * as strings from 'StoragePulseWebPartStrings';
+import { CentralPulseRoot } from './components/CentralPulse';
 import { StoragePulse } from './components/StoragePulse';
-import { IStoragePulseProps, IStoragePulseTheme, ScanMode, ScanPermission } from './components/IStoragePulseProps';
+import { IStoragePulseProps, IStoragePulseTheme, PulseMode, ScanMode, ScanPermission } from './components/IStoragePulseProps';
 import { format, thresholdLabel } from './components/text';
 import { ScanScope } from './models/IScanResult';
 import { parseAllowedPeople } from './services/access';
@@ -23,6 +24,8 @@ import { ScanSpeed } from './services/RequestGovernor';
 
 export interface IStoragePulseWebPartProps {
   title: string;
+  /** Missing on pages added before v2.5: they scan their own site. */
+  mode: PulseMode;
   scope: ScanScope;
   thresholdMonths: number;
   scanPermission: ScanPermission;
@@ -101,8 +104,10 @@ export default class StoragePulseWebPart extends BaseClientSideWebPart<IStorageP
   public render(): void {
     const threshold = Number(this.properties.thresholdMonths);
     const staleDays = Number(this.properties.staleAfterDays);
-    const element: React.ReactElement<IStoragePulseProps> = React.createElement(StoragePulse, {
+    const central = this.properties.mode === 'central';
+    const element: React.ReactElement<IStoragePulseProps> = React.createElement(central ? CentralPulseRoot : StoragePulse, {
       title: this.properties.title,
+      mode: central ? 'central' : 'site',
       scope: this.properties.scope === 'currentWeb' ? 'currentWeb' : 'siteCollection',
       thresholdMonths: THRESHOLD_OPTIONS.indexOf(threshold) >= 0 ? threshold : DEFAULT_THRESHOLD_MONTHS,
       scanPermission:
@@ -166,13 +171,25 @@ export default class StoragePulseWebPart extends BaseClientSideWebPart<IStorageP
             {
               groupName: strings.ScanGroupName,
               groupFields: [
-                PropertyPaneDropdown('scope', {
-                  label: strings.ScopeFieldLabel,
+                PropertyPaneDropdown('mode', {
+                  label: strings.ModeLabel,
+                  selectedKey: this.properties.mode === 'central' ? 'central' : 'site',
                   options: [
-                    { key: 'siteCollection', text: strings.ScopeSiteCollection },
-                    { key: 'currentWeb', text: strings.ScopeCurrentWeb }
+                    { key: 'site', text: strings.ModeSite },
+                    { key: 'central', text: strings.ModeCentral }
                   ]
                 }),
+                ...(this.properties.mode === 'central'
+                  ? [PropertyPaneLabel('modeHelp', { text: strings.ModeCentralDescription })]
+                  : [
+                      PropertyPaneDropdown('scope', {
+                        label: strings.ScopeFieldLabel,
+                        options: [
+                          { key: 'siteCollection', text: strings.ScopeSiteCollection },
+                          { key: 'currentWeb', text: strings.ScopeCurrentWeb }
+                        ]
+                      })
+                    ]),
                 PropertyPaneDropdown('scanMode', {
                   label: strings.ScanModeLabel,
                   options: [

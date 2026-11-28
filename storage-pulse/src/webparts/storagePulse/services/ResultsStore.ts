@@ -2,6 +2,7 @@ import { SPHttpClient, SPHttpClientResponse } from '@microsoft/sp-http';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 
 import { IScanResult, ScanScope } from '../models/IScanResult';
+import { emptyIndex, ICentralIndex, removeSite, sanitizeIndex, summarize, upsert } from './centralIndex';
 import { describeError } from './httpErrors';
 import { sanitizeResult } from './safeData';
 
@@ -30,6 +31,30 @@ export interface ISavedScan {
   savedAt?: string;
 }
 
+const INDEX_FILE = 'storage-pulse-central-index.json';
+
+/** A file name for another site collection's results: readable, and unique through a hash of the full address. */
+export function siteFileStem(siteUrl: string): string {
+  const key = siteUrl.replace(/\/+$/, '').toLowerCase();
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i);
+    // hash * 16777619 (the FNV prime) in 32 bits, without Math.imul (ES5).
+    hash = (hash + (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)) >>> 0;
+  }
+  let path = key;
+  try {
+    path = decodeURIComponent(new URL(key).pathname);
+  } catch {
+    // Not a URL: the hash still keeps it unique.
+  }
+  const slug = path
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 60);
+  return `storage-pulse-sc-${slug || 'root'}-${('0000000' + hash.toString(16)).slice(-8)}`;
+}
+
 function quoteForUrl(serverRelativeUrl: string): string {
   return encodeURIComponent(serverRelativeUrl.replace(/'/g, "''")).replace(/%2F/g, '/');
 }
@@ -45,7 +70,12 @@ function quoteForUrl(serverRelativeUrl: string): string {
  * SharePoint's own record of who last modified the file.
  */
 export class ResultsStore {
-  constructor(private context: WebPartContext) {}
+  /**
+   * `targetSiteUrl`: in central mode, the site collection the results are
+   * about. They are still kept in the Site Assets of the page's own site, one
+   * file per site collection, and listed in a central index.
+   */
+  constructor(private context: WebPartContext, private targetSiteUrl?: string) {}
 
   private get webUrl(): string {
     return this.context.pageContext.web.absoluteUrl;
@@ -56,6 +86,9 @@ export class ResultsStore {
   }
 
   private fileName(scope: ScanScope): string {
+    if (this.targetSiteUrl) {
+      return `${siteFileStem(this.targetSiteUrl)}.json`;
+    }
     return `storage-pulse-${scope === 'currentWeb' ? 'site' : 'site-collection'}.json`;
   }
 
@@ -125,10 +158,16 @@ export class ResultsStore {
       return undefined;
     }
     const current = await this.loadFile(`${folder}/${this.fileName(scope)}`);
-    return current || this.loadFile(`${folder}/${this.legacyFileName(scope)}`);
+    if (current || this.targetSiteUrl) {
+      return current;
+    }
+    return this.loadFile(`${folder}/${this.legacyFileName(scope)}`);
   }
 
   private partialFileName(scope: ScanScope): string {
+    if (this.targetSiteUrl) {
+      return `${siteFileStem(this.targetSiteUrl)}-inprogress.json`;
+    }
     return `storage-pulse-${scope === 'currentWeb' ? 'site' : 'site-collection'}-inprogress.json`;
   }
 
@@ -168,27 +207,78 @@ export class ResultsStore {
   }
 
   public deletePartial(scope: ScanScope): Promise<void> {
-    return this.enqueue(async () => {
-      const folder = await this.findSiteAssetsFolder();
-      if (!folder) {
-        return;
-      }
-      const url = `${this.webUrl}/_api/web/GetFileByServerRelativeUrl('${quoteForUrl(`${folder}/${this.partialFileName(scope)}`)}')`;
-      const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
-        headers: { 'X-HTTP-Method': 'DELETE', 'IF-MATCH': '*' }
-      });
-      if (!response.ok && response.status !== 404) {
-        throw new Error(`${response.status}: ${await describeError(response)}`);
-      }
+    return this.enqueue(() => this.deleteFile(this.partialFileName(scope)));
+  }
+
+  private async deleteFile(fileName: string): Promise<void> {
+    const folder = await this.findSiteAssetsFolder();
+    if (!folder) {
+      return;
+    }
+    const url = `${this.webUrl}/_api/web/GetFileByServerRelativeUrl('${quoteForUrl(`${folder}/${fileName}`)}')`;
+    const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+      headers: { 'X-HTTP-Method': 'DELETE', 'IF-MATCH': '*' }
     });
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`${response.status}: ${await describeError(response)}`);
+    }
   }
 
   public async save(result: IScanResult): Promise<void> {
     await this.queue;
     await this.writeFile(this.fileName(result.scope), result);
+    if (this.targetSiteUrl) {
+      // The overview's line for this site; saved after the results themselves, so it never points at nothing.
+      await this.updateIndex((index) => upsert(index, summarize(result)));
+    }
   }
 
-  private async writeFile(fileName: string, result: IScanResult): Promise<void> {
+  /** The central overview: one summary per site collection scanned from this page. Empty when there is none yet. */
+  public async loadIndex(): Promise<ICentralIndex> {
+    const folder = await this.findSiteAssetsFolder();
+    if (!folder) {
+      return emptyIndex();
+    }
+    const response = await this.context.spHttpClient.get(
+      `${this.webUrl}/_api/web/GetFileByServerRelativeUrl('${quoteForUrl(`${folder}/${INDEX_FILE}`)}')/$value`,
+      SPHttpClient.configurations.v1
+    );
+    if (response.status === 404) {
+      return emptyIndex();
+    }
+    if (!response.ok) {
+      throw new Error(`${response.status}: ${await describeError(response)}`);
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(await response.text());
+    } catch {
+      throw new Error('the central index file is not valid JSON');
+    }
+    return sanitizeIndex(raw, this.origin);
+  }
+
+  private updateIndex(change: (index: ICentralIndex) => ICentralIndex): Promise<void> {
+    return this.enqueue(async () => {
+      const next = change(await this.loadIndex());
+      await this.writeText(INDEX_FILE, JSON.stringify(next));
+    });
+  }
+
+  /** Takes a site off the central overview and deletes its saved results (the site itself is not touched). */
+  public async forgetSite(siteUrl: string): Promise<void> {
+    const stem = siteFileStem(siteUrl);
+    await this.updateIndex((index) => removeSite(index, siteUrl));
+    await this.enqueue(() => this.deleteFile(`${stem}.json`));
+    await this.enqueue(() => this.deleteFile(`${stem}-inprogress.json`));
+  }
+
+  private writeFile(fileName: string, result: IScanResult): Promise<void> {
+    const body: ISavedScanFile = { schemaVersion: SCHEMA_VERSION, result };
+    return this.writeText(fileName, JSON.stringify(body));
+  }
+
+  private async writeText(fileName: string, text: string): Promise<void> {
     let folder = await this.findSiteAssetsFolder();
     if (!folder) {
       const ensure = await this.context.spHttpClient.post(
@@ -205,12 +295,11 @@ export class ResultsStore {
       }
     }
 
-    const body: ISavedScanFile = { schemaVersion: SCHEMA_VERSION, result };
     const response = await this.context.spHttpClient.post(
       `${this.webUrl}/_api/web/GetFolderByServerRelativeUrl('${quoteForUrl(folder)}')` +
         `/Files/add(url='${fileName}',overwrite=true)`,
       SPHttpClient.configurations.v1,
-      { body: JSON.stringify(body) }
+      { body: text }
     );
     if (!response.ok) {
       throw new Error(`${response.status}: ${await describeError(response)}`);

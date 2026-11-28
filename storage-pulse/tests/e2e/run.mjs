@@ -287,6 +287,50 @@ test('instant estimate: a large library is on the dashboard in seconds, from sea
   await page.close();
 });
 
+test('central mode: scan other site collections from one page, see them side by side, and no-access sites are explained', async () => {
+  const { page, errors } = await open({ mock: {}, props: { mode: 'central' } });
+  await page.getByText('Storage across your site collections').waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: 'Scan a site collection' }).first().click();
+  await page.getByRole('button', { name: 'Open Legal' }).waitFor({ timeout: 30000 });
+  // OneDrive is not offered; each site collection once.
+  assert.equal(await page.getByText('Alex Wilber').count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Open Finance' }).count(), 1);
+  if (shots) {
+    await page.locator('section[aria-label="Choose a site collection"]').screenshot({ path: path.join(shots, 'central-picker.png') });
+  }
+  await page.getByRole('button', { name: 'Open Legal' }).click();
+  await page.getByRole('heading', { name: 'Legal' }).waitFor({ timeout: 30000 });
+  await scanToEnd(page);
+  const legal = await page.evaluate(() => window.__sp.expected({ site: '/sites/legal' }));
+  const bytes = await page.evaluate(() => {
+    const figs = [...document.querySelectorAll('[class*=figureValue]')].map((e) => e.getAttribute('title'));
+    return figs.slice(0, 2).map((t) => Number(String(t).replace(/[^0-9]/g, ''))).reduce((a, b) => a + b, 0);
+  });
+  assert.equal(bytes, legal.bytes);
+
+  // Back to the overview: Legal has a line, saved on the central site.
+  await page.getByRole('button', { name: 'All site collections' }).click();
+  await page.getByRole('button', { name: 'Open Legal' }).waitFor({ timeout: 30000 });
+  await page.getByText(/Site collections: 1, using/).waitFor();
+  assert.ok(await page.evaluate(() => !!window.__sp.files['/sites/finance/SiteAssets/storage-pulse-central-index.json']));
+  if (shots) {
+    await page.locator('section[aria-label="Site collections"]').screenshot({ path: path.join(shots, 'central-overview.png') });
+  }
+
+  // A site the person cannot open is explained, not scanned.
+  await page.getByRole('button', { name: 'Scan a site collection' }).first().click();
+  await page.getByRole('button', { name: 'Open Board' }).click();
+  await page.getByText(/You cannot open .*board/).waitFor({ timeout: 30000 });
+
+  // A pasted address opens its site collection with the results saved for it.
+  await page.getByLabel(/Or paste the address/).fill('https://contoso.sharepoint.com/sites/legal/Shared%20Documents/Forms/AllItems.aspx');
+  await page.getByRole('button', { name: 'Open', exact: true }).click();
+  await page.getByText('Where the inactive storage is').waitFor({ timeout: 30000 });
+  await page.getByRole('heading', { name: 'Legal' }).waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 test('naming the people who may scan replaces site ownership', async () => {
   const listed = await open({ mock: { owner: false }, props: { scanPermission: 'people', scanAllowedPeople: ['ALEX@contoso.com'] } });
   await listed.page.getByRole('button', { name: 'Start scan' }).first().waitFor({ timeout: 15000 });

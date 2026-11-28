@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 import { initializeIcons } from '@fluentui/react';
 import { StoragePulse } from '../../lib/webparts/storagePulse/components/StoragePulse.js';
+import { CentralPulseRoot } from '../../lib/webparts/storagePulse/components/CentralPulse.js';
 import { createMockSharePoint } from '../mock/mockSharePoint.js';
 
 initializeIcons();
@@ -33,7 +34,7 @@ function render(extra) {
   props.tuning = { autoRetryDelayMs: 0, profileOverride: { minGapMs: 0 }, ...((scenario.props && scenario.props.tuning) || {}), ...((extra && extra.tuning) || {}) };
   const root = document.getElementById('root');
   ReactDOM.unmountComponentAtNode(root);
-  ReactDOM.render(React.createElement(StoragePulse, props), root);
+  ReactDOM.render(React.createElement(props.mode === 'central' ? CentralPulseRoot : StoragePulse, props), root);
 }
 window.__remount = (owner, extra) => {
   sp.context.pageContext.web.permissions.hasPermission = () => owner;

@@ -17,6 +17,7 @@
       "iconImageUrl": "./assets/storage-pulse-toolbox.png",
       "properties": {
         "title": "Storage Pulse",
+        "mode": "site",
         "scope": "siteCollection",
         "thresholdMonths": 12,
         "scanPermission": "owners",

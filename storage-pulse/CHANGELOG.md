@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.5.0
+
+### Added
+- **Central mode.** Set *What it scans* to *Any site collection (central
+  overview)* to scan any site collection on the tenant from one page.
+  - **Scan a site collection** lists the site collections you can open,
+    from SharePoint search, or takes a pasted address of a site, page or
+    library. Access is checked first, and a site you can't open says why.
+  - Each site opens in the full view, with scan, site map, instant
+    estimate, resume and retry, and a button back to the overview.
+  - The overview shows every site collection scanned from the page:
+    storage used, files, inactive size and share for the chosen period,
+    libraries read or estimated, and the last scan. It can be sorted and
+    exported to CSV, and a site can be removed from it.
+  - Results are saved on the central site only, one file per site
+    collection plus an index for the overview.
+- Scans still use the signed-in person's own access; no app registration
+  or admin consent is needed.
+
+
 ## 2.4.0
 
 ### Fixed

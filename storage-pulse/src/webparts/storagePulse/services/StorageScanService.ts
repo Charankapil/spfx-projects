@@ -240,7 +240,13 @@ export class StorageScanService {
   private lastCheckpointAt = 0;
   private checkpointing = false;
 
-  constructor(private context: WebPartContext) {
+  /**
+   * `targetSiteUrl`: the site collection to scan, when it is not the one
+   * hosting the page (central mode). It must be on the same SharePoint host:
+   * the calls use the signed-in user's session, so they only reach sites that
+   * person can open.
+   */
+  constructor(private context: WebPartContext, private targetSiteUrl?: string) {
     this.governor = this.createGovernor({ scope: 'siteCollection', includeHidden: false, excludeSystemLibraries: false, excludedLibraries: [] });
   }
 
@@ -380,8 +386,20 @@ export class StorageScanService {
     }
   }
 
+  private get siteUrl(): string {
+    return this.targetSiteUrl || this.context.pageContext.site.absoluteUrl;
+  }
+
+  /** Where a scan starts: another site collection always as a whole, otherwise the page's site or site collection. */
+  private rootFor(scope: ScanScope): string {
+    if (this.targetSiteUrl) {
+      return this.targetSiteUrl;
+    }
+    return scope === 'currentWeb' ? this.context.pageContext.web.absoluteUrl : this.context.pageContext.site.absoluteUrl;
+  }
+
   private get origin(): string {
-    return new URL(this.context.pageContext.site.absoluteUrl).origin;
+    return new URL(this.siteUrl).origin;
   }
 
   private toAbsoluteUrl(serverRelativeUrl: string): string {
@@ -393,7 +411,7 @@ export class StorageScanService {
   private async getSiteStorage(): Promise<number | undefined> {
     try {
       const json = await this.getJson<{ Usage?: { Storage?: number | string } }>(
-        `${this.context.pageContext.site.absoluteUrl}/_api/site?$select=Usage`
+        `${this.siteUrl}/_api/site?$select=Usage`
       );
       return json.Usage && json.Usage.Storage !== undefined ? toNumber(json.Usage.Storage) : undefined;
     } catch (err) {
@@ -1154,8 +1172,7 @@ export class StorageScanService {
     const emit = this.makeEmitter(onProgress);
     const scope = options.scope;
     const scanStart = new Date();
-    const rootUrl =
-      scope === 'currentWeb' ? this.context.pageContext.web.absoluteUrl : this.context.pageContext.site.absoluteUrl;
+    const rootUrl = this.rootFor(scope);
 
     const progress = this.newProgress(rootUrl);
     this.governor.onChange = () => emit(progress);
@@ -1300,8 +1317,7 @@ export class StorageScanService {
     this.begin(options);
     const emit = this.makeEmitter(onProgress);
     const now = new Date();
-    const rootUrl =
-      options.scope === 'currentWeb' ? this.context.pageContext.web.absoluteUrl : this.context.pageContext.site.absoluteUrl;
+    const rootUrl = this.rootFor(options.scope);
     const progress = this.newProgress(rootUrl);
     progress.phase = 'discovering';
     this.governor.onChange = () => emit(progress);
